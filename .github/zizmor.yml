@@ -7,12 +7,15 @@ rules:
       - all-checks.yml
   secrets-inherit:
     ignore:
-      # release.yml passes the repository's secrets to terraform.yml (the same repo) on purpose.
+      # release.yml and deploy-authentik.yml pass the repository's and the target environment's secrets to the
+      # workflows they call (the same repo) on purpose.
       - release.yml
+      - deploy-authentik.yml
   self-repository:
     ignore:
       # Style only: the './' form of the local reusable workflow call works, and changing it is out of scope here.
       - release.yml
+      - deploy-authentik.yml
   artipacked:
     ignore:
       # Low-confidence findings: these checkouts leave persist-credentials at its default. Setting it to false means
@@ -21,6 +24,8 @@ rules:
       - tests.yml
       - release.yml
       - terraform.yml
+      - deploy-services.yml
+      - deploy-authentik.yml
   ref-version-mismatch:
     ignore:
       # The shared nvorkinn/.github workflows are pinned to a commit on its main branch (no release tags), and the
