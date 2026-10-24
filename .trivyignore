@@ -1,0 +1,25 @@
+# Findings the "Scan image" step of tests.yml's `image` job accepts. That step already skips vulnerabilities with no
+# fix yet (ignore-unfixed), so everything here HAS a fix, just not one we can apply: it ships in an upstream image
+# we build FROM, or in a tool inside it. Every entry carries `exp:`: past that date the finding fails CI again, so
+# it gets re-checked rather than forgotten. Prefer merging Dependabot's base-image bump (see .github/dependabot.yml)
+# and deleting the entry over extending the date.
+
+# caddy:2-alpine, victoria-metrics and victoria-logs: Go standard library built into the upstream binaries. Fixed in
+# Go 1.26.10 / 1.27.3; waiting on a Caddy / VictoriaMetrics release built with it (Dependabot proposes the tag).
+CVE-2026-111943 exp:2026-11-24
+CVE-2026-78667 exp:2026-11-24
+CVE-2026-78669 exp:2026-11-24
+CVE-2026-97031 exp:2026-11-24
+
+# caddy:2-alpine (brotli-libs) and fluent-bit (libbrotli1): the distro has the fix (Alpine 1.2.1-r0, Debian
+# 1.1.0-2+deb13u1) but upstream has not rebuilt the image on it. Neither image decodes untrusted brotli input
+# (Caddy's encode directive only compresses responses).
+CVE-2026-111497 exp:2026-11-24
+
+# broker (python:3.14-slim): pip's bundled copies of msgpack, setuptools and urllib3 in the base image's own pip.
+# pip is not on the broker's PATH at runtime (the app runs from /app/.venv, which has none) and never runs in the
+# container. Goes away with the next python:3.14-slim that ships a newer pip.
+GHSA-6v7p-g79w-8964 exp:2026-11-24
+CVE-2025-47273 exp:2026-11-24
+CVE-2026-97687 exp:2026-11-24
+CVE-2026-97689 exp:2026-11-24
