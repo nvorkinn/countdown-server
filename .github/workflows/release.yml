@@ -66,6 +66,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # For the build provenance attestation: a Sigstore certificate (OIDC) and
+      # storing the attestation.
+      id-token: write
+      attestations: write
     strategy:
       matrix:
         include:
@@ -82,13 +86,13 @@ jobs:
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The broker image bakes in vendor/countdown-api; the infra images don't use it.
           submodules: ${{ matrix.context == '.' }}
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -97,6 +101,7 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ${{ matrix.context }}
@@ -105,6 +110,23 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ needs.tag.outputs.value }}
             ${{ env.IMAGE }}:latest
+          # BuildKit's own attestations, pushed beside the image as extra
+          # (unknown/unknown platform) manifests in the tag's OCI index. A pull
+          # on the arm64 host still picks the arm64 image.
+          provenance: mode=max
+          sbom: true
+
+      # GitHub's signed provenance for the digest just pushed (the index's), stored
+      # with the image in GHCR and in GitHub's attestation store. Verify with
+      # `gh attestation verify oci://<image>:<tag> --repo nvorkinn/countdown-server`.
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+          # Storage records need an organization-owned repository (and the artifact-metadata permission).
+          create-storage-record: false
 
   # The deploy bundle is what the host deploys from: this release's
   # docker-compose.yml, deploy.sh, Authentik's brand assets and SOPS-encrypted
@@ -122,7 +144,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build deploy bundle
         id: bundle
@@ -184,7 +206,7 @@ jobs:
       BUNDLE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ needs.tag.outputs.value }}/deploy-${{ needs.tag.outputs.value }}.tar.gz
       BUNDLE_SHA256: ${{ needs.package.outputs.sha256 }}
     steps: &deploy-steps
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up SSH
         env:
