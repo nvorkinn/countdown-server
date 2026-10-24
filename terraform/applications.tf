@@ -3,9 +3,9 @@
 # and Metrics are for the authentik Admins group only.
 locals {
   proxy_providers = {
-    logs    = { name = "Provider for Logs", host = "https://logs.nikolaivorkinn.com" }
-    metrics = { name = "Provider for Metrics", host = "https://metrics.nikolaivorkinn.com" }
-    broker  = { name = "Provider for Broker", host = "https://auth.nikolaivorkinn.com" }
+    logs    = { name = "Provider for Logs", host = "https://${local.settings.LOGS_HOST}" }
+    metrics = { name = "Provider for Metrics", host = "https://${local.settings.METRICS_HOST}" }
+    broker  = { name = "Provider for Broker", host = "https://${local.settings.AUTH_HOST}" }
   }
 
   oauth_scopes = [
@@ -166,7 +166,7 @@ resource "authentik_outpost" "embedded" {
   type               = "proxy"
   protocol_providers = [for key in ["logs", "metrics", "broker"] : authentik_provider_proxy.this[key].id]
   config = jsonencode({
-    authentik_host = "https://sso.nikolaivorkinn.com"
+    authentik_host = "https://${local.settings.SSO_HOST}"
   })
 }
 

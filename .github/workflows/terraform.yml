@@ -17,11 +17,20 @@ on:
         description: Apply the plan after approval
         type: boolean
         default: false
+      target:
+        description: The environment to plan and apply
+        type: choice
+        options: [dev, prod]
+        default: dev
   workflow_call:
     inputs:
       apply:
         type: boolean
         default: false
+      # Which environment's Authentik: dev (dev/QA) or prod. Pull requests plan dev's.
+      target:
+        type: string
+        default: dev
       # The release tag to plan and apply. A release started with the button runs on main, so github.ref isn't it.
       tag:
         type: string
@@ -32,7 +41,7 @@ permissions:
 
 # A new push to a PR replaces its running checks.
 concurrency:
-  group: terraform-${{ github.ref }}
+  group: terraform-${{ inputs.target || 'dev' }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -40,6 +49,10 @@ env:
   TF_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
   # Keep in step with required_version in terraform/versions.tf.
   TF_VERSION: 1.16.6
+  # The environment (config/<environment>.env and the state's key). Dev's state is the one backend.tf names; the
+  # others' are beside it.
+  TF_VAR_environment: ${{ inputs.target || 'dev' }}
+  TF_STATE_KEY: ${{ inputs.target == 'prod' && 'authentik/prod/terraform.tfstate' || 'authentik/terraform.tfstate' }}
   TF_IN_AUTOMATION: "1"
   TF_INPUT: "0"
   TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugins
@@ -129,6 +142,9 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The target's secrets (its Authentik token and the rest); a pull request's plan is dev's. An environment without
+    # a secret of its own falls back to the repository's.
+    environment: ${{ inputs.target == 'prod' && 'production' || 'dev-qa' }}
     permissions:
       contents: read
       pull-requests: write
@@ -183,6 +199,7 @@ jobs:
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           terraform init -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$TF_STATE_REGION" \
+            -backend-config="key=$TF_STATE_KEY" \
             -backend-config="endpoints={s3=\"$TF_STATE_ENDPOINT\"}"
           status=0
           terraform plan -lock="$LOCK" -detailed-exitcode -out=tfplan || status=$?
@@ -235,9 +252,10 @@ jobs:
     if: inputs.apply && needs.plan.outputs.changes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: terraform
+    # Reviewers and the token that may write: dev/QA's is `terraform`, production's `terraform-production`.
+    environment: ${{ inputs.target == 'prod' && 'terraform-production' || 'terraform' }}
     concurrency:
-      group: terraform-apply
+      group: terraform-apply-${{ inputs.target || 'dev' }}
       cancel-in-progress: false
     # The environment's secret, which takes precedence over the repository's, so apply can use a token that
     # may write while plans use one that can only read.
@@ -271,6 +289,7 @@ jobs:
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           terraform init -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$TF_STATE_REGION" \
+            -backend-config="key=$TF_STATE_KEY" \
             -backend-config="endpoints={s3=\"$TF_STATE_ENDPOINT\"}"
           terraform workspace new "preflight-$GITHUB_RUN_ID"
           terraform workspace select default

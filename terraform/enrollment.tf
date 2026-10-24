@@ -27,7 +27,7 @@ import {
 
 resource "authentik_policy_expression" "enrollment_gate" {
   name       = "broker-enrollment-from-broker"
-  expression = file("${path.module}/policies/broker-enrollment-from-broker.expression")
+  expression = replace(file("${path.module}/policies/broker-enrollment-from-broker.expression"), "__AUTH_HOST__", local.settings.AUTH_HOST)
 }
 
 import {

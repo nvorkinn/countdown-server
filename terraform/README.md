@@ -56,6 +56,20 @@ source over to them. Everything else should show as an import, plus the few chan
 After one apply has put everything in the state, the import blocks do nothing and can be deleted; `local.ids` is
 still used to find stock objects by name.
 
+## Environments
+
+One config configures each environment's Authentik: `var.environment` (`dev` or `prod`, set by the workflow's `target`)
+picks `config/<environment>.env`, the file the deploy bundle's `settings.env` is made from, so the hostnames
+(`local.settings`, in `environment.tf`) are the ones Caddy serves. Each environment has its own state: dev/QA's is the
+`key` in `backend.tf`, production's is `authentik/prod/terraform.tfstate`, passed at init. The workflow reads each
+target's secrets from its GitHub environment (`dev-qa`, `production`), which fall back to the repository's, and applies
+in `terraform` (dev/QA) or `terraform-production`: reviewers and the token that may write.
+
+Production's Authentik is new, so the `import` blocks for the objects the old blueprint made (the `broker-*` flows,
+stages and policy, the Broker, Logs and Metrics apps and providers, the Google source and the branded brand) find
+nothing to import there. Before the first production apply, delete those blocks, or production's plan fails; dev/QA's
+state already has them, so they do nothing there. The stock `default-*` objects exist in every Authentik and stay.
+
 ## Remote state
 
 State lives in an Oracle Cloud Object Storage bucket, through its S3-compatible API (`backend.tf`). Local state on a

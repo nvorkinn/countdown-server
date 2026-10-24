@@ -5,7 +5,7 @@
 data "external" "ids" {
   program = ["python3", "${path.module}/scripts/authentik_ids.py"]
   query = {
-    url = var.authentik_url
+    url = local.authentik_url
   }
 }
 

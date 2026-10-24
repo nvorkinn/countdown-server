@@ -17,7 +17,10 @@ GATE = "terraform/policies/broker-enrollment-from-broker.expression"
 
 
 def _gate():
-    body = Path(GATE).read_text()
+    auth_host = dict(
+        line.split("=", 1) for line in Path("config/dev.env").read_text().splitlines() if line.startswith("AUTH_HOST=")
+    )["AUTH_HOST"]
+    body = Path(GATE).read_text().replace("__AUTH_HOST__", auth_host)
     namespace = {}
     exec("def gate(request):\n" + textwrap.indent(body, "    "), namespace)  # noqa: S102 -- builds the gate from the policy text under test
     return namespace["gate"]

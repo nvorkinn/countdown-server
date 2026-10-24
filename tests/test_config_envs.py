@@ -32,3 +32,16 @@ def test_the_caddyfile_s_placeholders_are_all_settings_or_secrets():
     known = set(_settings(CONFIG / "dev.env")) | {"LOGS_INGEST_TOKEN", "LOG_REQUEST_HEADERS"}
 
     assert placeholders <= known
+
+
+def test_terraform_only_reads_settings_the_environments_have():
+    """terraform/ reads the hostnames from config/<environment>.env; a name it uses that they lack fails its plan."""
+    used = {
+        name
+        for path in (ROOT / "terraform").glob("*.tf")
+        for name in re.findall(r"local\.settings\.([A-Z][A-Z0-9_]*)", path.read_text())
+    }
+
+    assert used
+    assert used <= set(_settings(CONFIG / "prod.env"))
+    assert used <= set(_settings(CONFIG / "dev.env"))
