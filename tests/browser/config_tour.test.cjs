@@ -8,7 +8,10 @@ const template = fs.readFileSync(path.join(__dirname, "../../broker/templates/de
 
 test("every step points at a section of the page, in the page's order", () => {
     const sections = [...template.matchAll(/data-tour="([a-z_]+)"/g)].map(m => m[1]);
-    assert.deepEqual(tour.STEPS.map(step => step.section), sections);
+    assert.deepEqual(
+        tour.STEPS.map(step => step.section),
+        sections,
+    );
 });
 
 test("every region is a box inside the sample picture", () => {
@@ -47,9 +50,14 @@ test("a step's picture fades everything but its regions and outlines them", () =
     assert.equal(mask.attributes.id, "tour-mask-3");
     assert.equal(mask.children.length, 3);
     const boxes = svg.find("rect").filter(rect => rect.attributes.class === "tour-box");
-    assert.deepEqual(boxes.map(box => [Number(box.attributes.x), Number(box.attributes.y)]),
-        step.regions.map(name => tour.REGIONS[name].slice(0, 2)));
-    assert.equal(svg.find("rect").find(rect => rect.attributes.class === "tour-fade").attributes.mask, "url(#tour-mask-3)");
+    assert.deepEqual(
+        boxes.map(box => [Number(box.attributes.x), Number(box.attributes.y)]),
+        step.regions.map(name => tour.REGIONS[name].slice(0, 2)),
+    );
+    assert.equal(
+        svg.find("rect").find(rect => rect.attributes.class === "tour-fade").attributes.mask,
+        "url(#tour-mask-3)",
+    );
 });
 
 test("a step without regions shows the whole picture clear", () => {

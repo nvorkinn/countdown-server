@@ -41,10 +41,18 @@ class Element {
         this.children = [];
         this.append(...children);
     }
-    get firstElementChild() { return this.children.find(child => child instanceof Element); }
-    get lastElementChild() { return this.children.findLast(child => child instanceof Element); }
-    setAttribute(name, value) { this.attributes[name] = value; }
-    addEventListener(name, callback) { this.listeners[name] = callback; }
+    get firstElementChild() {
+        return this.children.find(child => child instanceof Element);
+    }
+    get lastElementChild() {
+        return this.children.findLast(child => child instanceof Element);
+    }
+    setAttribute(name, value) {
+        this.attributes[name] = value;
+    }
+    addEventListener(name, callback) {
+        this.listeners[name] = callback;
+    }
     remove() {
         if (this.parentElement) {
             const siblings = this.parentElement.children;
@@ -57,29 +65,40 @@ class Element {
         return this.tag === selector.replace("[open]", "") && (!selector.endsWith("[open]") || this.open);
     }
     querySelectorAll(selector) {
-        return this.children.filter(child => child instanceof Element).flatMap(child => [
-            ...(child.matches(selector) ? [child] : []),
-            ...child.querySelectorAll(selector),
-        ]);
+        return this.children
+            .filter(child => child instanceof Element)
+            .flatMap(child => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
     }
 }
 
 const repo = {
-    full_name: "alice/project", html_url: "https://github.com/alice/project",
-    description: "A project", default_branch: "main",
+    full_name: "alice/project",
+    html_url: "https://github.com/alice/project",
+    description: "A project",
+    default_branch: "main",
 };
 const idle = { pulls: [], workflows: [], active: false };
 const active = {
-    active: true, workflows: [],
-    pulls: [{
-        number: 4, title: "A change", url: "https://github.com/alice/project/pull/4",
-        author: "alice", head: "feature", base: "main", mergeable: false,
-        checks: [{ name: "Build", state: "in_progress", pending: true }], refresh: true,
-        created_at: "2026-10-18T08:00:00Z",
-    }],
+    active: true,
+    workflows: [],
+    pulls: [
+        {
+            number: 4,
+            title: "A change",
+            url: "https://github.com/alice/project/pull/4",
+            author: "alice",
+            head: "feature",
+            base: "main",
+            mergeable: false,
+            checks: [{ name: "Build", state: "in_progress", pending: true }],
+            refresh: true,
+            created_at: "2026-10-18T08:00:00Z",
+        },
+    ],
 };
 // Whole-project reads, leaving out quick polls of single runs and PRs.
-const fullCalls = (app, name = "alice/project") => app.calls.filter(call => new RegExp(`/${name}(\\?|$)`).test(call.url));
+const fullCalls = (app, name = "alice/project") =>
+    app.calls.filter(call => new RegExp(`/${name}(\\?|$)`).test(call.url));
 
 async function harness(initial = active, repositories = [repo], storage = null, { webhooks = false } = {}) {
     let now = 100000;
@@ -87,13 +106,35 @@ async function harness(initial = active, repositories = [repo], storage = null, 
     let failure = null;
     let redirect = false;
     const calls = [];
-    const location = { reloads: 0, reload() { this.reloads += 1; } };
-    const ids = new Map(["summary", "error", "projects", "refresh", "pulls", "workflows",
-        "pull-count", "workflow-count", "project-count", "refresh-pulls", "refresh-workflows", "project-picker", "pull-order"].map(id => [id, new Element("div")]));
+    const location = {
+        reloads: 0,
+        reload() {
+            this.reloads += 1;
+        },
+    };
+    const ids = new Map(
+        [
+            "summary",
+            "error",
+            "projects",
+            "refresh",
+            "pulls",
+            "workflows",
+            "pull-count",
+            "workflow-count",
+            "project-count",
+            "refresh-pulls",
+            "refresh-workflows",
+            "project-picker",
+            "pull-order",
+        ].map(id => [id, new Element("div")]),
+    );
     const intervals = [];
     const document = {
         hidden: false,
-        querySelector: selector => ({ content: selector.includes("github-webhooks") ? (webhooks ? "on" : "off") : "csrf-token" }),
+        querySelector: selector => ({
+            content: selector.includes("github-webhooks") ? (webhooks ? "on" : "off") : "csrf-token",
+        }),
         getElementById: id => ids.get(id),
         createElement: tag => new Element(tag),
         createElementNS: (namespace, tag) => Object.assign(new Element(tag), { namespaceURI: namespace }),
@@ -101,43 +142,75 @@ async function harness(initial = active, repositories = [repo], storage = null, 
         addEventListener: () => {},
     };
     const context = vm.createContext({
-        document, URL, location, localStorage: storage, window: { addEventListener: () => {} },
+        document,
+        URL,
+        location,
+        localStorage: storage,
+        window: { addEventListener: () => {} },
         requestAnimationFrame: callback => callback(),
-        Date: class extends Date { static now() { return now; } },
+        Date: class extends Date {
+            static now() {
+                return now;
+            }
+        },
         setInterval: (callback, interval) => intervals.push({ callback, interval }),
         fetch: async (url, options) => {
             calls.push({ url, options });
             if (redirect) return { type: "opaqueredirect", ok: false, status: 0, headers: { get: () => null } };
             const error = url !== "/github/repositories" ? failure : null;
             // One run or PR is served from the project data, unless a test answers it itself.
-            const item = typeof data !== "function" && !data.workflow && !data.pull
-                && url.match(/\/(runs|pulls)\/(\d+)$/);
-            const found = item && (item[1] === "runs"
-                ? (data.workflows || []).find(run => run.id === Number(item[2]))
-                : (data.pulls || []).find(pr => pr.number === Number(item[2])));
+            const item =
+                typeof data !== "function" && !data.workflow && !data.pull && url.match(/\/(runs|pulls)\/(\d+)$/);
+            const found =
+                item &&
+                (item[1] === "runs"
+                    ? (data.workflows || []).find(run => run.id === Number(item[2]))
+                    : (data.pulls || []).find(pr => pr.number === Number(item[2])));
             if (item && !error) {
                 return {
-                    ok: !!found, status: found ? 200 : 404, headers: { get: () => "application/json" },
-                    json: async () => !found ? { error: "Not found." } : item[1] === "runs" ? { workflow: found } : { pull: found },
+                    ok: !!found,
+                    status: found ? 200 : 404,
+                    headers: { get: () => "application/json" },
+                    json: async () =>
+                        !found ? { error: "Not found." } : item[1] === "runs" ? { workflow: found } : { pull: found },
                 };
             }
             return {
                 ok: !error,
                 status: error ? error.status : 200,
-                headers: { get: name => name === "content-type" ? "application/json" : error?.retryAfter },
-                json: async () => error ? { error: error.message }
-                    : url === "/github/repositories" ? { repositories } : typeof data === "function" ? data(url) : data,
+                headers: { get: name => (name === "content-type" ? "application/json" : error?.retryAfter) },
+                json: async () =>
+                    error
+                        ? { error: error.message }
+                        : url === "/github/repositories"
+                          ? { repositories }
+                          : typeof data === "function"
+                            ? data(url)
+                            : data,
             };
         },
     });
     vm.runInContext(source, context);
     await new Promise(setImmediate);
     return {
-        calls, ids, context, document, intervals, location,
-        setRedirect: value => { redirect = value; },
-        setData: value => { data = value; },
-        setFailure: value => { failure = value; },
-        advance: ms => { now += ms; },
+        calls,
+        ids,
+        context,
+        document,
+        intervals,
+        location,
+        setRedirect: value => {
+            redirect = value;
+        },
+        setData: value => {
+            data = value;
+        },
+        setFailure: value => {
+            failure = value;
+        },
+        advance: ms => {
+            now += ms;
+        },
         tick: () => vm.runInContext("tick()", context),
         evaluate: expression => vm.runInContext(expression, context),
     };
@@ -196,9 +269,25 @@ function text(node) {
 test("PRs from all repositories share one list with repository labels, newest first", async () => {
     const other = { ...repo, full_name: "alice/another" };
     // The newer PR is ready and the older one has conflicts: opening time decides, not what needs attention.
-    const app = await harness(url => url.endsWith("/another")
-        ? { ...idle, pulls: [{ ...active.pulls[0], number: 2, title: "Ready", mergeable: true, checks: [], created_at: "2026-10-19T08:00:00Z" }] }
-        : active, [other, repo]);
+    const app = await harness(
+        url =>
+            url.endsWith("/another")
+                ? {
+                      ...idle,
+                      pulls: [
+                          {
+                              ...active.pulls[0],
+                              number: 2,
+                              title: "Ready",
+                              mergeable: true,
+                              checks: [],
+                              created_at: "2026-10-19T08:00:00Z",
+                          },
+                      ],
+                  }
+                : active,
+        [other, repo],
+    );
     const rows = app.ids.get("pulls").children;
     assert.equal(rows.length, 2);
     assert.equal(rows[0].dataset.key, "alice/another#2");
@@ -212,14 +301,20 @@ test("PRs from all repositories share one list with repository labels, newest fi
 });
 
 test("a PR opened by a Claude session links to it in the app and on the web; others have no link", async () => {
-    const app = await harness({ ...idle, pulls: [
-        { ...active.pulls[0], session: "session_01Abc" },
-        { ...active.pulls[0], number: 5, session: null },
-        { ...active.pulls[0], number: 6, session: "javascript:alert(1)" },
-    ] });
+    const app = await harness({
+        ...idle,
+        pulls: [
+            { ...active.pulls[0], session: "session_01Abc" },
+            { ...active.pulls[0], number: 5, session: null },
+            { ...active.pulls[0], number: 6, session: "javascript:alert(1)" },
+        ],
+    });
     const rows = app.ids.get("pulls").children;
     const links = rows.map(row => row.querySelectorAll(".session-links"));
-    assert.deepEqual(links.map(found => found.length), [1, 0, 0]);
+    assert.deepEqual(
+        links.map(found => found.length),
+        [1, 0, 0],
+    );
     const [open, , web] = links[0][0].children;
     assert.equal(open.href, "claude://code/session_01Abc");
     assert.equal(open.target, undefined);
@@ -228,12 +323,28 @@ test("a PR opened by a Claude session links to it in the app and on the web; oth
 });
 
 test("a PR's files are read when first opened, drawn as patches, and read again after a push", async () => {
-    const files = { files: [
-        { filename: "app.py", status: "modified", additions: 1, deletions: 1, patch: "@@ -1 +1 @@\n-old\n+new\n same" },
-        { filename: "big.json", status: "added", additions: 9000, deletions: 0, patch: null, url: "https://github.com/b" },
-    ], truncated: true };
+    const files = {
+        files: [
+            {
+                filename: "app.py",
+                status: "modified",
+                additions: 1,
+                deletions: 1,
+                patch: "@@ -1 +1 @@\n-old\n+new\n same",
+            },
+            {
+                filename: "big.json",
+                status: "added",
+                additions: 9000,
+                deletions: 0,
+                patch: null,
+                url: "https://github.com/b",
+            },
+        ],
+        truncated: true,
+    };
     const pull = { ...active.pulls[0], sha: "a1" };
-    const app = await harness(url => url.endsWith("/pulls/4/files") ? files : { ...idle, pulls: [pull] });
+    const app = await harness(url => (url.endsWith("/pulls/4/files") ? files : { ...idle, pulls: [pull] }));
     const section = () => app.ids.get("pulls").children[0].querySelectorAll(".pull-files")[0];
     assert.equal(app.calls.filter(call => call.url.endsWith("/files")).length, 0, "nothing is read until opened");
     section().open = true;
@@ -242,13 +353,18 @@ test("a PR's files are read when first opened, drawn as patches, and read again 
     assert.equal(section().open, true, "stays open once drawn");
     assert.equal(section().children[0].textContent, "Files changed (2+)");
     const [patchFile, bigFile] = section().querySelectorAll(".file-diff");
-    assert.deepEqual(patchFile.querySelectorAll("span").filter(span => span.className.startsWith("diff-") && !span.className.endsWith("count"))
-        .map(span => span.className), ["diff-hunk", "diff-del", "diff-add", "diff-same"]);
+    assert.deepEqual(
+        patchFile
+            .querySelectorAll("span")
+            .filter(span => span.className.startsWith("diff-") && !span.className.endsWith("count"))
+            .map(span => span.className),
+        ["diff-hunk", "diff-del", "diff-add", "diff-same"],
+    );
     assert.match(text(bigFile), /View on GitHub/);
     assert.match(text(section()), /More files on GitHub/);
     await section().listeners.toggle();
     assert.equal(app.calls.filter(call => call.url.endsWith("/files")).length, 1, "cached for the same head");
-    app.setData(url => url.endsWith("/pulls/4/files") ? files : { ...idle, pulls: [{ ...pull, sha: "b2" }] });
+    app.setData(url => (url.endsWith("/pulls/4/files") ? files : { ...idle, pulls: [{ ...pull, sha: "b2" }] }));
     await app.evaluate("refreshProject(projects.get('alice/project'))");
     assert.equal(section().children[0].textContent, "Files changed");
     await section().listeners.toggle();
@@ -258,9 +374,14 @@ test("a PR's files are read when first opened, drawn as patches, and read again 
 test("auto-merge is a CSRF-protected toggle that shows its state and GitHub's refusals", async () => {
     let reply = { auto_merge: true, merged: false };
     const pull = { ...active.pulls[0], auto_merge: false };
-    const app = await harness(url => url.endsWith("/auto-merge") ? reply : { ...idle, pulls: [pull, { ...pull, number: 5, draft: true }] });
-    const control = number => app.ids.get("pulls").children.find(row => row.dataset.key.endsWith(`#${number}`))
-        .querySelectorAll(".auto-merge")[0];
+    const app = await harness(url =>
+        url.endsWith("/auto-merge") ? reply : { ...idle, pulls: [pull, { ...pull, number: 5, draft: true }] },
+    );
+    const control = number =>
+        app.ids
+            .get("pulls")
+            .children.find(row => row.dataset.key.endsWith(`#${number}`))
+            .querySelectorAll(".auto-merge")[0];
     assert.equal(control(5), undefined, "drafts have no auto-merge");
     assert.equal(control(4).querySelectorAll("button")[0].textContent, "Auto-merge");
     await control(4).querySelectorAll("button")[0].listeners.click();
@@ -316,10 +437,18 @@ test("failed refreshes retain aggregated PRs with a stale marker and recover wit
 
 test("workflow diagrams fit the panel and expanded job details survive refreshes", async () => {
     const run = {
-        id: 7, name: "Release", number: 5, status: "waiting", branch: "main", attempt: 1,
-        url: "https://github.com/run/7", jobs: [],
+        id: 7,
+        name: "Release",
+        number: 5,
+        status: "waiting",
+        branch: "main",
+        attempt: 1,
+        url: "https://github.com/run/7",
+        jobs: [],
         nodes: Array.from({ length: 6 }, (_, index) => ({
-            key: `job${index}`, name: `Job ${index}`, state: index ? "queued" : "done",
+            key: `job${index}`,
+            name: `Job ${index}`,
+            state: index ? "queued" : "done",
             needs: index ? [`job${index - 1}`] : [],
         })),
     };
@@ -331,7 +460,7 @@ test("workflow diagrams fit the panel and expanded job details survive refreshes
     const viewport = list.querySelectorAll(".graph-scroll")[0];
     assert.equal(viewport.firstElementChild.dataset.width, "984");
     assert.equal(viewport.firstElementChild.style.transform, `scale(${640 / 984})`);
-    assert.equal(viewport.style.height, `${52 * 640 / 984}px`);
+    assert.equal(viewport.style.height, `${(52 * 640) / 984}px`);
     list.querySelectorAll("details")[0].open = true;
     app.advance(10000);
     await app.tick();
@@ -410,8 +539,15 @@ test("a failed subsequent release keeps its error visible when an older workflow
 });
 
 const waitingRelease = {
-    id: 7, name: "Release", number: 5, status: "waiting", branch: "v1.20.0", attempt: 1,
-    url: "https://github.com/alice/project/actions/runs/7", jobs: [], nodes: [],
+    id: 7,
+    name: "Release",
+    number: 5,
+    status: "waiting",
+    branch: "v1.20.0",
+    attempt: 1,
+    url: "https://github.com/alice/project/actions/runs/7",
+    jobs: [],
+    nodes: [],
     pending_deployments: [
         { id: 10, name: "production", can_approve: true, wait_timer: 0 },
         { id: 11, name: "protected", can_approve: false, wait_timer: 30 },
@@ -429,8 +565,11 @@ test("published link resolves to the discovered Actions run", async () => {
 });
 
 // The approval buttons, leaving out each running workflow's own Refresh button.
-const approveButtons = app => app.ids.get("workflows").querySelectorAll("button")
-    .filter(button => button.className !== "run-refresh");
+const approveButtons = app =>
+    app.ids
+        .get("workflows")
+        .querySelectorAll("button")
+        .filter(button => button.className !== "run-refresh");
 
 test("waiting deployments have per-environment controls respecting reviewer eligibility", async () => {
     const app = await harness({ ...idle, active: true, workflows: [waitingRelease] });
@@ -470,8 +609,12 @@ test("approval failures are visible, explicitly retryable and never automaticall
 const another = { ...repo, full_name: "alice/another" };
 const memory = (saved = {}) => ({
     saved,
-    getItem(key) { return this.saved[key] ?? null; },
-    setItem(key, value) { this.saved[key] = value; },
+    getItem(key) {
+        return this.saved[key] ?? null;
+    },
+    setItem(key, value) {
+        this.saved[key] = value;
+    },
 });
 const PREFS = "github-dashboard:prefs";
 const checkboxOf = (app, name) => app.evaluate(`projects.get("${name}")`).card.querySelectorAll("input")[0];
@@ -507,8 +650,11 @@ test("ticking the box changes what Refresh covers and is remembered", async () =
     assert.deepEqual(JSON.parse(storage.saved[PREFS]).background, []);
 });
 
-const pickerBox = (app, name) => app.ids.get("project-picker").querySelectorAll("input")
-    .find(input => input.dataset.repo === name);
+const pickerBox = (app, name) =>
+    app.ids
+        .get("project-picker")
+        .querySelectorAll("input")
+        .find(input => input.dataset.repo === name);
 
 test("unticked projects in the picker are neither shown nor fetched, and can be ticked again", async () => {
     const storage = memory({ [PREFS]: JSON.stringify({ hidden: ["alice/another"] }) });
@@ -533,11 +679,24 @@ test("unticked projects in the picker are neither shown nor fetched, and can be 
     assert.equal(app.evaluate("projects.has('alice/another')"), false);
     assert.deepEqual(JSON.parse(storage.saved[PREFS]).hidden, ["alice/another"]);
     assert.equal(app.ids.get("project-count").textContent, "1");
-    assert.equal(app.ids.get("projects").querySelectorAll("button").filter(node => node.textContent === "Hide").length, 0);
+    assert.equal(
+        app.ids
+            .get("projects")
+            .querySelectorAll("button")
+            .filter(node => node.textContent === "Hide").length,
+        0,
+    );
 });
 
 test("preferences survive storage that is missing or unreadable", async () => {
-    const broken = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
+    const broken = {
+        getItem() {
+            throw new Error("blocked");
+        },
+        setItem() {
+            throw new Error("blocked");
+        },
+    };
     for (const storage of [null, broken]) {
         const app = await harness(idle, [repo], storage);
         const box = checkboxOf(app, "alice/project");
@@ -586,11 +745,27 @@ test("Refresh for a section skips background projects and asks for everything wh
 
 function matrixRun(total, jobs = total) {
     return {
-        id: 9, name: "Release", number: 6, status: "in_progress", branch: "main", attempt: 1,
-        url: "https://github.com/run/9", jobs: [],
+        id: 9,
+        name: "Release",
+        number: 6,
+        status: "in_progress",
+        branch: "main",
+        attempt: 1,
+        url: "https://github.com/run/9",
+        jobs: [],
         nodes: [
-            { key: "test", name: "test", state: "running", needs: [], done: 1, total,
-                jobs: Array.from({ length: jobs }, (_, index) => ({ name: `test (${index})`, state: index ? "queued" : "done" })) },
+            {
+                key: "test",
+                name: "test",
+                state: "running",
+                needs: [],
+                done: 1,
+                total,
+                jobs: Array.from({ length: jobs }, (_, index) => ({
+                    name: `test (${index})`,
+                    state: index ? "queued" : "done",
+                })),
+            },
             { key: "deploy", name: "deploy", state: "queued", needs: ["test"], done: null, total: null },
         ],
     };
@@ -601,8 +776,12 @@ const toggle = app => app.ids.get("workflows").querySelectorAll(".matrix-toggle"
 test("a matrix of six or fewer jobs is drawn as a card per job, each feeding what needs the matrix", async () => {
     const app = await harness({ ...idle, active: true, workflows: [matrixRun(6)] });
     assert.equal(cards(app).length, 7);
-    assert.deepEqual(cards(app).slice(0, 6).map(card => card.title),
-        ["test (0)", "test (1)", "test (2)", "test (3)", "test (4)", "test (5)"]);
+    assert.deepEqual(
+        cards(app)
+            .slice(0, 6)
+            .map(card => card.title),
+        ["test (0)", "test (1)", "test (2)", "test (3)", "test (4)", "test (5)"],
+    );
     assert.equal(app.ids.get("workflows").querySelectorAll("path").length, 6);
     assert.equal(toggle(app).textContent, "Collapse matrix jobs");
 });
@@ -636,7 +815,12 @@ test("workflows without a matrix have no matrix toggle", async () => {
 });
 
 const finishedRelease = (id, finishedAt, conclusion = "success") => ({
-    ...waitingRelease, id, number: id, status: "completed", conclusion, pending_deployments: [],
+    ...waitingRelease,
+    id,
+    number: id,
+    status: "completed",
+    conclusion,
+    pending_deployments: [],
     finished_at: new Date(finishedAt).toISOString(),
 });
 const workflowsText = app => text(app.ids.get("workflows"));
@@ -645,7 +829,7 @@ test("a running workflow's Refresh reads only that run and leaves the project's 
     const app = await harness({ ...idle, active: true, workflows: [waitingRelease] });
     const due = app.evaluate('projects.get("alice/project").nextRefresh');
     const running = { ...waitingRelease, status: "in_progress", pending_deployments: [] };
-    app.setData(url => url.endsWith("/runs/7") ? { workflow: running } : idle);
+    app.setData(url => (url.endsWith("/runs/7") ? { workflow: running } : idle));
     const refresh = app.ids.get("workflows").querySelectorAll(".run-refresh")[0];
     assert.equal(refresh.textContent, "Refresh");
     const pending = refresh.listeners.click();
@@ -687,7 +871,11 @@ test("the latest finished release shows in full for two minutes, then as one lin
 });
 
 test("a finished release is replaced as soon as a newer one starts", async () => {
-    const app = await harness({ ...idle, active: true, workflows: [{ ...waitingRelease, id: 9, number: 9 }, finishedRelease(8, 100000, "failure")] });
+    const app = await harness({
+        ...idle,
+        active: true,
+        workflows: [{ ...waitingRelease, id: 9, number: 9 }, finishedRelease(8, 100000, "failure")],
+    });
     assert.match(workflowsText(app), /Release #9/);
     assert.doesNotMatch(workflowsText(app), /Release #8|Failed/);
     assert.equal(app.ids.get("workflows").querySelectorAll(".finished-toggle").length, 0);
@@ -710,7 +898,11 @@ test("a finished release can be opened again after it collapses", async () => {
 });
 
 test("a run refreshed to finished replaces the older finished release", async () => {
-    const app = await harness({ ...idle, active: true, workflows: [{ ...waitingRelease, id: 9, number: 9 }, finishedRelease(8, 0)] });
+    const app = await harness({
+        ...idle,
+        active: true,
+        workflows: [{ ...waitingRelease, id: 9, number: 9 }, finishedRelease(8, 0)],
+    });
     app.setData({ workflow: finishedRelease(9, 100000) });
     await app.ids.get("workflows").querySelectorAll(".run-refresh")[0].listeners.click();
     assert.match(workflowsText(app), /Release #9/);
@@ -726,7 +918,10 @@ async function steps(app, count, ms = 5000) {
         await app.tick();
     }
 }
-const busyPull = (checks = "in_progress") => ({ ...active.pulls[0], checks: [{ name: "Build", state: checks, pending: true }] });
+const busyPull = (checks = "in_progress") => ({
+    ...active.pulls[0],
+    checks: [{ name: "Build", state: checks, pending: true }],
+});
 
 test("a busy PR and a running release are polled on their own every 5 seconds, and leave once done", async () => {
     const app = await harness({ ...idle, pulls: [busyPull()], workflows: [waitingRelease] });
@@ -792,14 +987,28 @@ test("after New Release, full reads come every 10 seconds until its run appears"
 test("the PR order can be picked, and is remembered", async () => {
     const storage = memory();
     const other = { ...repo, full_name: "alice/another" };
-    const ready = { ...active.pulls[0], number: 2, title: "Ready", mergeable: true, checks: [], created_at: "2026-10-19T08:00:00Z" };
-    const app = await harness(url => url.endsWith("/another") ? { ...idle, pulls: [ready] } : active, [other, repo], storage);
+    const ready = {
+        ...active.pulls[0],
+        number: 2,
+        title: "Ready",
+        mergeable: true,
+        checks: [],
+        created_at: "2026-10-19T08:00:00Z",
+    };
+    const app = await harness(
+        url => (url.endsWith("/another") ? { ...idle, pulls: [ready] } : active),
+        [other, repo],
+        storage,
+    );
     const keys = () => app.ids.get("pulls").children.map(row => row.dataset.key);
     const order = app.ids.get("pull-order");
     assert.equal(order.value, "newest");
     assert.deepEqual(keys(), ["alice/another#2", "alice/project#4"]);
-    for (const [value, expected] of [["oldest", ["alice/project#4", "alice/another#2"]],
-        ["attention", ["alice/project#4", "alice/another#2"]], ["newest", ["alice/another#2", "alice/project#4"]]]) {
+    for (const [value, expected] of [
+        ["oldest", ["alice/project#4", "alice/another#2"]],
+        ["attention", ["alice/project#4", "alice/another#2"]],
+        ["newest", ["alice/another#2", "alice/project#4"]],
+    ]) {
         order.value = value;
         order.listeners.change();
         assert.deepEqual(keys(), expected, value);
@@ -815,8 +1024,12 @@ test("the PR order can be picked, and is remembered", async () => {
 
 test("a small matrix whose jobs were all skipped stays one card until expanded", async () => {
     const run = matrixRun(3);
-    run.nodes[0] = { ...run.nodes[0], state: "skipped", done: 3,
-        jobs: run.nodes[0].jobs.map(job => ({ ...job, state: "skipped" })) };
+    run.nodes[0] = {
+        ...run.nodes[0],
+        state: "skipped",
+        done: 3,
+        jobs: run.nodes[0].jobs.map(job => ({ ...job, state: "skipped" })),
+    };
     const app = await harness({ ...idle, workflows: [run] });
     assert.equal(cards(app).length, 2);
     assert.match(text(cards(app)[0]), /Skipped · 3\/3/);
@@ -829,16 +1042,27 @@ test("with the webhook, the page re-reads only what changed and reads everything
     let feed = { last: "1-0", changes: [], reset: false };
     const pull = { ...active.pulls[0], sha: "a1" };
     const release = { ...waitingRelease, id: 9 };
-    const app = await harness(url => url.startsWith("/github/changes") ? feed : { ...idle, active: true, pulls: [pull], workflows: [release] },
-        [repo], null, { webhooks: true });
+    const app = await harness(
+        url =>
+            url.startsWith("/github/changes") ? feed : { ...idle, active: true, pulls: [pull], workflows: [release] },
+        [repo],
+        null,
+        { webhooks: true },
+    );
     const feedCalls = () => app.calls.filter(call => call.url.startsWith("/github/changes"));
     await app.tick();
     assert.equal(feedCalls()[0].url, "/github/changes", "the first read only marks where to start");
-    feed = { last: "2-0", reset: false, changes: [
-        { repo: "alice/project", kind: "pull", id: "4" }, { repo: "alice/project", kind: "pull", id: "4" },
-        { repo: "alice/project", kind: "run", id: "9" }, { repo: "alice/project", kind: "commit", id: "a1" },
-        { repo: "someone/else", kind: "repo" },
-    ] };
+    feed = {
+        last: "2-0",
+        reset: false,
+        changes: [
+            { repo: "alice/project", kind: "pull", id: "4" },
+            { repo: "alice/project", kind: "pull", id: "4" },
+            { repo: "alice/project", kind: "run", id: "9" },
+            { repo: "alice/project", kind: "commit", id: "a1" },
+            { repo: "someone/else", kind: "repo" },
+        ],
+    };
     app.advance(5000);
     const before = fullCalls(app).length;
     await app.tick();
@@ -851,7 +1075,11 @@ test("with the webhook, the page re-reads only what changed and reads everything
     app.advance(5000);
     await app.tick();
     await app.tick();
-    assert.equal(fullCalls(app).at(-1).url, "/github/repositories/alice/project?section=pulls", "a new PR reads the PR list");
+    assert.equal(
+        fullCalls(app).at(-1).url,
+        "/github/repositories/alice/project?section=pulls",
+        "a new PR reads the PR list",
+    );
     app.advance(60000);
     const known = fullCalls(app).length;
     feed = { last: "4-0", reset: false, changes: [{ repo: "alice/project", kind: "commit", id: "b2" }] };
@@ -859,8 +1087,11 @@ test("with the webhook, the page re-reads only what changed and reads everything
     await app.tick();
     await app.tick();
     assert.equal(fullCalls(app).length, known + 1);
-    assert.equal(fullCalls(app).at(-1).url, "/github/repositories/alice/project?section=pulls",
-        "an unknown commit reads the PR list");
+    assert.equal(
+        fullCalls(app).at(-1).url,
+        "/github/repositories/alice/project?section=pulls",
+        "an unknown commit reads the PR list",
+    );
     app.advance(60000);
     const settled = fullCalls(app).length;
     feed = { last: "4-0", reset: false, changes: [] };
@@ -874,7 +1105,9 @@ test("with the webhook, the page re-reads only what changed and reads everything
 
 test("a feed that lost changes reads everything again", async () => {
     let feed = { last: "5-0", changes: [], reset: false };
-    const app = await harness(url => url.startsWith("/github/changes") ? feed : idle, [repo], null, { webhooks: true });
+    const app = await harness(url => (url.startsWith("/github/changes") ? feed : idle), [repo], null, {
+        webhooks: true,
+    });
     await app.tick();
     const before = fullCalls(app).length;
     feed = { last: "1-0", changes: [], reset: true };
@@ -888,7 +1121,9 @@ test("repositories are discovered every minute, or every five with the webhook, 
     const discoveryTimer = app => app.intervals.find(timer => timer.callback === app.evaluate("discover"));
     assert.equal(discoveryTimer(await harness(idle)).interval, 60000);
     let feed = { last: "1-0", changes: [], reset: false };
-    const app = await harness(url => url.startsWith("/github/changes") ? feed : idle, [repo], null, { webhooks: true });
+    const app = await harness(url => (url.startsWith("/github/changes") ? feed : idle), [repo], null, {
+        webhooks: true,
+    });
     assert.equal(discoveryTimer(app).interval, 300000);
     const discoveries = () => app.calls.filter(call => call.url === "/github/repositories").length;
     await app.tick();
