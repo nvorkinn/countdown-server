@@ -80,6 +80,16 @@ jobs:
       - name: Check formatting
         run: uv run --locked --only-dev ruff format --check .
 
+  # Lint and formatting of the first-party front-end (JS and CSS; see biome.jsonc), with a pinned Biome. Keep the
+  # version in step with the $schema URL in biome.jsonc.
+  biome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check lint and formatting
+        run: npx --yes @biomejs/biome@2.6.3 ci .
+
   # Type checking, with the ty uv.lock pins. ty resolves imports from the installed dependencies, so this installs
   # what the test jobs do (and shares their cache).
   ty:

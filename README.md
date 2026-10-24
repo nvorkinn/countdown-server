@@ -207,6 +207,7 @@ python scripts/simulate_device.py --token    # prints the /pair URL instead
 uv run python -m pytest --cov=broker
 ruff check . && ruff format --check .
 uv run ty check
+npx @biomejs/biome@2.6.3 check --write .   # the dashboard's JS and CSS; biome.jsonc has the version and scope
 ```
 
 External APIs are mocked and Redis is fakeredis. The render queue's script tests also run against a real

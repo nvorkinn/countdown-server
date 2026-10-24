@@ -1,7 +1,7 @@
 // The guided tour of a screen's settings page: driver.js walks through the sections, and beside each one shows
 // a sample picture of the screen with the part that section sets up picked out. It starts on its own the first
 // time a browser opens a screen's page, and "Take the tour" plays it again.
-(function () {
+(() => {
     "use strict";
 
     // The sample picture is a real frame from the renderer, 800 by 480 like the screen. Each region is a box in
@@ -21,22 +21,25 @@
         {
             section: "hero",
             title: "Your screen, section by section",
-            text: "Everything on the e-paper screen is set up on this page. This tour takes a minute and shows what each "
-                + "section puts on the screen, using a sample picture like this one.",
+            text:
+                "Everything on the e-paper screen is set up on this page. This tour takes a minute and shows what each " +
+                "section puts on the screen, using a sample picture like this one.",
             regions: [],
         },
         {
             section: "general",
             title: "General",
-            text: "The clock format sets every time on the screen, like the one by the music and the hours under "
-                + "the energy chart. The language changes all of the screen's text.",
+            text:
+                "The clock format sets every time on the screen, like the one by the music and the hours under " +
+                "the energy chart. The language changes all of the screen's text.",
             regions: ["clock", "axis"],
         },
         {
             section: "style",
             title: "Style",
-            text: "The style is the look of the departure rows, the notices and the rest: airy, bold headers or "
-                + "rounded cards. The pictures here show each one.",
+            text:
+                "The style is the look of the departure rows, the notices and the rest: airy, bold headers or " +
+                "rounded cards. The pictures here show each one.",
             regions: ["departures", "notices"],
         },
         {
@@ -48,44 +51,50 @@
         {
             section: "notice_board",
             title: "Notice board",
-            text: "The notices along the bottom: line disruptions for your stops, weather warnings and public holidays. "
-                + "The postcode picks the local ones.",
+            text:
+                "The notices along the bottom: line disruptions for your stops, weather warnings and public holidays. " +
+                "The postcode picks the local ones.",
             regions: ["notices"],
         },
         {
             section: "departures",
             title: "Departures",
-            text: "Your stops take the top left, in the order you put them in, counting down the minutes to each "
-                + "bus, Tube train, metro or tram.",
+            text:
+                "Your stops take the top left, in the order you put them in, counting down the minutes to each " +
+                "bus, Tube train, metro or tram.",
             regions: ["departures"],
         },
         {
             section: "music",
             title: "Music",
-            text: "With Spotify connected the screen shows what's playing and what's next. Apple Music shows what "
-                + "you played last. Between songs, your top tracks and artists.",
+            text:
+                "With Spotify connected the screen shows what's playing and what's next. Apple Music shows what " +
+                "you played last. Between songs, your top tracks and artists.",
             regions: ["music"],
         },
         {
             section: "developer",
             title: "Developer",
-            text: "With a GitHub token the screen can show a developer panel: your pull requests, their checks "
-                + "and the releases running.",
+            text:
+                "With a GitHub token the screen can show a developer panel: your pull requests, their checks " +
+                "and the releases running.",
             regions: [],
             picture: false,
         },
         {
             section: "energy",
             title: "Energy",
-            text: "A Glowmarkt (Bright) account puts your home's electricity use, hour by hour over the last day, "
-                + "down the right.",
+            text:
+                "A Glowmarkt (Bright) account puts your home's electricity use, hour by hour over the last day, " +
+                "down the right.",
             regions: ["energy"],
         },
         {
             section: "screen",
             title: "Screen",
-            text: "The name is just for this site, so you can tell your screens apart. Press Save at the bottom "
-                + "when you're done, and the screen picks the changes up on its next refresh.",
+            text:
+                "The name is just for this site, so you can tell your screens apart. Press Save at the bottom " +
+                "when you're done, and the screen picks the changes up on its next refresh.",
             regions: [],
             picture: false,
         },
@@ -118,17 +127,31 @@
         mask.append(svgElement("rect", { width: SCREEN.width, height: SCREEN.height, fill: "#fff" }));
         for (const name of step.regions) {
             const [left, top, right, bottom] = REGIONS[name];
-            mask.append(svgElement("rect", { x: left, y: top, width: right - left, height: bottom - top, fill: "#000" }));
+            mask.append(
+                svgElement("rect", { x: left, y: top, width: right - left, height: bottom - top, fill: "#000" }),
+            );
         }
         svg.append(mask);
-        svg.append(svgElement("rect", {
-            class: "tour-fade", width: SCREEN.width, height: SCREEN.height, mask: `url(#${maskId})`,
-        }));
+        svg.append(
+            svgElement("rect", {
+                class: "tour-fade",
+                width: SCREEN.width,
+                height: SCREEN.height,
+                mask: `url(#${maskId})`,
+            }),
+        );
         for (const name of step.regions) {
             const [left, top, right, bottom] = REGIONS[name];
-            svg.append(svgElement("rect", {
-                class: "tour-box", x: left, y: top, width: right - left, height: bottom - top, rx: 4,
-            }));
+            svg.append(
+                svgElement("rect", {
+                    class: "tour-box",
+                    x: left,
+                    y: top,
+                    width: right - left,
+                    height: bottom - top,
+                    rx: 4,
+                }),
+            );
         }
         return svg;
     }
