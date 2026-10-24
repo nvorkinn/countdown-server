@@ -311,6 +311,16 @@ key that can edit the secrets), `age-keygen -o /opt/auth-broker/age.key` on each
 that host's in `.sops.yaml`'s rule for its environment, and run `sops updatekeys secrets/<environment>/*.env` whenever a
 key changes.
 
+### Settings
+
+What differs between environments and isn't secret is in `config/<environment>.env`: the names Caddy serves
+(`AUTH_HOST`, `SSO_HOST`, `LOGS_HOST`, `METRICS_HOST` and the bare `APEX_HOST`, which redirects to `AUTH_HOST`), the
+Spotify redirect URI and the sender of authentik's emails. The environment's deploy bundle carries its file as
+`settings.env`, which `deploy.sh` installs next to `docker-compose.yml` and the services that need it list in their
+`env_file`, so one image and one compose file serve every environment. Each name needs an A record to its
+environment's host before Caddy can get a certificate for it, and the Spotify redirect URI has to be registered in the
+Spotify app. A test fails if the environments' files don't set the same things.
+
 ## Operations
 
 ### Backups

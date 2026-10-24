@@ -129,7 +129,8 @@ jobs:
           create-storage-record: false
 
   # The deploy bundles are what the hosts deploy from: this release's
-  # docker-compose.yml, deploy.sh, Authentik's brand assets and SOPS-encrypted
+  # docker-compose.yml, deploy.sh, Authentik's brand assets, that target's
+  # settings (config/<target>.env) and SOPS-encrypted
   # secrets, attached to the GitHub Release. There is one per target, holding
   # only that target's secrets/<target>/, so a host never gets (or could decrypt)
   # another environment's. They don't need the images, so they build alongside them.
@@ -157,6 +158,7 @@ jobs:
             mkdir -p "deploy-$TAG/secrets" "deploy-$TAG/authentik"
             cp docker-compose.yml scripts/deploy.sh "deploy-$TAG/"
             cp "secrets/$target"/*.env "deploy-$TAG/secrets/"
+            cp "config/$target.env" "deploy-$TAG/settings.env"
             mkdir -p "deploy-$TAG/authentik-assets"
             cp authentik-assets/* "deploy-$TAG/authentik-assets/"
             # Fixed order, times and owners, so a re-run builds the same bytes.

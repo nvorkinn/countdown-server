@@ -202,8 +202,13 @@ jobs:
           trivyignores: .trivyignore
           exit-code: "1"
 
+      # With the settings every image's environment would give it (Caddy's site names come from them).
       - name: Check config
-        run: docker run --rm countdown-server-${{ matrix.image }} ${{ matrix.check }}
+        run: docker run --rm --env-file config/dev.env countdown-server-${{ matrix.image }} ${{ matrix.check }}
+
+      - name: Check config with production's settings
+        if: matrix.image == 'caddy'
+        run: docker run --rm --env-file config/prod.env countdown-server-caddy ${{ matrix.check }}
 
       # The broker's image as docker-compose.yml runs it: the broker and each provider, with stand-in secrets and no
       # Redis, must start and then stop cleanly. Importing the code (above) isn't starting it: gunicorn checks
