@@ -35,6 +35,10 @@ on:
       tag:
         type: string
         required: true
+      # Lets apply run on a tag that isn't the latest, for promoting or rolling back to an older release.
+      allow_older_tag:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -169,9 +173,10 @@ jobs:
           ref: ${{ env.TF_TAG }}
 
       # Applying an older tag would quietly put Authentik back to that release's config, so a retry has to be on the
-      # latest one. Checked before planning, so a wrong pick fails at once rather than after an approval.
+      # latest one. Checked before planning, so a wrong pick fails at once rather than after an approval. A promotion
+      # may choose an older tag on purpose (a rollback); the plan shows what that changes, and approval stands behind it.
       - name: Check apply is on the latest release tag
-        if: inputs.apply
+        if: inputs.apply && !inputs.allow_older_tag
         run: |
           [ -n "$TF_TAG" ] || { echo "::error::Apply runs from a release tag: pick the latest v* tag under \"Use workflow from\""; exit 1; }
           latest="$(git ls-remote --tags --refs "https://github.com/$GITHUB_REPOSITORY" 'v*' \

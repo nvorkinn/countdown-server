@@ -148,7 +148,8 @@ the next release, not on merge.
 To retry a failed apply without a new release: Actions > Terraform > Run workflow, pick the release tag under "Use
 workflow from" and tick "apply". It plans afresh (a failed apply leaves the old plan stale) and asks for approval
 the same way. Only the latest `v*` tag is accepted, so an old tag can't put Authentik back to an earlier config by
-accident; to roll back, release a revert.
+accident; to roll back dev/QA, release a revert. (Promoting an older tag to production applies that tag's config on
+purpose, as part of a rollback; the plan shows what it changes and `terraform-production` approves it.)
 
 Without "apply" ticked the button just plans, on any branch or tag, which shows drift.
 

@@ -1,0 +1,148 @@
+name: Promote
+
+# Deploys a release that has already been through dev/QA to production, with one approval for all of it. Run it from
+# main (Actions > Promote > Run workflow) with the release's tag. Nothing is built: it deploys the images and the prod
+# deploy bundle that Release made, so production runs exactly what dev/QA did. To roll back, promote an older tag that
+# was deployed to dev/QA or to production before.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release to deploy to production, e.g. v1.2.3
+        type: string
+        required: true
+
+run-name: Promote ${{ inputs.tag }}
+
+permissions:
+  contents: read
+
+# One promotion at a time. A second one waits for the first (and a third replaces the second, as GitHub keeps only one
+# waiting run per group).
+concurrency:
+  group: promote-production
+  cancel-in-progress: false
+
+jobs:
+  # Everything that can be checked without approval, so a bad pick fails here rather than after a reviewer has looked.
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      deployments: read
+      # To find this workflow's earlier successful runs (a rollback to a tag that was promoted before).
+      actions: read
+    outputs:
+      sha256: ${{ steps.bundle.outputs.sha256 }}
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every branch and tag, to tell whether the tag's commit is on main.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the tag is a release on main
+        id: tag
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::Promote from main, not $GITHUB_REF"; exit 1; }
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::\"$TAG\" is not a release tag like v1.2.3"; exit 1; }
+          sha="$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}")" \
+            || { echo "::error::No tag $TAG"; exit 1; }
+          git merge-base --is-ancestor "$sha" origin/main \
+            || { echo "::error::$TAG ($sha) is not on main, so it isn't promoted"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check the release has a production bundle
+        run: |
+          assets="$(gh release view "$TAG" --json assets --jq '.assets[].name')" \
+            || { echo "::error::No release for $TAG"; exit 1; }
+          grep -qxF "deploy-$TAG-prod.tar.gz" <<< "$assets" \
+            || { echo "::error::$TAG has no production bundle (deploy-$TAG-prod.tar.gz): secrets/prod/ was not committed when it was released. Commit it and release again."; exit 1; }
+
+      # Dev/QA's evidence is a deployment: every job of a Release run that names the dev-qa environment records one on
+      # the commit the run started from, which for the Release button is main's head, the tag's commit, not the tag
+      # (hence looking up by sha, not ref). A deployment's statuses are newest first and end as "inactive" once a
+      # later deployment to the environment succeeds, so the question is whether any status was "success". Pull
+      # requests' Terraform plans record dev-qa deployments too, but on their own commits.
+      # Production's evidence can't be a deployment: this workflow runs on main's head, so its deployments are
+      # recorded on that, not on the tag's commit. It is an earlier successful run of this workflow for the same
+      # tag (see run-name), which is what a rollback to a promoted release is.
+      - name: Check the release was deployed to dev/QA, or promoted before
+        env:
+          SHA: ${{ steps.tag.outputs.sha }}
+        run: |
+          deployed_to() {
+            local environment="$1" ids id ok
+            ids="$(gh api --paginate "repos/$GITHUB_REPOSITORY/deployments?sha=$SHA&environment=$environment&per_page=100" --jq '.[].id')"
+            for id in $ids; do
+              ok="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=100" --jq 'any(.[]; .state == "success")')"
+              [ "$ok" = true ] && return 0
+            done
+            return 1
+          }
+
+          if deployed_to dev-qa; then
+            echo "$TAG ($SHA) was deployed to dev-qa."
+            exit 0
+          fi
+          runs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/promote.yml/runs?status=success&per_page=100" \
+            --jq '.workflow_runs[] | select(.display_title == "Promote " + env.TAG) | .id')"
+          if [ -n "$runs" ]; then
+            echo "$TAG was promoted to production before (run $(head -1 <<< "$runs")), so this is a rollback."
+            exit 0
+          fi
+          echo "::error::$TAG has not been deployed to dev-qa (or promoted before). Release it first: that is the deployment that vouches for it."
+          exit 1
+
+      # What the deploy jobs pass to the host, which checks the bundle it downloads against this.
+      - name: Fingerprint the production bundle
+        id: bundle
+        run: |
+          gh release download "$TAG" --pattern "deploy-$TAG-prod.tar.gz" --dir "$RUNNER_TEMP/bundle"
+          sha="$(sha256sum "$RUNNER_TEMP/bundle/deploy-$TAG-prod.tar.gz" | cut -d' ' -f1)"
+          echo "deploy-$TAG-prod.tar.gz: $sha"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+  # The one approval for the whole promotion: the environment's reviewers are asked once, here, and the deploys
+  # below run in `production` (which holds the host's secrets) with no reviewers of its own.
+  approve:
+    name: approve production
+    needs: check
+    runs-on: ubuntu-latest
+    environment: approve-production
+    steps:
+      - run: echo "Approved"
+
+  deploy-services:
+    name: services (production)
+    needs: [check, approve]
+    uses: ./.github/workflows/deploy-services.yml
+    with:
+      environment: production
+      approval: ''
+      target: prod
+      tag: ${{ inputs.tag }}
+      bundle_sha256: ${{ needs.check.outputs.sha256 }}
+    secrets: inherit
+
+  deploy-authentik:
+    name: authentik (production)
+    needs: [check, approve]
+    # The terraform job it calls comments on pull requests, so its token asks for this even here.
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/deploy-authentik.yml
+    with:
+      environment: production
+      approval: ''
+      target: prod
+      tag: ${{ inputs.tag }}
+      bundle_sha256: ${{ needs.check.outputs.sha256 }}
+      allow_older_tag: true
+    secrets: inherit

@@ -153,7 +153,13 @@ jobs:
         id: bundle
         run: |
           shas='{}'
-          for target in dev; do
+          for target in dev prod; do
+            # Production's secrets come later than dev's; until they are committed a release has no prod bundle,
+            # so it can't be promoted (promote.yml says so).
+            if [ ! -d "secrets/$target" ]; then
+              echo "::notice::No secrets/$target/ yet, so no $target bundle for $TAG."
+              continue
+            fi
             rm -rf "deploy-$TAG"
             mkdir -p "deploy-$TAG/secrets" "deploy-$TAG/authentik"
             cp docker-compose.yml scripts/deploy.sh "deploy-$TAG/"

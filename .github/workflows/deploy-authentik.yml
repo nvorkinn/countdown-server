@@ -1,8 +1,8 @@
 name: Deploy authentik
 
-# One target's deploy of authentik, then of its configuration, called by release.yml once per environment. It runs
-# upstream's image, so it needs only the bundle and can be approved while the images are still building. See also
-# deploy-services.yml.
+# One target's deploy of authentik, then of its configuration, called by release.yml (dev/QA) and promote.yml
+# (production). It runs upstream's image, so it needs only the bundle and can be approved while the images are still
+# building. See also deploy-services.yml.
 on:
   workflow_call:
     inputs:
@@ -25,6 +25,10 @@ on:
         description: The SHA-256 of this target's deploy bundle.
         type: string
         required: true
+      allow_older_tag:
+        description: Whether the configuration may be applied from a tag that isn't the latest release (a rollback).
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -84,4 +88,5 @@ jobs:
       apply: true
       target: ${{ inputs.target }}
       tag: ${{ inputs.tag }}
+      allow_older_tag: ${{ inputs.allow_older_tag }}
     secrets: inherit

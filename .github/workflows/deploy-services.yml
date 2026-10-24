@@ -1,7 +1,7 @@
 name: Deploy services
 
 # One target's deploy of this repo's own services (Caddy, the broker and its providers, Fluent Bit, VictoriaLogs,
-# VictoriaMetrics, Redis), called by release.yml once per environment. See also deploy-authentik.yml.
+# VictoriaMetrics, Redis), called by release.yml (dev/QA) and promote.yml (production). See also deploy-authentik.yml.
 on:
   workflow_call:
     inputs:
