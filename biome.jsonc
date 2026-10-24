@@ -1,0 +1,42 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+    "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+    "files": {
+        "ignoreUnknown": true,
+        // First-party JS/CSS only. Not the Jinja templates (Biome can't parse Jinja safely), the SVGs, the vendored
+        // third-party code (broker/static/vendor), authentik-assets or the vendor/ submodule (never matched here).
+        "includes": [
+            "broker/static/**/*.js",
+            "broker/static/**/*.css",
+            "tests/browser/**/*.cjs",
+            "!broker/static/vendor"
+        ]
+    },
+    "formatter": {
+        "enabled": true,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 120,
+        "lineEnding": "lf"
+    },
+    "javascript": {
+        "formatter": { "quoteStyle": "double", "semicolons": "always", "arrowParentheses": "asNeeded" }
+    },
+    "css": { "formatter": { "quoteStyle": "double" } },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "suspicious": {
+                // The dashboard scripts are classic <script>s (and config_tour.js is also require()d by the node
+                // tests), not ES modules, so "use strict" is not redundant there.
+                "noRedundantUseStrict": "off"
+            },
+            "style": {
+                // The dashboard's stylesheet orders general rules (.error, details) after the more specific ones
+                // they sit next to on purpose; reordering CSS could change how the page renders.
+                "noDescendingSpecificity": "off"
+            }
+        }
+    },
+    "assist": { "enabled": false }
+}
