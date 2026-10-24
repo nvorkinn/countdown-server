@@ -112,6 +112,29 @@ jobs:
           done
           exit $status
 
+  # The file hygiene hooks of .pre-commit-config.yaml. Ruff, ty and the Terraform hooks are skipped: the ruff and ty
+  # jobs above and terraform.yml already run them, and they would need the project installed or terraform and tflint.
+  pre-commit:
+    runs-on: ubuntu-latest
+    env:
+      SKIP: ruff-check,ruff-format,ty,terraform_fmt,terraform_validate,terraform_tflint
+    steps:
+      - uses: actions/checkout@v7
+
+      # Restore only: this job installs no project dependencies, so it must not save a cache the test jobs would use.
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+        with:
+          save-cache: false
+
+      # The hooks' environments, keyed on the config that pins them.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run pre-commit
+        run: uvx pre-commit run --all-files --show-diff-on-failure
+
   # Builds the images and checks the config baked into each. The infra images
   # have their program as the entrypoint, so `check` is just its args.
   image:
