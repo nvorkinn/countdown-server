@@ -49,3 +49,9 @@ variable "metrics_client_secret" {
     error_message = "metrics_client_secret must not be empty: set the TF_VAR_METRICS_CLIENT_SECRET secret."
   }
 }
+
+variable "environment" {
+  type        = string
+  description = "The environment to configure: the name of a file in ../config/."
+  default     = "dev"
+}
