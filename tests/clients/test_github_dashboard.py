@@ -351,8 +351,11 @@ def test_a_finished_attempt_is_drawn_once_and_a_rerun_is_drawn_again():
         api.workflow(REPO, FINISHED | {"run_attempt": 2, "updated_at": "2026-10-20T03:00:00Z"})
     finally:
         api.close()
-    # The re-run reads its own jobs, but the workflow file at the same commit is still kept.
-    assert [_url(call).split("/")[-2] for call in responses.calls] == ["1", "workflows", "2"]
+    # The first run reads its jobs and the workflow file in parallel, so in either order. The re-run reads only its own
+    # jobs: the workflow file at the same commit is still kept.
+    urls = [_url(call).split("/")[-2] for call in responses.calls]
+    assert sorted(urls[:2]) == ["1", "workflows"]
+    assert urls[2:] == ["2"]
 
 
 @responses.activate
