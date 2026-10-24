@@ -7,7 +7,7 @@ name: All checks
 # succeeds, which needs "Allow GitHub Actions to create and approve pull requests" enabled in the repository's settings.
 on:
   workflow_run:
-    workflows: [ Create Global PR Status, Tests, Terraform, CodeQL ]
+    workflows: [ Create Global PR Status, Tests, Terraform, CodeQL, Lint ]
     types: [ completed ]
 
 permissions:

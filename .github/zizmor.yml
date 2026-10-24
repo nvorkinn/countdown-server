@@ -1,0 +1,29 @@
+# zizmor configuration, picked up automatically by the Lint workflow. Every ignore below says why.
+rules:
+  dangerous-triggers:
+    ignore:
+      # all-checks.yml is a thin caller of the shared gate and has to run on workflow_run: it only reads other runs'
+      # results and never checks out or runs code from the triggering PR.
+      - all-checks.yml
+  secrets-inherit:
+    ignore:
+      # release.yml passes the repository's secrets to terraform.yml (the same repo) on purpose.
+      - release.yml
+  self-repository:
+    ignore:
+      # Style only: the './' form of the local reusable workflow call works, and changing it is out of scope here.
+      - release.yml
+  artipacked:
+    ignore:
+      # Low-confidence findings: these checkouts leave persist-credentials at its default. Setting it to false means
+      # editing these workflows beyond their uses: lines (and checking no later step needs the credentials), so it is
+      # left to a follow-up.
+      - tests.yml
+      - release.yml
+      - terraform.yml
+  ref-version-mismatch:
+    ignore:
+      # The shared nvorkinn/.github workflows are pinned to a commit on its main branch (no release tags), and the
+      # leave-alone "# main" comment records that. Only the online audit notices, since it asks GitHub for the tags.
+      - all-checks.yml
+      - create_global_pr_status.yml
