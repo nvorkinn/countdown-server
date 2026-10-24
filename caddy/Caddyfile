@@ -23,15 +23,17 @@
 	log_skip @request_logging_off
 }
 
+# The names come from the environment's settings (config/<environment>.env), so one image serves each.
+#
 # The bare domain has nothing of its own: send it to the settings site, keeping the path (so
-# nikolaivorkinn.com/about works). A temporary redirect, so browsers don't remember it if the apex
+# the apex's /about works). A temporary redirect, so browsers don't remember it if the apex
 # ever gets a page. Needs A records for both names pointing at this host, or Caddy can't get a cert.
-nikolaivorkinn.com, www.nikolaivorkinn.com {
-	redir https://auth.nikolaivorkinn.com{uri}
+{$APEX_HOST}, www.{$APEX_HOST} {
+	redir https://{$AUTH_HOST}{uri}
 }
 
 # Caddy uses host networking, so 127.0.0.1 is the host throughout.
-auth.nikolaivorkinn.com {
+{$AUTH_HOST} {
 	import access_log
 
 	# The broker trusts X-Authentik-Uid as the signed-in user (and shows the username), so nothing a
@@ -67,7 +69,7 @@ auth.nikolaivorkinn.com {
 }
 
 # VictoriaLogs, the victoria-logs compose service.
-logs.nikolaivorkinn.com {
+{$LOGS_HOST} {
 	@ingest {
 		path /insert/*
 		header Authorization "Bearer {$LOGS_INGEST_TOKEN}"
@@ -83,7 +85,7 @@ logs.nikolaivorkinn.com {
 
 # VictoriaMetrics, the victoria-metrics compose service, with the same ingest
 # token as logs.
-metrics.nikolaivorkinn.com {
+{$METRICS_HOST} {
 	@ingest {
 		path /api/v1/write /api/v1/import /api/v1/import/* /influx/*
 		header Authorization "Bearer {$LOGS_INGEST_TOKEN}"
@@ -97,7 +99,7 @@ metrics.nikolaivorkinn.com {
 	}
 }
 
-sso.nikolaivorkinn.com {
+{$SSO_HOST} {
 	import access_log
 	# authentik, published on loopback only.
 	reverse_proxy 127.0.0.1:9000

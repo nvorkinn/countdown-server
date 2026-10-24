@@ -50,6 +50,9 @@ ENV_FILES = {
     "redis.env": {"REDIS_PASSWORD": "ci"},
 }
 
+# And the real settings, which aren't secret: dev's, as the other environments' have the same keys.
+SETTINGS_ENV = ROOT / "config" / "dev.env"
+
 START_TIMEOUT_S = 60
 STOP_TIMEOUT_S = 20
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -95,6 +98,9 @@ def run_options(name: str, service: dict, deploy_dir: Path) -> list[str]:
         options += ["--network", service["network_mode"]]
     env_files = service.get("env_file", [])
     for env_file in [env_files] if isinstance(env_files, str) else env_files:
+        if env_file == "settings.env":
+            options += [f"--env={key}={value}" for key, value in settings().items()]
+            continue
         if env_file not in ENV_FILES:
             msg = f"{name}: no stand-ins for the secrets in its env_file {env_file}; add them to ENV_FILES"
             raise CheckFailedError(msg)
@@ -110,6 +116,12 @@ def run_options(name: str, service: dict, deploy_dir: Path) -> list[str]:
         (deploy_dir / source).mkdir(parents=True, exist_ok=True)
         options += ["--volume", f"{deploy_dir / source}:{target}"]
     return options
+
+
+def settings() -> dict[str, str]:
+    """Return the settings a host's settings.env has, from config/dev.env."""
+    lines = (line for line in SETTINGS_ENV.read_text().splitlines() if line and not line.startswith("#"))
+    return dict(line.split("=", 1) for line in lines)
 
 
 def command(service: dict) -> list[str]:

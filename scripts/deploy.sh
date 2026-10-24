@@ -6,6 +6,8 @@
 # recreates just that service.
 # Usage: deploy.sh <countdown-server|caddy|fluent-bit|victoria-logs|victoria-metrics|redis|authentik> <tag>
 #
+# The bundle's settings.env (the environment's non-secret settings) is installed next to the compose file too.
+#
 # Every secrets/<name>.env in the bundle is decrypted on every deploy, with the
 # host's age key, into <name>.env next to the compose file (compose won't load
 # the file if any service's env_file is missing). Nobody edits those files.
@@ -106,6 +108,9 @@ fi
   # Copy then mv, so compose never reads a half-written file.
   cp "$bundle/docker-compose.yml" docker-compose.yml.tmp
   mv docker-compose.yml.tmp docker-compose.yml
+  # This environment's settings (config/<environment>.env): the hostnames and the like, which aren't secret.
+  cp "$bundle/settings.env" settings.env.tmp
+  mv settings.env.tmp settings.env
   # authentik-assets/ is the server's public static mount (brand assets
   # only); made here so Docker doesn't create it root-owned. The authentik
   # deploy ships the bundle's whole folder into it, each file copied then

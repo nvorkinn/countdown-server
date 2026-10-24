@@ -6,7 +6,7 @@ CADDYFILE = Path(__file__).parent.parent / "caddy" / "Caddyfile"
 
 
 def _paths_without_login():
-    """Return the paths auth.nikolaivorkinn.com's @browser matcher leaves out of the Authentik login."""
+    """Return the paths the settings site's @browser matcher leaves out of the Authentik login."""
     match = re.search(r"@browser \{\s*not path ([^\n]+)", CADDYFILE.read_text())
     assert match is not None
     return match.group(1).split()
@@ -50,11 +50,11 @@ def test_frame_answers_close_the_connection():
 
     Without `Connection: close` that's Caddy's idle timeout, 5 minutes, after every unchanged frame.
     """
-    site = CADDYFILE.read_text().split("auth.nikolaivorkinn.com {", 1)[1].split("\n}\n", 1)[0]
+    site = CADDYFILE.read_text().split("{$AUTH_HOST} {", 1)[1].split("\n}\n", 1)[0]
     assert re.search(r"^\theader /api/frame Connection close$", site, re.MULTILINE)
 
 
 def test_bare_domain_redirects_to_the_settings_site():
-    """nikolaivorkinn.com and www. have nothing of their own; they send visitors on, keeping the path."""
-    site = CADDYFILE.read_text().split("nikolaivorkinn.com, www.nikolaivorkinn.com {", 1)[1].split("\n}\n", 1)[0]
-    assert site.strip() == "redir https://auth.nikolaivorkinn.com{uri}"
+    """The bare domain and www. have nothing of their own; they send visitors on, keeping the path."""
+    site = CADDYFILE.read_text().split("{$APEX_HOST}, www.{$APEX_HOST} {", 1)[1].split("\n}\n", 1)[0]
+    assert site.strip() == "redir https://{$AUTH_HOST}{uri}"
