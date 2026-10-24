@@ -112,6 +112,9 @@ jobs:
           done
           exit $status
 
+      - name: Fail on the first attempt only (TEMPORARY, to test that a re-run flips Global PR Status)
+        run: test "$GITHUB_RUN_ATTEMPT" -gt 1
+
   # Builds the images and checks the config baked into each. The infra images
   # have their program as the entrypoint, so `check` is just its args.
   image:
