@@ -140,6 +140,21 @@ jobs:
       - name: Build image
         run: docker build -t countdown-server-${{ matrix.image }} ${{ matrix.context || matrix.image }}
 
+      # Fixable HIGH/CRITICAL vulnerabilities in the image's OS packages, the broker's Python packages and the Go
+      # binaries inside the infra images, plus Dockerfile misconfigurations. Accepted findings live in
+      # .trivyignore, each with a reason and an expiry.
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          scan-type: image
+          image-ref: countdown-server-${{ matrix.image }}
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          exit-code: "1"
+
       - name: Check config
         run: docker run --rm countdown-server-${{ matrix.image }} ${{ matrix.check }}
 
