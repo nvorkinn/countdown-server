@@ -1,4 +1,5 @@
 import fnmatch
+import logging
 import shutil
 from datetime import UTC, datetime
 from hashlib import blake2b
@@ -27,6 +28,23 @@ def _set_app_env(monkeypatch, db_path):
     monkeypatch.setenv("BROKER_DB_PATH", str(db_path))
 
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+
+
+@pytest.fixture(autouse=True)
+def _keep_loggers_enabled():
+    """Undo what a test's `flask db upgrade/downgrade` does to logging.
+
+    env.py runs alembic's fileConfig, which disables every logger the ini file doesn't name, for the rest of the
+    process: any test running after it (in a random order, or in the same xdist worker) would then capture no log
+    records.
+    """
+    disabled = [
+        lg for lg in logging.Logger.manager.loggerDict.values() if isinstance(lg, logging.Logger) and lg.disabled
+    ]
+    yield
+    for lg in logging.Logger.manager.loggerDict.values():
+        if isinstance(lg, logging.Logger) and lg.disabled and lg not in disabled:
+            lg.disabled = False
 
 
 @pytest.fixture(scope="session")
