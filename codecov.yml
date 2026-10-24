@@ -12,7 +12,10 @@ coverage:
         threshold: 1%
     patch:
       default:
-        informational: true
+        # New and changed lines (branches included, see --cov-branch in tests.yml) should be mostly tested; a
+        # threshold of 5% keeps a small change with a few untested lines (a defensive branch) from failing.
+        target: 80%
+        threshold: 5%
 
 comment:
   layout: "condensed_header, diff, files"

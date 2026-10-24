@@ -15,7 +15,6 @@ dependencies = [
     "werkzeug",
     "click",
     "maxminddb",
-    "pydantic",
     # Reads workflow files for the release graphs (broker/clients/workflow_graph.py).
     "pyyaml",
     "redis",
@@ -32,6 +31,13 @@ dev = [
     "pytest-xdist",
     # CI splits the tests across parallel jobs: `--num-shards N --shard-id I` runs one share of them.
     "pytest-shard",
+    # Random test order (the seed is printed in the header; rerun one with `-p randomly -p "randomly_seed=N"`), which
+    # surfaces hidden order dependence.
+    "pytest-randomly",
+    # Some tests start real Redis servers: a hang fails after the timeout instead of stalling the job.
+    "pytest-timeout",
+    # Unused, missing and transitive dependencies (see [tool.deptry]).
+    "deptry",
     # lua: the render queue's script (services/render_jobs.py) runs in fakeredis too.
     "fakeredis[lua]",
     "responses",
@@ -51,3 +57,23 @@ countdown-api = { path = "vendor/countdown-api", editable = true }
 [tool.ty.src]
 # vendor/ is the countdown-api submodule: type checked by its own repository (its package still resolves, from .venv).
 exclude = ["vendor"]
+
+[tool.pytest.ini_options]
+# A test taking this long is hung (the slowest here are those starting a real redis-server).
+timeout = 120
+
+[tool.deptry]
+# vendor/ is the countdown-api submodule, checked by its own repository (its package is still mapped below).
+extend_exclude = ["vendor"]
+
+[tool.deptry.per_rule_ignores]
+# tzdata is never imported: zoneinfo reads it from site-packages on images without a system tz database
+# (python:3.14-slim has none), so it has to stay a runtime dependency.
+DEP002 = ["tzdata"]
+
+[tool.deptry.package_module_name_map]
+# deptry reads the installed metadata for these too; listed so the mapping holds without an installed environment.
+countdown-api = "countdown_api"
+flask-migrate = "flask_migrate"
+flask-sqlalchemy = "flask_sqlalchemy"
+pyyaml = "yaml"
