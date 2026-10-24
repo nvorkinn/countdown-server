@@ -11,4 +11,4 @@ permissions:
 
 jobs:
   create-global-pr-status:
-    uses: nvorkinn/.github/.github/workflows/create-global-pr-status.yml@1622a07925b51467b9c27345255e06ef61279819 # main
+    uses: nvorkinn/.github/.github/workflows/create-global-pr-status.yml@ed4b4410ecea982d66e252c3568d9c9a7234eba7 # main
