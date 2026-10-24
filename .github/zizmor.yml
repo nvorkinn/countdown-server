@@ -21,3 +21,9 @@ rules:
       - tests.yml
       - release.yml
       - terraform.yml
+  ref-version-mismatch:
+    ignore:
+      # The shared nvorkinn/.github workflows are pinned to a commit on its main branch (no release tags), and the
+      # leave-alone "# main" comment records that. Only the online audit notices, since it asks GitHub for the tags.
+      - all-checks.yml
+      - create_global_pr_status.yml
