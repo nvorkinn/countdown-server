@@ -1,4 +1,22 @@
 repos:
+  # Generated and third-party files are never rewritten by the whitespace and end-of-file fixers.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        # The largest committed file (not counting uv.lock) is ~86 kB; this catches a stray video or database dump.
+        args: [--maxkb=500]
+      # SOPS-encrypted files under secrets/ hold only ciphertext, so this passes there without an exclude.
+      - id: detect-private-key
+      # secrets/ is also left alone: SOPS's MAC covers the file's text, so a rewrite would break decryption.
+      - id: end-of-file-fixer
+        exclude: ^(vendor/|broker/static/vendor/|authentik-assets/|secrets/)
+      - id: trailing-whitespace
+        exclude: ^(vendor/|broker/static/vendor/|authentik-assets/|secrets/)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.1
     hooks:
