@@ -2,8 +2,8 @@ name: Cloudflare
 
 # Checks and plans infra/cloudflare (the DNS records) on pull requests that change it. The plan reads the live zone, so
 # it needs the secrets below and is skipped without them (fork and Dependabot pull requests). Applies run only from a
-# release tag, one environment at a time: the Release workflow calls this for dev, and Promote for prod, before either
-# deploys anything. Nothing is applied when a change merges. The "Run workflow" button (Actions > Cloudflare) plans any
+# release tag, one environment at a time: the Release workflow calls this for dev, and Promote for prod, beside their
+# deploys. Nothing is applied when a change merges. The "Run workflow" button (Actions > Cloudflare) plans any
 # ref, which shows drift; with "apply" ticked it also applies, on the latest release tag only, which is how a failed
 # apply is retried. See infra/cloudflare/README.md.
 on:
