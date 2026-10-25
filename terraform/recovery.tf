@@ -99,4 +99,3 @@ resource "authentik_stage_prompt" "recovery" {
   ]
   validation_policies = [local.ids.policies["default-password-change-password-policy"]]
 }
-
