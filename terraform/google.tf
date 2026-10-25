@@ -67,8 +67,3 @@ resource "authentik_source_oauth" "google" {
     ignore_changes = [pkce, authorization_url, access_token_url, profile_url, oidc_jwks_url]
   }
 }
-
-import {
-  to = authentik_source_oauth.google
-  id = "google"
-}

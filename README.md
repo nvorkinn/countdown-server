@@ -256,17 +256,18 @@ It builds five images for arm64 (the host is ARM) on an ARM runner, tagged with 
 - `ghcr.io/nvorkinn/countdown-server-victoria-metrics` (with the vmui dashboards)
 
 It also attaches a deploy bundle to the release (`docker-compose.yml`, `scripts/deploy.sh`, the encrypted secrets and
-authentik's brand assets) for each environment, with only that environment's secrets, and deploys to **dev/QA** with no
-approval: starting the release is the decision. Production is never touched by a release; it gets a tag that has been
-through dev/QA, by promotion. Two reusable workflows deploy a target (`deploy-services.yml` and
-`deploy-authentik.yml`), each taking an optional approval environment (reviewers) for targets that need one:
+authentik's brand assets) for each environment, with only that environment's secrets (`deploy-<tag>-dev.tar.gz` and
+`deploy-<tag>-prod.tar.gz`; there is no prod bundle until `secrets/prod/` is committed). A release deploys to
+**dev/QA** with no approval: starting the release is the decision. Production is never touched by a release; it gets a
+tag that has been through dev/QA, by promotion (below). Two reusable workflows deploy a target (`deploy-services.yml`
+and `deploy-authentik.yml`), each taking an optional approval environment (reviewers) for targets that need one:
 
 | Job | Deploys |
 |---|---|
 | services | Caddy, the broker and its providers, Fluent Bit, VictoriaLogs, VictoriaMetrics and Redis, a job each, two at a time |
 | authentik | authentik, on the `AUTHENTIK_VERSION` pinned in the host's `.env` |
 
-A job SSHes into the host named by its target environment's secrets (`dev-qa` today) and runs
+A job SSHes into the host named by its target environment's secrets (`dev-qa` or `production`) and runs
 `scripts/fetch-release.sh`, which downloads the bundle into
 `/opt/auth-broker/releases/<tag>/` (checking its SHA-256, and keeping the newest 5 bundles) and runs its `deploy.sh`.
 That decrypts the secrets, installs the compose file, backs up the database (`data/broker.db.bak-<tag>`, the newest 5
@@ -276,22 +277,49 @@ the running one and one other to roll back to, so the host's disk doesn't fill u
 After authentik is deployed, the `terraform` job applies this tag's authentik configuration, asking for approval
 only when the plan changes something (see [terraform/README.md](terraform/README.md)).
 
-To roll back, re-run the deploy jobs of an older release's workflow run. To deploy by hand, set the versions in
-`/opt/auth-broker/.env` and run `docker compose up -d`. Make compose changes in the repo: each deploy replaces the
-host's copy.
+### Promoting to production
+
+Run the **Promote** workflow from the Actions tab on `main` with the release's tag (`v1.2.3`). It builds nothing: it
+deploys the images and the `prod` bundle that the Release made, the same tag that ran on dev/QA. Its `check` job fails
+before anyone is asked if:
+
+- the tag doesn't exist or its commit isn't on `main`;
+- the release has no `deploy-<tag>-prod.tar.gz` (it was released before `secrets/prod/` was committed: commit them
+  and release again);
+- the tag wasn't deployed to dev/QA: a deployment to `dev-qa` recorded on the tag's commit has to have succeeded. (A
+  Release started with the button runs on `main`, so its deployments carry the tag's commit rather than the tag,
+  which is why they are looked up by commit.) The one other way through is a tag that an earlier promotion deployed
+  to production, which is a rollback.
+
+Then the `approve-production` environment's reviewers are asked once for the whole promotion, and the services and
+authentik deploy to `production` as in a release, followed by the `terraform` job against production's Authentik,
+which asks for its own approval in `terraform-production` when the plan has changes. One promotion runs at a time.
+
+To **roll back production,** promote an older tag that was deployed to dev/QA or promoted before; the same checks and
+approval apply (the host keeps the newest 5 bundles and the previous images, and fetches the bundle again if it is
+gone), and Terraform applies that tag's configuration, so read its plan before approving. To roll back dev/QA, release a revert, or re-run the deploy jobs of an older
+release's workflow run. To deploy by hand, set the versions in `/opt/auth-broker/.env` and run `docker compose up -d`.
+Make compose changes in the repo: each deploy replaces the host's copy.
 
 **One-time setup** in the repository's settings:
 
-- **Environments** `terraform` with yourself as a required reviewer (that's what stops it running on its own), and
-  one per deploy target (`dev-qa`), with no reviewers: it only holds that target's secrets. (A job can name only one environment, and a matrix of jobs that
-  named a protected one would ask for approval each, which is why the approval is a separate environment's.) `terraform` also needs a branch rule: see
-  [terraform/README.md](terraform/README.md#applying).
-- **Secrets,** in each target's environment (an environment's secret takes precedence over a repository's of the same
-  name, so a repository-level copy is only a fallback, and best deleted once every target has its own):
+- **Environments:**
+  - `dev-qa` and `production`, with no reviewers: each only holds its host's secrets. Restrict `production` to
+    `main` and `v*` tags (deployment branches and tags), so no other branch's workflow can reach production's host.
+  - `approve-production` with yourself as a required reviewer: it is the one gate of a promotion. (A job can name only
+    one environment, and a matrix of jobs that named a protected one would ask for approval each, which is why the
+    approval is not `production` itself.)
+  - `terraform` and `terraform-production`, each with yourself as a required reviewer (that's what stops Terraform
+    applying on its own) and a branch rule: see [terraform/README.md](terraform/README.md#applying).
+- **Secrets,** in each of `dev-qa` and `production` (an environment's secret takes precedence over a repository's of
+  the same name, so a repository-level copy is only a fallback, and best deleted once every target has its own):
   `DEPLOY_HOST`, `DEPLOY_USER` (in the `docker` group, owning `/opt/auth-broker/`), `ORACLE_SSH_TOKEN` (a
   private key for that user) and `DEPLOY_SSH_KNOWN_HOSTS` (`ssh-keyscan <host>`), plus the Terraform ones in
   [terraform/README.md](terraform/README.md#secrets) and `CODECOV_TOKEN`.
 - **The host** needs Docker Compose v2 (`sudo apt install docker-compose-v2`), `curl` and its age key (below).
+- **Before the first promotion,** `secrets/prod/` has to be committed, encrypted for the laptop and the production
+  host, with the matching `prod` rule in `.sops.yaml` uncommented (see Secrets below), and a release made after that:
+  releases from before it have no prod bundle and can't be promoted.
 
 ### Secrets
 

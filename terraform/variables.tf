@@ -2,8 +2,8 @@
 # An unset secret reaches Terraform as an empty string, which would blank the credential in Authentik, so each must be non-empty.
 variable "authentik_url" {
   type        = string
-  description = "Base URL of the Authentik server."
-  default     = "https://sso.nikolaivorkinn.com"
+  description = "Base URL of the Authentik server. Unset (the default), it is the environment's SSO_HOST."
+  default     = null
 }
 
 variable "google_client_id" {
@@ -48,4 +48,10 @@ variable "metrics_client_secret" {
     condition     = length(var.metrics_client_secret) > 0
     error_message = "metrics_client_secret must not be empty: set the TF_VAR_METRICS_CLIENT_SECRET secret."
   }
+}
+
+variable "environment" {
+  type        = string
+  description = "The environment to configure: the name of a file in ../config/."
+  default     = "dev"
 }

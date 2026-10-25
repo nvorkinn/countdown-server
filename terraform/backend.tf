@@ -4,6 +4,8 @@
 # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, from GitHub secrets. See README.md.
 terraform {
   backend "s3" {
+    # Dev/QA's. Production's is passed at init (-backend-config="key=authentik/prod/terraform.tfstate"), so each
+    # environment has its own state.
     key = "authentik/terraform.tfstate"
 
     # Oracle's S3 API has no AWS accounts, regions to validate or instance metadata, and wants path-style URLs.

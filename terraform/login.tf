@@ -72,7 +72,7 @@ import {
   id = local.ids.stages["default-authentication-identification"]
 }
 
-# Brands: point both at the login and recovery flows; nikolaivorkinn.com carries the branding. A brand naming no
+# Brands: point both at the login and recovery flows; the environment's apex domain carries the branding. A brand naming no
 # authentication flow falls back to the first flow with that designation whose policies pass, by slug, so a flow that
 # sorts first and has no policies (broker-passwordless, in passwordless.tf) would become the login screen. Naming the
 # flow here keeps that from happening.
@@ -97,7 +97,7 @@ import {
 # puts the wallpaper behind every flow, whatever background the flow names. Authentik keeps the CSS without its
 # final newline, so it's chomped here, or every plan would show it changed.
 resource "authentik_brand" "nikolaivorkinn" {
-  domain                           = "nikolaivorkinn.com"
+  domain                           = local.settings.APEX_HOST
   branding_title                   = "Countdown"
   branding_logo                    = "/static/dist/assets/countdown/countdown-pill.svg"
   branding_favicon                 = "countdown-favicon.svg.svg"
@@ -105,9 +105,4 @@ resource "authentik_brand" "nikolaivorkinn" {
   branding_custom_css              = chomp(file("${path.module}/../authentik-assets/countdown.css"))
   flow_authentication              = authentik_flow.authentication.uuid
   flow_recovery                    = authentik_flow.recovery.uuid
-}
-
-import {
-  to = authentik_brand.nikolaivorkinn
-  id = local.ids.brands["nikolaivorkinn.com"]
 }

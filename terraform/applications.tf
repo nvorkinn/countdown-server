@@ -3,9 +3,9 @@
 # and Metrics are for the authentik Admins group only.
 locals {
   proxy_providers = {
-    logs    = { name = "Provider for Logs", host = "https://logs.nikolaivorkinn.com" }
-    metrics = { name = "Provider for Metrics", host = "https://metrics.nikolaivorkinn.com" }
-    broker  = { name = "Provider for Broker", host = "https://auth.nikolaivorkinn.com" }
+    logs    = { name = "Provider for Logs", host = "https://${local.settings.LOGS_HOST}" }
+    metrics = { name = "Provider for Metrics", host = "https://${local.settings.METRICS_HOST}" }
+    broker  = { name = "Provider for Broker", host = "https://${local.settings.AUTH_HOST}" }
   }
 
   oauth_scopes = [
@@ -36,13 +36,6 @@ resource "authentik_provider_proxy" "this" {
   lifecycle {
     ignore_changes = [access_token_validity]
   }
-}
-
-import {
-  for_each = local.proxy_providers
-
-  to = authentik_provider_proxy.this[each.key]
-  id = local.ids.providers[each.value.name]
 }
 
 # A proxy provider is also an OAuth2 provider (one object in Authentik). Logs and Metrics have a fixed client id and
@@ -90,13 +83,6 @@ resource "authentik_provider_oauth2" "this" {
   }
 }
 
-import {
-  for_each = local.oauth_clients
-
-  to = authentik_provider_oauth2.this[each.key]
-  id = local.ids.providers[local.proxy_providers[each.key].name]
-}
-
 resource "authentik_application" "broker" {
   name              = "Broker"
   slug              = "broker"
@@ -118,21 +104,6 @@ resource "authentik_application" "metrics" {
   protocol_provider = authentik_provider_proxy.this["metrics"].id
 }
 
-import {
-  to = authentik_application.broker
-  id = "broker"
-}
-
-import {
-  to = authentik_application.logs
-  id = "logs"
-}
-
-import {
-  to = authentik_application.metrics
-  id = "metrics"
-}
-
 resource "authentik_policy_binding" "logs_admins" {
   target  = authentik_application.logs.uuid
   group   = local.ids.groups["authentik Admins"]
@@ -151,22 +122,12 @@ resource "authentik_policy_binding" "metrics_admins" {
   timeout = 30
 }
 
-import {
-  to = authentik_policy_binding.logs_admins
-  id = local.ids.policy_bindings["${local.ids.applications["logs"]}/0/${local.ids.groups["authentik Admins"]}"]
-}
-
-import {
-  to = authentik_policy_binding.metrics_admins
-  id = local.ids.policy_bindings["${local.ids.applications["metrics"]}/0/${local.ids.groups["authentik Admins"]}"]
-}
-
 resource "authentik_outpost" "embedded" {
   name               = "authentik Embedded Outpost"
   type               = "proxy"
   protocol_providers = [for key in ["logs", "metrics", "broker"] : authentik_provider_proxy.this[key].id]
   config = jsonencode({
-    authentik_host = "https://sso.nikolaivorkinn.com"
+    authentik_host = "https://${local.settings.SSO_HOST}"
   })
 }
 

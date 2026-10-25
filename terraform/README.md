@@ -53,8 +53,24 @@ from the live server (read-only, with `AUTHENTIK_TOKEN`) and `imports.tf` expose
 The exception is the Google login flows (`broker-source-authentication`, `broker-source-enrollment`) with their
 stage and policy bindings: the live server never got them, so the first apply creates them and switches the Google
 source over to them. Everything else should show as an import, plus the few changes listed above, and no destroys.
-After one apply has put everything in the state, the import blocks do nothing and can be deleted; `local.ids` is
+After one apply has put everything in the state, the import blocks for the objects it created are gone (those for stock objects stay, for a new environment); `local.ids` is
 still used to find stock objects by name.
+
+## Environments
+
+One config configures each environment's Authentik: `var.environment` (`dev` or `prod`, set by the workflow's `target`)
+picks `config/<environment>.env`, the file the deploy bundle's `settings.env` is made from, so the hostnames
+(`local.settings`, in `environment.tf`) are the ones Caddy serves. Each environment has its own state: dev/QA's is the
+`key` in `backend.tf`, production's is `authentik/prod/terraform.tfstate`, passed at init. The workflow reads each
+target's secrets from its GitHub environment (`dev-qa`, `production`), which fall back to the repository's, and applies
+in `terraform` (dev/QA) or `terraform-production`: reviewers and the token that may write.
+
+A new environment's Authentik has only the stock objects, so the `import` blocks that remain are for those (the
+`default-*` flows, stages, prompts and policy, the default brand and the embedded outpost), and everything this config
+adds (the `broker-*` flows and stages, the Broker, Logs and Metrics apps and providers, the Google source and the
+branded brand) is created by its first apply. Dev/QA's state already had those, so their import blocks were removed;
+the first apply to a new environment also needs `AUTHENTIK_TOKEN` to be a token that may write (see
+`AUTHENTIK_BOOTSTRAP_TOKEN` in `secrets/authentik.env.example`).
 
 ## Remote state
 
@@ -134,7 +150,8 @@ the next release, not on merge.
 To retry a failed apply without a new release: Actions > Terraform > Run workflow, pick the release tag under "Use
 workflow from" and tick "apply". It plans afresh (a failed apply leaves the old plan stale) and asks for approval
 the same way. Only the latest `v*` tag is accepted, so an old tag can't put Authentik back to an earlier config by
-accident; to roll back, release a revert.
+accident; to roll back dev/QA, release a revert. (Promoting an older tag to production applies that tag's config on
+purpose, as part of a rollback; the plan shows what it changes and `terraform-production` approves it.)
 
 Without "apply" ticked the button just plans, on any branch or tag, which shows drift.
 

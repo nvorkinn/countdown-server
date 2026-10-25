@@ -12,4 +12,4 @@ try:
     target = urlparse(claims.get("redirect", ""))
 except (IndexError, ValueError, TypeError, AttributeError):
     return False
-return target.hostname == "auth.nikolaivorkinn.com" and target.path == "/pair"
+return target.hostname == "__AUTH_HOST__" and target.path == "/pair"

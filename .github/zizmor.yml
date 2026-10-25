@@ -7,14 +7,16 @@ rules:
       - all-checks.yml
   secrets-inherit:
     ignore:
-      # release.yml and deploy-authentik.yml pass the repository's and the target environment's secrets to the
-      # workflows they call (the same repo) on purpose.
+      # release.yml, promote.yml and deploy-authentik.yml pass the repository's and the target environment's secrets
+      # to the workflows they call (the same repo) on purpose.
       - release.yml
+      - promote.yml
       - deploy-authentik.yml
   self-repository:
     ignore:
       # Style only: the './' form of the local reusable workflow call works, and changing it is out of scope here.
       - release.yml
+      - promote.yml
       - deploy-authentik.yml
   artipacked:
     ignore:

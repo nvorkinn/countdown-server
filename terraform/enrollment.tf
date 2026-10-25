@@ -20,19 +20,9 @@ resource "authentik_flow" "enrollment" {
   }
 }
 
-import {
-  to = authentik_flow.enrollment
-  id = "broker-enrollment"
-}
-
 resource "authentik_policy_expression" "enrollment_gate" {
   name       = "broker-enrollment-from-broker"
-  expression = file("${path.module}/policies/broker-enrollment-from-broker.expression")
-}
-
-import {
-  to = authentik_policy_expression.enrollment_gate
-  id = local.ids.policies["broker-enrollment-from-broker"]
+  expression = replace(file("${path.module}/policies/broker-enrollment-from-broker.expression"), "__AUTH_HOST__", local.settings.AUTH_HOST)
 }
 
 locals {
@@ -56,13 +46,6 @@ resource "authentik_stage_prompt_field" "enrollment" {
   order       = each.value.order
 }
 
-import {
-  for_each = local.enrollment_fields
-
-  to = authentik_stage_prompt_field.enrollment[each.key]
-  id = local.ids.prompts["broker-enrollment-field-${replace(each.key, "_", "-")}"]
-}
-
 resource "authentik_stage_prompt" "enrollment" {
   name = "broker-enrollment-prompt"
   fields = [
@@ -71,22 +54,12 @@ resource "authentik_stage_prompt" "enrollment" {
   validation_policies = [local.ids.policies["default-password-change-password-policy"]]
 }
 
-import {
-  to = authentik_stage_prompt.enrollment
-  id = local.ids.stages["broker-enrollment-prompt"]
-}
-
 resource "authentik_stage_user_write" "enrollment" {
   name               = "broker-enrollment-user-write"
   user_creation_mode = "always_create"
   user_type          = "internal"
   # Inactive until the emailed link is followed (the email stage activates it).
   create_users_as_inactive = true
-}
-
-import {
-  to = authentik_stage_user_write.enrollment
-  id = local.ids.stages["broker-enrollment-user-write"]
 }
 
 # Email verification: a link goes to the address given, and the account only becomes active when it is followed.
@@ -106,11 +79,6 @@ resource "authentik_stage_email" "enrollment" {
   }
 }
 
-import {
-  to = authentik_stage_email.enrollment
-  id = local.ids.stages["broker-enrollment-email"]
-}
-
 # A second factor is mandatory: with none set up, the user has to set up a passkey or an authenticator app now (the
 # stock setup stages), and can't carry on without one. The Google login's flows use this stage too.
 resource "authentik_stage_authenticator_validate" "enrollment_mfa" {
@@ -125,11 +93,6 @@ resource "authentik_stage_authenticator_validate" "enrollment_mfa" {
   ]
 }
 
-import {
-  to = authentik_stage_authenticator_validate.enrollment_mfa
-  id = local.ids.stages["broker-enrollment-mfa"]
-}
-
 resource "authentik_stage_user_login" "enrollment" {
   name = "broker-enrollment-user-login"
 
@@ -137,9 +100,4 @@ resource "authentik_stage_user_login" "enrollment" {
   lifecycle {
     ignore_changes = [geoip_binding, network_binding]
   }
-}
-
-import {
-  to = authentik_stage_user_login.enrollment
-  id = local.ids.stages["broker-enrollment-user-login"]
 }
