@@ -120,18 +120,23 @@ fields they don't know.
 ## GitHub dashboard
 
 `/github` shows every open PR across your repositories, their checks, the release workflows running (as a job graph,
-with **Approve** buttons for waiting environments), and a **New Release** button per project. It's behind the same
-authentik login as the rest of the site, and only one user may open it.
+with **Approve** buttons for waiting environments), and a **New Release** button per project, plus **Promote** for a
+project with a Promote workflow. It's behind the same authentik login as the rest of the site, and only one user may
+open it.
+
+It runs in dev/QA only, at `https://auth.dev.nikolaivorkinn.com/github`: production's `broker.env` has none of its
+settings, so there `/github` answers 503 and the webhook 404. It still drives production, through each project's
+Promote workflow.
 
 It reaches GitHub through a private GitHub App: the dashboard signs you in with it and then acts as you with tokens
 GitHub expires after 8 hours (renewed on their own for 6 months), and its webhook makes the page live. Create it under
 GitHub's Settings → Developer settings → GitHub Apps:
 
-- **Callback URL** `https://auth.nikolaivorkinn.com/github/callback`, with *Expire user authorization tokens* ticked.
-- **Webhook URL** `https://auth.nikolaivorkinn.com/api/github/webhook`, with a random secret, subscribed to *Pull
+- **Callback URL** `https://auth.dev.nikolaivorkinn.com/github/callback`, with *Expire user authorization tokens* ticked.
+- **Webhook URL** `https://auth.dev.nikolaivorkinn.com/api/github/webhook`, with a random secret, subscribed to *Pull
   request*, *Pull request review*, *Check run*, *Check suite*, *Status*, *Workflow run*, *Workflow job*, *Deployment
   status* and *Push*.
-- Repository permissions **Actions: read**, **Checks: read**, **Commit statuses: read**, **Pull requests: read and
+- Repository permissions **Actions: read and write** (to promote), **Checks: read**, **Commit statuses: read**, **Pull requests: read and
   write** (for auto-merge), **Deployments: read and write** (to approve) and **Contents: read and write** (for releases
   and merging). After changing them, accept them on the App's installation; GitHub doesn't apply them until you do.
 - Then install it on your account, for the repositories the dashboard should show.
@@ -158,7 +163,13 @@ passed, and refuses while any are still running or failed.
 **New Release publishes immediately**, with no confirmation: it bumps the minor version of the highest semver release
 (`1.19.0` becomes `1.20.0`, keeping any `v` prefix; `1.0.0` if there are none), generates notes from the previous tag
 and creates the release on the default branch. It's never retried automatically, so after a timeout check GitHub before
-trying again.
+trying again. A release deploys to dev/QA only.
+
+**Promote** shows for a project with an active `.github/workflows/promote.yml` (this repository and pi-dashboard), named
+after its latest release (`Promote v3.1.0`). It starts that workflow on the default branch with the tag, also with no
+confirmation: the workflow's check job refuses a tag that isn't on main or wasn't deployed to dev/QA, and then waits
+for `approve-production`, which shows on the dashboard with an Approve button like a release's. To roll back to an older
+tag, run Promote from GitHub Actions.
 
 ## Other endpoints
 

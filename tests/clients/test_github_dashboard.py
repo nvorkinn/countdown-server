@@ -274,7 +274,7 @@ def test_project_reads_only_the_section_asked_for(api):
     api.pages.reset_mock()
     api.pull.reset_mock()
     workflows = api.project(REPO, section="workflows")
-    assert workflows == {"workflows": [{"id": 1, "name": "Release", "status": "queued"}]}
+    assert workflows == {"workflows": [{"id": 1, "name": "Release", "status": "queued"}], "promotion": None}
     api.pull.assert_not_called()
     assert not any(call.args[0].endswith("/pulls") for call in api.pages.call_args_list)
 
@@ -397,6 +397,7 @@ def test_release_run_reads_one_release_and_nothing_else(api, status, body, found
         ("Release", True),
         ("release packages", True),
         ("Prerelease", True),
+        ("Promote", True),
         ("Tests", False),
         ("CodeQL", False),
         ("Terraform", False),
@@ -568,6 +569,59 @@ def test_note_generation_failure_never_publishes(api):
     with pytest.raises(requests.HTTPError):
         api.publish_release(REPO)
     assert len(responses.calls) == 3
+
+
+PROMOTE = {"id": 9, "path": ".github/workflows/promote.yml", "state": "active"}
+
+
+@responses.activate
+@pytest.mark.parametrize(
+    ("workflows", "latest", "expected"),
+    [
+        ([PROMOTE], (200, {"tag_name": "v3.1.0"}), {"tag": "v3.1.0"}),
+        ([PROMOTE], (404, {}), {"tag": None}),
+        ([PROMOTE], (200, {"tag_name": "nightly"}), {"tag": None}),
+        ([PROMOTE | {"state": "disabled_manually"}], None, None),
+        ([{"id": 1, "path": ".github/workflows/release.yml", "state": "active"}], None, None),
+    ],
+)
+def test_promotion_offers_the_latest_release_only_with_an_active_promote_workflow(api, workflows, latest, expected):
+    path = f"{ROOT}/repos/alice/project"
+    responses.get(f"{path}/actions/workflows", json={"workflows": workflows})
+    if latest:
+        responses.get(f"{path}/releases/latest", status=latest[0], json=latest[1])
+    assert api.promotion("/repos/alice/project") == expected
+
+
+@responses.activate
+def test_promote_dispatches_the_promote_workflow_on_the_default_branch(api):
+    path = f"{ROOT}/repos/alice/project"
+    responses.get(f"{path}/actions/workflows", json={"workflows": [PROMOTE]})
+    responses.get(f"{path}/releases/tags/v3.1.0", json={"tag_name": "v3.1.0"})
+    responses.post(f"{path}/actions/workflows/9/dispatches", status=204)
+    assert api.promote(REPO, "v3.1.0") == {
+        "tag": "v3.1.0",
+        "url": "https://github.com/alice/project/actions/workflows/promote.yml",
+    }
+    assert _json_body(responses.calls[-1]) == {"ref": "main", "inputs": {"tag": "v3.1.0"}}
+
+
+@responses.activate
+@pytest.mark.parametrize(
+    ("tag", "workflows", "release", "message"),
+    [
+        ("v3.1", [PROMOTE], 200, "release tag"),
+        ("v3.1.0", [], 200, "no active"),
+        ("v3.1.0", [PROMOTE], 404, "not a published release"),
+    ],
+)
+def test_promote_refuses_a_bad_tag_a_missing_workflow_or_release(api, tag, workflows, release, message):
+    path = f"{ROOT}/repos/alice/project"
+    responses.get(f"{path}/actions/workflows", json={"workflows": workflows})
+    responses.get(f"{path}/releases/tags/{tag}", status=release, json={})
+    with pytest.raises(github.DashboardError, match=message):
+        api.promote(REPO, tag)
+    assert all(call.request.method == "GET" for call in responses.calls)
 
 
 MERGE_REPO = {"full_name": "alice/project"}

@@ -297,7 +297,8 @@ test("PRs from all repositories share one list with repository labels, newest fi
     assert.match(text(rows[1]), /Build: Running/);
     assert.equal(app.ids.get("pull-count").textContent, "2");
     assert.equal(app.ids.get("projects").querySelectorAll(".pull").length, 0);
-    assert.equal(app.ids.get("projects").querySelectorAll("button").length, 2, "one New Release per project");
+    const buttons = app.ids.get("projects").querySelectorAll("button");
+    assert.equal(buttons.filter(button => !button.hidden).length, 2, "one New Release per project, no Promote");
 });
 
 test("a PR opened by a Claude session links to it in the app and on the web; others have no link", async () => {
@@ -513,6 +514,32 @@ test("release buttons reset after success and can publish again without reloadin
     await app.evaluate('publish(projects.get("alice/project"), document.getElementById("refresh"))');
     assert.equal(app.calls.filter(call => call.options.method === "POST").length, 2);
     assert.match(app.evaluate('projects.get("alice/project").result.children[0].textContent'), /v1.21.0/);
+});
+
+test("Promote shows only with a Promote workflow and posts the latest release's tag", async () => {
+    const app = await harness({ ...idle, promotion: { tag: "v3.1.0" } });
+    const button = app.evaluate('projects.get("alice/project").promoteButton');
+    assert.equal(button.hidden, false);
+    assert.equal(button.disabled, false);
+    assert.equal(button.textContent, "Promote v3.1.0");
+    app.setData({ tag: "v3.1.0", url: "https://github.com/alice/project/actions/workflows/promote.yml" });
+    await app.evaluate('promote(projects.get("alice/project"))');
+    const write = app.calls.find(call => call.options.method === "POST");
+    assert.equal(write.url, "/github/repositories/alice/project/promote");
+    assert.deepEqual(JSON.parse(write.options.body), { tag: "v3.1.0" });
+    assert.equal(write.options.headers["X-CSRF-Token"], "csrf-token");
+    assert.match(app.evaluate('projects.get("alice/project").result.children[0].textContent'), /Promoting v3.1.0/);
+    assert.equal(button.disabled, false);
+
+    const none = await harness({ ...idle, promotion: { tag: null } });
+    const disabled = none.evaluate('projects.get("alice/project").promoteButton');
+    assert.equal(disabled.hidden, false);
+    assert.equal(disabled.disabled, true);
+    await none.evaluate('promote(projects.get("alice/project"))');
+    assert.equal(none.calls.filter(call => call.options.method === "POST").length, 0);
+
+    const without = await harness({ ...idle, promotion: null });
+    assert.equal(without.evaluate('projects.get("alice/project").promoteButton').hidden, true);
 });
 
 test("concurrent publish calls produce only one write", async () => {
