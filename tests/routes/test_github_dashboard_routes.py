@@ -85,6 +85,30 @@ def test_release_rechecks_owner_and_publishes(client, dashboard):
     dashboard.publish_release.assert_called_once_with(repo)
 
 
+def test_promote_rechecks_owner_and_starts_the_workflow(client, dashboard):
+    repo = {"full_name": "alice/project"}
+    dashboard.owned_repository.return_value = repo
+    dashboard.promote.return_value = {"tag": "v1.20.0", "url": "https://github.com/run"}
+    response = client.post("/github/repositories/alice/project/promote", headers=csrf(client), json={"tag": "v1.20.0"})
+    assert response.status_code == 202
+    assert response.json == {"tag": "v1.20.0", "url": "https://github.com/run"}
+    dashboard.owned_repository.assert_called_once_with("alice", "project")
+    dashboard.promote.assert_called_once_with(repo, "v1.20.0")
+
+
+@pytest.mark.parametrize("payload", [{}, {"tag": 3}, {"tag": "main"}, {"tag": "v1.2"}, ["v1.2.3"]])
+def test_promote_validates_the_tag(client, dashboard, payload):
+    response = client.post("/github/repositories/alice/project/promote", headers=csrf(client), json=payload)
+    assert response.status_code == 400
+    dashboard.promote.assert_not_called()
+
+
+def test_promote_requires_csrf(client, dashboard):
+    response = client.post("/github/repositories/alice/project/promote", json={"tag": "v1.2.3"})
+    assert response.status_code == 403
+    dashboard.promote.assert_not_called()
+
+
 def test_rate_limit_is_explicit_and_preserves_backoff(client, dashboard):
     upstream = requests.Response()
     upstream.status_code = 429

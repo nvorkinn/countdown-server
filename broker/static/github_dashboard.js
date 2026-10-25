@@ -684,7 +684,22 @@ function renderProject(project) {
     for (const row of [...project.pullRows, ...project.workflowRows]) {
         for (const details of row.querySelectorAll("details")) details.open = expanded.has(details.dataset.detailKey);
     }
+    renderPromote(project);
     renderOverview();
+}
+
+// Only a project with a Promote workflow gets the button, offering its latest release; the workflow checks the rest.
+function renderPromote(project) {
+    const button = project.promoteButton;
+    const promotion = project.data?.promotion;
+    button.hidden = !promotion;
+    if (!promotion) return;
+    button.disabled = project.promoting || !promotion.tag;
+    button.textContent = promotion.tag ? `Promote ${promotion.tag}` : "Promote";
+    button.title = promotion.tag
+        ? `Deploy ${promotion.tag} to production with the Promote workflow, once approve-production is approved. ` +
+          "It must be deployed to dev-qa already."
+        : "No release to promote yet";
 }
 
 async function refreshProject(project) {
@@ -716,6 +731,8 @@ async function refreshProject(project) {
                 "run",
                 sections.workflows.map(run => run.id),
             );
+        if (project.promotedTag && data.workflows.some(run => run.name === "Promote" && !finished(run)))
+            project.watchUntil = 0;
         if (project.publishedTag) {
             const run = data.workflows.find(run => run.branch === project.publishedTag);
             if (run) {
@@ -858,6 +875,34 @@ async function publish(project, button) {
     }
 }
 
+async function promote(project) {
+    const tag = project.data?.promotion?.tag;
+    if (project.promoting || !tag) return;
+    project.promoting = true;
+    project.promotedTag = null;
+    renderPromote(project);
+    project.result.replaceChildren(element("span", `Starting Promote for ${tag}...`));
+    try {
+        const data = await api(`${projectPath(project.repo.full_name)}/promote`, {
+            method: "POST",
+            body: JSON.stringify({ tag }),
+        });
+        project.promotedTag = data.tag;
+        project.result.replaceChildren(
+            link(`Promoting ${data.tag} — approve production below, or view workflow`, data.url),
+        );
+        project.watchUntil = Date.now() + PUBLISH_WATCH_MS;
+        project.nextRefresh = Date.now() + PUBLISH_POLL_MS;
+    } catch (error) {
+        project.result.replaceChildren(
+            element("span", `${error.message} Check GitHub Actions before trying again.`, "error"),
+        );
+    } finally {
+        project.promoting = false;
+        renderPromote(project);
+    }
+}
+
 async function approveDeployment(project, run, deployment) {
     const key = `${run.id}:${run.attempt}:${deployment.id}`;
     if (project.approvals.get(key)?.busy || project.approvals.get(key)?.approved) return;
@@ -885,13 +930,16 @@ function addProject(repo) {
     const button = element("button", "New Release");
     button.type = "button";
     button.title = `Immediately publish the next minor release from ${repo.default_branch}`;
+    const promoteButton = element("button", "Promote");
+    promoteButton.type = "button";
+    promoteButton.hidden = true;
     const include = element("label", undefined, "include");
     const checkbox = element("input");
     checkbox.type = "checkbox";
     checkbox.checked = !prefs.background.has(repo.full_name);
     include.title = "Include in the Refresh buttons. Unticked projects still update in the background.";
     include.append(checkbox, document.createTextNode(" Refresh now"));
-    heading.append(title, button, include);
+    heading.append(title, button, promoteButton, include);
     const result = element("p", undefined, "release-result");
     result.setAttribute("role", "status");
     const error = element("p", undefined, "error");
@@ -914,6 +962,9 @@ function addProject(repo) {
         nextRefresh: 0,
         approvals: new Map(),
         publishing: false,
+        promoteButton,
+        promoting: false,
+        promotedTag: null,
         background: !checkbox.checked,
         partial: null,
         matrixMode: new Map(),
@@ -927,6 +978,7 @@ function addProject(repo) {
         merges: new Map(),
     };
     button.addEventListener("click", () => publish(project, button));
+    promoteButton.addEventListener("click", () => promote(project));
     checkbox.addEventListener("change", () => {
         project.background = !checkbox.checked;
         card.className = project.background ? "project background" : "project";

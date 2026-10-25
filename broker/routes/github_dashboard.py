@@ -254,6 +254,23 @@ def release(owner: str, name: str, user_id: str) -> ResponseReturnValue:
         api.close()
 
 
+@bp.post("/repositories/<owner>/<name>/promote")
+@dashboard_user_view
+def promote(owner: str, name: str, user_id: str) -> ResponseReturnValue:
+    """Start the project's Promote workflow for a release, for a request carrying the session's CSRF token."""
+    if not _valid_csrf():
+        return jsonify(error="Invalid action CSRF token. Reload the dashboard."), 403
+    payload = request.get_json(silent=True)
+    tag = payload.get("tag") if isinstance(payload, dict) else None
+    if not isinstance(tag, str) or not github.RELEASE_TAG.fullmatch(tag):
+        return jsonify(error="tag must be a release tag like v1.2.3."), 400
+    api = _dashboard(user_id)
+    try:
+        return jsonify(api.promote(api.owned_repository(owner, name), tag)), 202
+    finally:
+        api.close()
+
+
 def _valid_csrf() -> bool:
     expected = session.get("github_dashboard_csrf", "")
     received = request.headers.get("X-CSRF-Token", "")

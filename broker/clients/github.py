@@ -68,6 +68,9 @@ MAX_FILES = 300
 FIXED_TTL_S = 86400
 # Runs read per release workflow: enough for the latest one and any just before it that hasn't finished.
 RECENT_RELEASES = 5
+# The workflow a project's Promote button runs: it deploys a release that dev-qa has had to production.
+PROMOTE_WORKFLOW = ".github/workflows/promote.yml"
+RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 def summary(token: str, cache: Redis | None = None) -> dict:
@@ -259,8 +262,9 @@ def _is_release(run: dict) -> bool:
 
 
 def is_release_name(name: str | None) -> bool:
-    """Tell whether a workflow's name makes it a release the dashboard draws."""
-    return "release" in (name or "").casefold()
+    """Tell whether a workflow's name makes it a release the dashboard draws: a release, or a promotion of one."""
+    name = (name or "").casefold()
+    return "release" in name or "promote" in name
 
 
 def _title(run: dict, repo: dict) -> str:
@@ -402,14 +406,15 @@ class Dashboard:
     def project(self, repo: dict, section: str = "all") -> dict:
         """Return a project's open PRs and/or unfinished release workflows, without a recency cutoff.
 
-        A section's key is only present when it was read.
+        A section's key is only present when it was read; the workflows section brings the Promote button's release.
         """
         path = f"/repos/{repo['full_name']}"
         sections = {
             "pulls": lambda: self.pulls(path),
             "workflows": lambda: self.release_workflows(repo),
+            "promotion": lambda: self.promotion(path),
         }
-        wanted = list(sections) if section == "all" else [section]
+        wanted = {"all": list(sections), "pulls": ["pulls"], "workflows": ["workflows", "promotion"]}[section]
         return dict(zip(wanted, _parallel(sections[name] for name in wanted), strict=True))
 
     def pulls(self, path: str) -> list[dict]:
@@ -447,6 +452,54 @@ class Dashboard:
             ]
         )
         return [run for runs in latest for run in runs]
+
+    def promote_workflow(self, path: str) -> dict | None:
+        """Return the project's Promote workflow, or None when it has none (or it's turned off)."""
+        return next(
+            (
+                workflow
+                for workflow in self.pages(f"{path}/actions/workflows", "workflows")
+                if workflow.get("path") == PROMOTE_WORKFLOW and workflow.get("state") == "active"
+            ),
+            None,
+        )
+
+    def promotion(self, path: str) -> dict | None:
+        """Return the Promote button's latest release tag (None before the first); None without a Promote workflow."""
+        if self.promote_workflow(path) is None:
+            return None
+        try:
+            tag = self.get(f"{path}/releases/latest")["tag_name"]
+        except requests.HTTPError as error:
+            if error.response is None or error.response.status_code != HTTPStatus.NOT_FOUND:
+                raise
+            tag = None
+        return {"tag": tag if tag and RELEASE_TAG.fullmatch(tag) else None}
+
+    def promote(self, repo: dict, tag: str) -> dict:
+        """Start the Promote workflow on the default branch for a published release; it asks approve-production next.
+
+        Nothing is retried, and nothing more is checked here: the workflow's own first job refuses a tag that isn't on
+        the default branch or wasn't deployed to dev-qa, before anyone is asked to approve.
+        """
+        path = f"/repos/{repo['full_name']}"
+        if not RELEASE_TAG.fullmatch(tag):
+            msg = "Only a release tag like v1.2.3 can be promoted."
+            raise DashboardError(msg)
+        workflow = self.promote_workflow(path)
+        if workflow is None:
+            msg = f"This project has no active {PROMOTE_WORKFLOW}."
+            raise DashboardError(msg)
+        response = self.session.get(f"{API_URL}{path}/releases/tags/{tag}", timeout=TIMEOUT)
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            msg = f"{tag} is not a published release. Refresh the dashboard."
+            raise DashboardError(msg)
+        response.raise_for_status()
+        self.post(
+            f"{path}/actions/workflows/{workflow['id']}/dispatches",
+            {"ref": repo["default_branch"], "inputs": {"tag": tag}},
+        )
+        return {"tag": tag, "url": f"{repo['html_url']}/actions/workflows/{PROMOTE_WORKFLOW.rsplit('/', 1)[-1]}"}
 
     def release_run(self, repo: dict, run_id: int) -> dict | None:
         """Read one release run drawn as a graph, or None when it is gone or isn't a release."""
@@ -618,7 +671,7 @@ class Dashboard:
         path = f"/repos/{repo['full_name']}/actions/runs/{run_id}"
         run = self.get(path)
         if run["status"] == "completed" or not _is_release(run):
-            msg = "Only unfinished release workflows can be approved from this dashboard."
+            msg = "Only unfinished release or promote workflows can be approved from this dashboard."
             raise DashboardError(msg)
         pending = self.pending_deployments(repo, run_id)
         deployment = next((item for item in pending if item["id"] == environment_id), None)
