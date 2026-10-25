@@ -1,7 +1,7 @@
 name: Deploy authentik
 
 # One target's deploy of authentik, then of its configuration, called by release.yml (dev/QA) and promote.yml
-# (production). It runs upstream's image, so it needs only the bundle and can be approved while the images are still
+# (production). It runs upstream's image, so it needs only the bundle and can start while the images are still
 # building. See also deploy-services.yml.
 on:
   workflow_call:
@@ -10,10 +10,6 @@ on:
         description: The GitHub environment holding this target's DEPLOY_* secrets, e.g. dev-qa.
         type: string
         required: true
-      approval:
-        description: The GitHub environment whose reviewers approve this deploy, or empty for none.
-        type: string
-        default: ''
       target:
         description: The bundle's suffix, naming its secrets/<target>/ directory, e.g. dev.
         type: string
@@ -34,19 +30,8 @@ permissions:
   contents: read
 
 jobs:
-  approve:
-    if: inputs.approval != ''
-    name: approve authentik (${{ inputs.environment }})
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.approval }}
-    steps:
-      - run: echo "Approved"
-
   deploy:
     name: deploy authentik (${{ inputs.environment }})
-    needs: approve
-    # Runs when approve did, or was skipped for want of an approval environment; not when it failed.
-    if: ${{ !cancelled() && needs.approve.result != 'failure' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     concurrency:
@@ -79,9 +64,6 @@ jobs:
   # terraform.yml.
   terraform:
     needs: deploy
-    # Without this the implicit success() also checks approve, which is skipped when there is no approval
-    # environment (Release to dev/QA, Promote), and that would skip terraform too.
-    if: ${{ !cancelled() && needs.deploy.result == 'success' }}
     permissions:
       contents: read
       # The plan job comments on pull requests, so its token asks for this even here.

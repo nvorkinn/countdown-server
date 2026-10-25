@@ -142,7 +142,6 @@ jobs:
     uses: ./.github/workflows/deploy-services.yml
     with:
       environment: production
-      approval: ''
       target: prod
       tag: ${{ inputs.tag }}
       bundle_sha256: ${{ needs.check.outputs.sha256 }}
@@ -158,7 +157,6 @@ jobs:
     uses: ./.github/workflows/deploy-authentik.yml
     with:
       environment: production
-      approval: ''
       target: prod
       tag: ${{ inputs.tag }}
       bundle_sha256: ${{ needs.check.outputs.sha256 }}
