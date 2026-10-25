@@ -35,6 +35,10 @@ updates:
     directory: "/terraform"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "terraform"
+    directory: "/infra/cloudflare"
+    schedule:
+      interval: "weekly"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
