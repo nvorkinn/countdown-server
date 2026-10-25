@@ -1,0 +1,196 @@
+name: Cloudflare
+
+# Checks and plans infra/cloudflare (the DNS records) on pull requests that change it, and applies it after approval
+# when a change reaches main. The plan reads the live zone, so it needs the secrets below and is skipped without them
+# (fork and Dependabot pull requests). The "Run workflow" button plans main, which shows drift; with "apply" ticked it
+# also applies. See infra/cloudflare/README.md.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - infra/cloudflare/**
+      - config/*.env
+      - .github/workflows/cloudflare.yml
+  push:
+    branches: [main]
+    paths:
+      - infra/cloudflare/**
+      - config/*.env
+      - .github/workflows/cloudflare.yml
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the plan after approval
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# A new push to a PR replaces its running checks; plans and applies on main take turns.
+concurrency:
+  group: cloudflare-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Keep in step with required_version in infra/cloudflare/versions.tf and TF_VERSION in terraform.yml.
+  TF_VERSION: 1.16.6
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+  TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugins
+  # The state bucket, shared with terraform/ (Settings > Secrets and variables > Actions > Variables).
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
+  TF_STATE_ENDPOINT: ${{ vars.TF_STATE_ENDPOINT }}
+  # Oracle's S3 API refuses the AWS SDK's default chunked, checksummed upload, so these make the S3 backend send a
+  # plain one (see terraform.yml).
+  AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+  AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+  # Whether this run applies: a change on main, or the button with "apply" ticked.
+  APPLY: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.apply) }}
+
+defaults:
+  run:
+    working-directory: infra/cloudflare
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive -diff
+
+      - name: Validate
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          terraform init -backend=false -lockfile=readonly
+          terraform validate
+
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      # Whether the plan changes anything, so a push that leaves DNS as it is asks for no approval.
+      changes: ${{ steps.plan.outputs.changes }}
+    # The plan only needs to read, so the repository-level CLOUDFLARE_API_TOKEN can be a Zone:DNS:Read token; apply
+    # gets the terraform-production environment's, which may write.
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      HAVE_SECRETS: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.AWS_ACCESS_KEY_ID != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Skip the plan without secrets
+        if: env.HAVE_SECRETS != 'true'
+        run: |
+          [ "$APPLY" != true ] || { echo "::error::No CLOUDFLARE_API_TOKEN or state credentials, so nothing can be planned or applied"; exit 1; }
+          echo "::notice::No CLOUDFLARE_API_TOKEN or state credentials here (a fork or Dependabot pull request, or not set up yet), so there is no plan."
+
+      # Plans that won't be applied don't take the state lock. Exit code 2 from -detailed-exitcode means the plan has
+      # changes, 0 none.
+      - name: Plan
+        id: plan
+        if: env.HAVE_SECRETS == 'true'
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          terraform init -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$TF_STATE_REGION" \
+            -backend-config="endpoints={s3=\"$TF_STATE_ENDPOINT\"}"
+          status=0
+          terraform plan -lock="$APPLY" -detailed-exitcode -out=tfplan || status=$?
+          [ "$status" -ne 1 ] || exit 1
+          echo "changes=$([ "$status" -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          terraform show -no-color tfplan > plan.txt
+          { echo "### Cloudflare DNS plan"; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$status" -eq 2 ] || echo "::notice::No changes, so there is nothing to apply."
+
+      # One comment per PR, updated on each push. Fork and Dependabot PRs get a read-only token, so they only have the
+      # job summary.
+      - name: Comment the plan on the PR
+        if: >-
+          env.HAVE_SECRETS == 'true'
+          && github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && github.actor != 'dependabot[bot]'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- cloudflare-plan -->';
+            let plan = fs.readFileSync('infra/cloudflare/plan.txt', 'utf8');
+            if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (truncated, full plan in the job summary)';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `${marker}\n### Cloudflare DNS plan\nFor ${context.payload.pull_request.head.sha} ([run](${run}))\n\n\`\`\`\n${plan}\n\`\`\``;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: context.issue.number,
+            });
+            const mine = comments.find((c) => c.user.type === 'Bot' && c.body.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Keep the plan for apply
+        if: env.APPLY == 'true' && steps.plan.outputs.changes == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloudflare-tfplan
+          path: infra/cloudflare/tfplan
+          retention-days: 1
+
+  # Applies exactly the plan above, after approval through terraform-production's protection rule (DNS decides where
+  # production's names point). If the state changed in between, Terraform rejects the plan as stale and nothing is
+  # applied. A plan with no changes skips this, approval included.
+  apply:
+    needs: plan
+    if: github.event_name != 'pull_request' && needs.plan.outputs.changes == 'true' && (github.event_name == 'push' || inputs.apply)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: terraform-production
+    concurrency:
+      group: cloudflare-apply
+      cancel-in-progress: false
+    # The environment's secret, which takes precedence over the repository's, so apply can use a token that may write
+    # while plans use one that can only read.
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cloudflare-tfplan
+          path: infra/cloudflare
+
+      - name: Apply
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          terraform init -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$TF_STATE_REGION" \
+            -backend-config="endpoints={s3=\"$TF_STATE_ENDPOINT\"}"
+          terraform apply tfplan
