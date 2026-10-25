@@ -6,7 +6,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Countdown is a 7.5-inch e-paper display for the hallway: departures in London and Oslo, the weather, local notices, Spotify and energy use.">
-<title>Countdown Display</title>
+<title>{% if environment_label %}[{{ environment_label }}] {% endif %}Countdown Display</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;600;700&family=Ubuntu:wght@400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap">
@@ -131,6 +131,7 @@ footer { border-top: 1px solid var(--rule); padding-block: 36px 48px; color: var
 </style>
 </head>
 <body>
+{% include "_environment_banner.html" %}
 
 <div class="wrap">
   <header class="bar">

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Countdown{% endblock %}</title>
+    <title>{% if environment_label %}[{{ environment_label }}] {% endif %}{% block title %}Countdown{% endblock %}</title>
     <!-- The same type as the /about page: Josefin Sans headings, Ubuntu text, Ubuntu Mono labels. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -929,6 +929,7 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    {% include "_environment_banner.html" %}
     <div class="container{% block container_class %}{% endblock %}">
         <header>
             <div class="brand">

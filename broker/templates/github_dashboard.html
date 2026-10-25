@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf }}">
     <meta name="github-webhooks" content="{{ 'on' if webhooks else 'off' }}">
-    <title>GitHub dashboard</title>
+    <title>{% if environment_label %}[{{ environment_label }}] {% endif %}GitHub dashboard</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='github_dashboard.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='github_dashboard.css') }}">
     <script src="{{ url_for('static', filename='github_dashboard.js') }}" defer></script>
 </head>
 <body>
+    {% include "_environment_banner.html" %}
     <main>
         <header class="page-header">
             <div>

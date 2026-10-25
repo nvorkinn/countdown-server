@@ -40,7 +40,9 @@ def create_app() -> Flask:
     db_module.init_app(app)
 
     request_log.init_app(app)
-    app.context_processor(lambda: {"username": current_username()})
+    app.context_processor(
+        lambda: {"username": current_username(), "environment_label": app.config["ENVIRONMENT_LABEL"]}
+    )
 
     app.extensions["pair_throttle"] = PairThrottle()
     app.extensions["register_throttle"] = PairThrottle(
