@@ -194,6 +194,19 @@ jobs:
           [ "$APPLY" != true ] || { echo "::error::No AUTHENTIK_TOKEN or state credentials, so nothing can be planned or applied"; exit 1; }
           echo "::notice::No AUTHENTIK_TOKEN or state credentials here (a fork or Dependabot pull request, or not set up yet), so there is no plan."
 
+      # A release redeploys caddy and authentik beside this job, so the first requests can find caddy down or authentik
+      # still starting (connection refused, read timeouts). Wait until authentik answers through caddy before planning.
+      - name: Wait for authentik to answer
+        if: env.HAVE_SECRETS == 'true'
+        run: |
+          sso_host="$(sed -n 's/^SSO_HOST=//p' "../config/$TF_VAR_environment.env")"
+          for _ in $(seq 1 36); do
+            curl -fsS -m 5 -o /dev/null "https://$sso_host/-/health/ready/" && exit 0
+            sleep 5
+          done
+          echo "::error::https://$sso_host/-/health/ready/ gave no answer for 3 minutes"
+          exit 1
+
       # Plans that won't be applied don't take the state lock, so they never hold up each other or an apply. Exit code
       # 2 from -detailed-exitcode means the plan has changes, 0 none.
       - name: Plan
