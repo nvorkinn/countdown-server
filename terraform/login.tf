@@ -29,11 +29,6 @@ resource "authentik_stage_authenticator_validate" "passkey" {
   webauthn_hints                = []
 }
 
-import {
-  to = authentik_stage_authenticator_validate.passkey
-  id = local.ids.stages["default-authentication-passkey-validation"]
-}
-
 resource "authentik_stage_authenticator_webauthn" "setup" {
   name                     = "default-authenticator-webauthn-setup"
   resident_key_requirement = "required"

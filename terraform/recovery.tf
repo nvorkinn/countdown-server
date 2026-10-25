@@ -14,11 +14,6 @@ resource "authentik_flow" "recovery" {
   }
 }
 
-import {
-  to = authentik_flow.recovery
-  id = "default-recovery-flow"
-}
-
 resource "authentik_stage_prompt_field" "recovery_password" {
   name        = "default-recovery-field-password"
   field_key   = "password"
@@ -27,11 +22,6 @@ resource "authentik_stage_prompt_field" "recovery_password" {
   required    = true
   placeholder = "Password"
   order       = 0
-}
-
-import {
-  to = authentik_stage_prompt_field.recovery_password
-  id = local.ids.prompts["default-recovery-field-password"]
 }
 
 resource "authentik_stage_prompt_field" "recovery_password_repeat" {
@@ -44,21 +34,11 @@ resource "authentik_stage_prompt_field" "recovery_password_repeat" {
   order       = 1
 }
 
-import {
-  to = authentik_stage_prompt_field.recovery_password_repeat
-  id = local.ids.prompts["default-recovery-field-password-repeat"]
-}
-
 resource "authentik_policy_expression" "recovery_skip_if_restored" {
   name       = "default-recovery-skip-if-restored"
   expression = <<-EOT
     return bool(request.context.get('is_restored', True))
   EOT
-}
-
-import {
-  to = authentik_policy_expression.recovery_skip_if_restored
-  id = local.ids.policies["default-recovery-skip-if-restored"]
 }
 
 resource "authentik_stage_email" "recovery" {
@@ -75,22 +55,12 @@ resource "authentik_stage_email" "recovery" {
   }
 }
 
-import {
-  to = authentik_stage_email.recovery
-  id = local.ids.stages["default-recovery-email"]
-}
-
 resource "authentik_stage_authenticator_validate" "recovery" {
   name                       = "default-recovery-mfa"
   device_classes             = ["totp", "webauthn"]
   not_configured_action      = "deny"
   last_auth_threshold        = "seconds=0"
   webauthn_user_verification = "preferred"
-}
-
-import {
-  to = authentik_stage_authenticator_validate.recovery
-  id = local.ids.stages["default-recovery-mfa"]
 }
 
 resource "authentik_stage_user_write" "recovery" {
@@ -104,22 +74,12 @@ resource "authentik_stage_user_write" "recovery" {
   }
 }
 
-import {
-  to = authentik_stage_user_write.recovery
-  id = local.ids.stages["default-recovery-user-write"]
-}
-
 resource "authentik_stage_identification" "recovery" {
   name                      = "default-recovery-identification"
   user_fields               = ["email", "username"]
   case_insensitive_matching = true
   pretend_user_exists       = true
   show_matched_user         = true
-}
-
-import {
-  to = authentik_stage_identification.recovery
-  id = local.ids.stages["default-recovery-identification"]
 }
 
 resource "authentik_stage_user_login" "recovery" {
@@ -131,11 +91,6 @@ resource "authentik_stage_user_login" "recovery" {
   }
 }
 
-import {
-  to = authentik_stage_user_login.recovery
-  id = local.ids.stages["default-recovery-user-login"]
-}
-
 resource "authentik_stage_prompt" "recovery" {
   name = "default-recovery-prompt-password"
   fields = [
@@ -143,9 +98,4 @@ resource "authentik_stage_prompt" "recovery" {
     authentik_stage_prompt_field.recovery_password_repeat.id,
   ]
   validation_policies = [local.ids.policies["default-password-change-password-policy"]]
-}
-
-import {
-  to = authentik_stage_prompt.recovery
-  id = local.ids.stages["default-recovery-prompt-password"]
 }
