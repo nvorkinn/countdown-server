@@ -13,11 +13,12 @@ Edit `host_ips` in `variables.tf` (for example, to move production to a new host
 both environments on the PR. Nothing is applied when the PR merges. Each environment is applied by its own deploy, with
 its own state (`cloudflare/terraform.tfstate` for dev, `cloudflare/prod/terraform.tfstate` for prod):
 
-- **Release** applies dev/QA's records before it deploys anything, after approval in `terraform` if they change;
-- **Promote** applies production's before it deploys, after approval in `terraform-production` if they change.
+- **Release** applies dev/QA's records beside its deploys, after approval in `terraform` if they change;
+- **Promote** applies production's beside its deploys, after approval in `terraform-production` if they change.
 
 A deploy that leaves its DNS as it is asks for no approval. So to cut a name over to another host: merge the change,
-release, then promote. The *Cloudflare* workflow's *Run workflow* button plans any ref (drift) for one environment, and
+release, then promote. If a cutover changes a name or an address, Caddy may ask for its certificate before the record
+exists and wait a while to retry, so restart it (`docker restart caddy`) once the apply is done. The *Cloudflare* workflow's *Run workflow* button plans any ref (drift) for one environment, and
 with *apply* ticked applies, on the latest release tag only (how a failed apply is retried).
 
 ## Setup

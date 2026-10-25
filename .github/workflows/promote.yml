@@ -118,8 +118,9 @@ jobs:
     steps:
       - run: echo "Approved"
 
-  # Production's DNS records (infra/cloudflare), applied after approval in terraform-production if they change, before
-  # anything is deployed, since Caddy needs its names to resolve to get certificates. Dev/QA's are release.yml's.
+  # Production's DNS records (infra/cloudflare), applied after approval in terraform-production if they change, beside
+  # the deploys. If it changes a name or an address, Caddy may ask for a certificate before the record exists and wait a
+  # while to retry: restart it after the apply. Dev/QA's are release.yml's.
   dns:
     name: dns (production)
     needs: [check, approve]
@@ -137,7 +138,7 @@ jobs:
 
   deploy-services:
     name: services (production)
-    needs: [check, approve, dns]
+    needs: [check, approve]
     uses: ./.github/workflows/deploy-services.yml
     with:
       environment: production
@@ -149,7 +150,7 @@ jobs:
 
   deploy-authentik:
     name: authentik (production)
-    needs: [check, approve, dns]
+    needs: [check, approve]
     # The terraform job it calls comments on pull requests, so its token asks for this even here.
     permissions:
       contents: read

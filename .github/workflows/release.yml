@@ -187,9 +187,10 @@ jobs:
   # images; authentik runs upstream's image, so it only needs the bundle and
   # can start while the images are still building. A target's environment holds
   # its host's secrets (DEPLOY_HOST and the rest).
-  # Dev/QA's DNS records (infra/cloudflare), planned, and applied after approval if they change, before anything is
-  # deployed, since Caddy needs its names to resolve to get certificates. A release that leaves DNS as it is asks for
-  # no approval. Production's are promote.yml's.
+  # Dev/QA's DNS records (infra/cloudflare), planned, and applied after approval if they change, beside the deploys. A
+  # release that leaves DNS as it is asks for no approval. If it changes a name or an address, Caddy may ask for a
+  # certificate before the record exists and wait a while to retry: restart it after the apply. Production's records
+  # are promote.yml's.
   dns:
     name: dns
     needs: tag
@@ -206,7 +207,7 @@ jobs:
 
   deploy-services-dev:
     name: services (dev-qa)
-    needs: [tag, images, package, dns]
+    needs: [tag, images, package]
     uses: ./.github/workflows/deploy-services.yml
     with:
       environment: dev-qa
@@ -217,7 +218,7 @@ jobs:
 
   deploy-authentik-dev:
     name: authentik (dev-qa)
-    needs: [tag, package, dns]
+    needs: [tag, package]
     # The terraform job it calls comments on pull requests, so its token asks for this even here.
     permissions:
       contents: read
