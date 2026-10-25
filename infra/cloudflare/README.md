@@ -30,8 +30,3 @@ The state is in the same Oracle bucket as `terraform/` (the `TF_STATE_*` variabl
   the same zone, which apply uses.
 
 (Create them under My Profile > API Tokens > Create Token > Edit zone DNS, limited to the one zone.)
-
-## The first apply
-
-The 12 existing records are imported (`imports.tf`, each environment its own six), so each first plan shows them updated
-in place (a comment is added) and nothing created or destroyed. Once an apply has put them in the state, `imports.tf` can be deleted.
