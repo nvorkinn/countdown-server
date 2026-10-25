@@ -79,6 +79,9 @@ jobs:
   # terraform.yml.
   terraform:
     needs: deploy
+    # Without this the implicit success() also checks approve, which is skipped when there is no approval
+    # environment (Release to dev/QA, Promote), and that would skip terraform too.
+    if: ${{ !cancelled() && needs.deploy.result == 'success' }}
     permissions:
       contents: read
       # The plan job comments on pull requests, so its token asks for this even here.
