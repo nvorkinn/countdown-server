@@ -34,8 +34,12 @@ bound to the `authentik Admins` group.
 
 A proxy provider is also an OAuth2 provider (one object in Authentik), so Logs and Metrics have two resources
 each on the same provider: `authentik_provider_proxy` for the proxy side and `authentik_provider_oauth2` for the
-pinned client id and secret and the grants. They are imported with the same id. Saving the proxy side resets the
-grants to Authentik's defaults, so the OAuth2 resource `depends_on` the proxy one and is always applied after it.
+pinned client id and secret. They are imported with the same id. Saving the proxy side resets the grants to
+Authentik's defaults, so the OAuth2 resource `depends_on` the proxy one and is always applied after it. Authentik's
+proxy app also puts those defaults back by itself when it reconciles (at start and now and then after, with nothing in
+the audit log): all three grants, `authorization_code`, `client_credentials` and `password`, whatever was applied. So
+`grant_types` is ignored, not managed, and the live providers are normally open to all three. Only the client secrets
+(`logs_client_secret`, `metrics_client_secret`) keep the extra grants from being used, so they must stay private.
 
 Two limits of the provider, worth knowing when a plan looks odd:
 
