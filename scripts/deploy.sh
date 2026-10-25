@@ -138,17 +138,34 @@ fi
 ) 9>.env.lock
 echo "Installed $tag's docker-compose.yml${var:+ and pinned $var=$tag in .env}"
 
-# Another deploy job's cleanup (below) can delete layers this one is still pulling, so pulls hold image.lock too, and
-# so does the cleanup. Pulls take turns as well: pulls running at once now and then fail with containerd's "lease does
-# not exist", so a failed pull is tried again (it resumes, as the layers it already has are kept).
-(
-  flock 9
+# docker compose commands that pull (pull itself, and up, which pulls again what it thinks is missing, e.g. the four
+# services of the broker image at once) now and then fail with containerd's "lease does not exist: not found". Another
+# try works, so this runs the command up to three times, but only for that error: anything else (a container that
+# never gets healthy) fails at once, not after three timeouts.
+retry_lost_lease() {
+  local attempt log
+  log="$(mktemp)"
   for attempt in 1 2 3; do
-    docker compose pull "${services[@]}" && exit 0
-    [ "$attempt" -lt 3 ] || exit 1
-    echo "Pulling failed (attempt $attempt of 3); trying again"
+    if "$@" >"$log" 2>&1; then
+      cat "$log"
+      rm -f "$log"
+      return 0
+    fi
+    cat "$log"
+    if ! grep -q 'lease' "$log" || [ "$attempt" -eq 3 ]; then
+      rm -f "$log"
+      return 1
+    fi
+    echo "Lost a containerd lease (attempt $attempt of 3); trying again"
     sleep 5
   done
+}
+
+# Another deploy job's cleanup (below) can delete layers this one is still pulling, so pulls hold image.lock too, and
+# so does the cleanup. Pulls take turns as well.
+(
+  flock 9
+  retry_lost_lease docker compose pull "${services[@]}"
 ) 9>image.lock
 if [ "$service" = countdown-server ]; then
   # The broker's container from before the rename, which compose no longer knows: it holds 127.0.0.1:5000, so the
@@ -156,13 +173,13 @@ if [ "$service" = countdown-server ]; then
   docker rm --force auth-broker >/dev/null 2>&1 && echo "Removed the old auth-broker container" || true
 fi
 if [ -n "$var" ]; then
-  docker compose up -d --no-deps --force-recreate "${services[@]}"
+  retry_lost_lease docker compose up -d --no-deps --force-recreate "${services[@]}"
 else
   # Recreates only what changed. Jobs for these can run at once, so
   # they take turns.
   (
     flock 9
-    docker compose up -d --wait --wait-timeout 600 "${services[@]}"
+    retry_lost_lease docker compose up -d --wait --wait-timeout 600 "${services[@]}"
   ) 9>up.lock
 fi
 docker compose ps "${services[@]}"
