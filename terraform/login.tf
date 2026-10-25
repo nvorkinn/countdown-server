@@ -106,4 +106,3 @@ resource "authentik_brand" "nikolaivorkinn" {
   flow_authentication              = authentik_flow.authentication.uuid
   flow_recovery                    = authentik_flow.recovery.uuid
 }
-

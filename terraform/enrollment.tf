@@ -101,4 +101,3 @@ resource "authentik_stage_user_login" "enrollment" {
     ignore_changes = [geoip_binding, network_binding]
   }
 }
-
