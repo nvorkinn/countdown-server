@@ -2,9 +2,10 @@ name: Cloudflare
 
 # Checks and plans infra/cloudflare (the DNS records) on pull requests that change it. The plan reads the live zone, so
 # it needs the secrets below and is skipped without them (fork and Dependabot pull requests). Applies run only from a
-# release tag: the Release workflow calls this with apply on, before it deploys, and nothing is applied when a change
-# merges. The "Run workflow" button (Actions > Cloudflare) plans any ref, which shows drift; with "apply" ticked it also
-# applies, on the latest release tag only, which is how a failed apply is retried. See infra/cloudflare/README.md.
+# release tag, one environment at a time: the Release workflow calls this for dev, and Promote for prod, before either
+# deploys anything. Nothing is applied when a change merges. The "Run workflow" button (Actions > Cloudflare) plans any
+# ref, which shows drift; with "apply" ticked it also applies, on the latest release tag only, which is how a failed
+# apply is retried. See infra/cloudflare/README.md.
 on:
   pull_request:
     branches: [main]
@@ -18,22 +19,35 @@ on:
         description: Apply the plan after approval
         type: boolean
         default: false
+      target:
+        description: The environment to plan and apply
+        type: choice
+        options: [dev, prod]
+        default: dev
   workflow_call:
     inputs:
       apply:
         type: boolean
         default: false
+      # Which environment's records: dev (dev/QA) or prod. Pull requests plan both.
+      target:
+        type: string
+        default: dev
       # The release tag to plan and apply. A release started with the button runs on main, so github.ref isn't it.
       tag:
         type: string
         required: true
+      # Lets apply run on a tag that isn't the latest, for promoting or rolling back to an older release.
+      allow_older_tag:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 # A new push to a PR replaces its running checks.
 concurrency:
-  group: cloudflare-${{ github.ref }}
+  group: cloudflare-${{ inputs.target || 'pr' }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -83,6 +97,12 @@ jobs:
           terraform validate
 
   plan:
+    # A pull request plans both environments; a release or promotion only its own.
+    name: plan (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(github.event_name == 'pull_request' && '["dev","prod"]' || format('["{0}"]', inputs.target || 'dev')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -92,8 +112,10 @@ jobs:
       # Whether the plan changes anything, so a release that leaves DNS as it is asks for no approval.
       changes: ${{ steps.plan.outputs.changes }}
     # The plan only needs to read, so the repository-level CLOUDFLARE_API_TOKEN can be a Zone:DNS:Read token; apply
-    # gets the terraform-production environment's, which may write.
+    # gets the terraform (dev) or terraform-production environment's, which may write.
     env:
+      TF_VAR_environment: ${{ matrix.target }}
+      TF_STATE_KEY: ${{ matrix.target == 'prod' && 'cloudflare/prod/terraform.tfstate' || 'cloudflare/terraform.tfstate' }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -105,9 +127,10 @@ jobs:
           persist-credentials: false
 
       # Applying an older tag would quietly put DNS back to that release's config, so a retry has to be on the latest
-      # one. Checked before planning, so a wrong pick fails at once rather than after an approval.
+      # one. Checked before planning, so a wrong pick fails at once rather than after an approval. A promotion may
+      # choose an older tag on purpose (a rollback); the plan shows what that changes, and approval stands behind it.
       - name: Check apply is on the latest release tag
-        if: env.APPLY == 'true'
+        if: env.APPLY == 'true' && !inputs.allow_older_tag
         run: |
           [ -n "$TF_TAG" ] || { echo "::error::Apply runs from a release tag: pick the latest v* tag under \"Use workflow from\""; exit 1; }
           latest="$(git ls-remote --tags --refs "https://github.com/$GITHUB_REPOSITORY" 'v*' \
@@ -133,13 +156,14 @@ jobs:
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           terraform init -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$TF_STATE_REGION" \
+            -backend-config="key=$TF_STATE_KEY" \
             -backend-config="endpoints={s3=\"$TF_STATE_ENDPOINT\"}"
           status=0
           terraform plan -lock="$APPLY" -detailed-exitcode -out=tfplan || status=$?
           [ "$status" -ne 1 ] || exit 1
           echo "changes=$([ "$status" -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           terraform show -no-color tfplan > plan.txt
-          { echo "### Cloudflare DNS plan"; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Cloudflare DNS plan ($TF_VAR_environment)"; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           [ "$status" -eq 2 ] || echo "::notice::No changes, so there is nothing to apply."
 
       # One comment per PR, updated on each push. Fork and Dependabot PRs get a read-only token, so they only have the
@@ -151,14 +175,17 @@ jobs:
           && github.event.pull_request.head.repo.full_name == github.repository
           && github.actor != 'dependabot[bot]'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TARGET: ${{ matrix.target }}
         with:
           script: |
             const fs = require('fs');
-            const marker = '<!-- cloudflare-plan -->';
+            const target = process.env.TARGET;
+            const marker = `<!-- cloudflare-plan-${target} -->`;
             let plan = fs.readFileSync('infra/cloudflare/plan.txt', 'utf8');
             if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (truncated, full plan in the job summary)';
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = `${marker}\n### Cloudflare DNS plan\nFor ${context.payload.pull_request.head.sha} ([run](${run}))\n\n\`\`\`\n${plan}\n\`\`\``;
+            const body = `${marker}\n### Cloudflare DNS plan (${target})\nFor ${context.payload.pull_request.head.sha} ([run](${run}))\n\n\`\`\`\n${plan}\n\`\`\``;
             const comments = await github.paginate(github.rest.issues.listComments, {
               ...context.repo, issue_number: context.issue.number,
             });
@@ -173,25 +200,28 @@ jobs:
         if: env.APPLY == 'true' && steps.plan.outputs.changes == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cloudflare-tfplan
+          name: cloudflare-tfplan-${{ matrix.target }}
           path: infra/cloudflare/tfplan
           retention-days: 1
 
-  # Applies exactly the plan above, after approval through terraform-production's protection rule (DNS decides where
-  # production's names point). If the state changed in between, Terraform rejects the plan as stale and nothing is
+  # Applies exactly the plan above, after approval through the terraform environment's protection rule (terraform-production for prod; DNS decides where
+  # an environment's names point). If the state changed in between, Terraform rejects the plan as stale and nothing is
   # applied. A plan with no changes skips this, approval included.
   apply:
     needs: plan
     if: inputs.apply && needs.plan.outputs.changes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: terraform-production
+    # Reviewers and the token that may write: dev/QA's is `terraform`, production's `terraform-production`.
+    environment: ${{ inputs.target == 'prod' && 'terraform-production' || 'terraform' }}
     concurrency:
-      group: cloudflare-apply
+      group: cloudflare-apply-${{ inputs.target }}
       cancel-in-progress: false
     # The environment's secret, which takes precedence over the repository's, so apply can use a token that may write
     # while plans use one that can only read.
     env:
+      TF_VAR_environment: ${{ inputs.target }}
+      TF_STATE_KEY: ${{ inputs.target == 'prod' && 'cloudflare/prod/terraform.tfstate' || 'cloudflare/terraform.tfstate' }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -208,12 +238,13 @@ jobs:
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: cloudflare-tfplan
+          name: cloudflare-tfplan-${{ inputs.target }}
           path: infra/cloudflare
 
       - name: Apply
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           terraform init -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$TF_STATE_REGION" \
+            -backend-config="key=$TF_STATE_KEY" \
             -backend-config="endpoints={s3=\"$TF_STATE_ENDPOINT\"}"
           terraform apply tfplan

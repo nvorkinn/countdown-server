@@ -1,5 +1,5 @@
-# These records already exist (made by hand and through the API during the cutover), so the first plan imports them
-# instead of creating them. Once an apply has put them in the state the import block does nothing and can be deleted.
+# These records already exist (made by hand and through the API during the cutover), so each environment's first plan
+# imports its own instead of creating them. Once an apply has put them in the state the import block does nothing and can be deleted.
 locals {
   existing_record_ids = {
     "dev/dev.nikolaivorkinn.com"         = "eb27419686ff0fb910ca02c75d4ec1ec"
@@ -18,7 +18,7 @@ locals {
 }
 
 import {
-  for_each = local.existing_record_ids
+  for_each = { for key, id in local.existing_record_ids : trimprefix(key, "${var.environment}/") => id if startswith(key, "${var.environment}/") }
 
   to = cloudflare_dns_record.host[each.key]
   id = "${var.zone_id}/${each.value}"

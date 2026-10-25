@@ -187,9 +187,9 @@ jobs:
   # images; authentik runs upstream's image, so it only needs the bundle and
   # can start while the images are still building. A target's environment holds
   # its host's secrets (DEPLOY_HOST and the rest).
-  # The DNS records for both environments (infra/cloudflare), planned, and applied after approval if they change, before
-  # anything is deployed, since Caddy needs its names to resolve to get certificates. A release that leaves DNS as it
-  # is asks for no approval.
+  # Dev/QA's DNS records (infra/cloudflare), planned, and applied after approval if they change, before anything is
+  # deployed, since Caddy needs its names to resolve to get certificates. A release that leaves DNS as it is asks for
+  # no approval. Production's are promote.yml's.
   dns:
     name: dns
     needs: tag
@@ -200,6 +200,7 @@ jobs:
     uses: ./.github/workflows/cloudflare.yml
     with:
       apply: true
+      target: dev
       tag: ${{ needs.tag.outputs.value }}
     secrets: inherit
 
