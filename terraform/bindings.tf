@@ -94,11 +94,6 @@ resource "authentik_policy_binding" "recovery_skip_if_restored" {
   timeout = 30
 }
 
-import {
-  to = authentik_policy_binding.recovery_skip_if_restored
-  id = local.ids.policy_bindings["${local.ids.flow_bindings["${local.ids.flows["default-recovery-flow"]}/10"]}/0/${local.ids.policies["default-recovery-skip-if-restored"]}"]
-}
-
 resource "authentik_policy_binding" "enrollment_gate" {
   target  = authentik_flow.enrollment.uuid
   policy  = authentik_policy_expression.enrollment_gate.id
