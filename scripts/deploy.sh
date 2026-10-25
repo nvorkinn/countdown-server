@@ -138,11 +138,17 @@ fi
 ) 9>.env.lock
 echo "Installed $tag's docker-compose.yml${var:+ and pinned $var=$tag in .env}"
 
-# Another deploy job's cleanup (below) can delete layers this one is still pulling, so pulls hold image.lock shared
-# (they can run at once) and the cleanup holds it alone.
+# Another deploy job's cleanup (below) can delete layers this one is still pulling, so pulls hold image.lock too, and
+# so does the cleanup. Pulls take turns as well: pulls running at once now and then fail with containerd's "lease does
+# not exist", so a failed pull is tried again (it resumes, as the layers it already has are kept).
 (
-  flock -s 9
-  docker compose pull "${services[@]}"
+  flock 9
+  for attempt in 1 2 3; do
+    docker compose pull "${services[@]}" && exit 0
+    [ "$attempt" -lt 3 ] || exit 1
+    echo "Pulling failed (attempt $attempt of 3); trying again"
+    sleep 5
+  done
 ) 9>image.lock
 if [ "$service" = countdown-server ]; then
   # The broker's container from before the rename, which compose no longer knows: it holds 127.0.0.1:5000, so the
