@@ -40,8 +40,11 @@ resource "authentik_provider_proxy" "this" {
 
 # A proxy provider is also an OAuth2 provider (one object in Authentik). Logs and Metrics have a fixed client id and
 # secret, and this resource manages their OAuth2 side too: it is a second resource on the same provider, which is why
-# these are imported with the same ids as the proxy ones. The only grant is the authorization code, all a forward-auth
-# proxy uses: password would skip the second factor, and client_credentials isn't used here.
+# these are imported with the same ids as the proxy ones. The only grant wanted is the authorization code, all a
+# forward-auth proxy uses: password would skip the second factor, and client_credentials isn't used here. But
+# authentik's proxy app re-applies its defaults (all three grants) to every proxy provider when it reconciles, on start
+# and now and then after, with no audit event, so the live grants can't be held at this and are not managed (see
+# ignore_changes below). Keep the client secrets private: with one, the extra grants can be used.
 # The redirect URIs are listed here too: Authentik derives them from each proxy provider's external host, and
 # this resource would otherwise blank them. The Broker's provider has nothing pinned, so it has no entry.
 locals {
@@ -77,9 +80,10 @@ resource "authentik_provider_oauth2" "this" {
   # Updating a proxy provider resets its grants to the defaults, so this must be applied after the proxy resource.
   depends_on = [authentik_provider_proxy.this]
 
-  # The proxy resource sets the scope mappings; the token validity isn't pinned.
+  # The proxy resource sets the scope mappings; the token validity isn't pinned. The grants are set only when this is
+  # created: authentik puts its defaults back, and a plan that undoes that asks for an approval every time.
   lifecycle {
-    ignore_changes = [property_mappings, access_token_validity]
+    ignore_changes = [property_mappings, access_token_validity, grant_types]
   }
 }
 
