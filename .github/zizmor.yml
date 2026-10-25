@@ -5,6 +5,9 @@ rules:
       # all-checks.yml is a thin caller of the shared gate and has to run on workflow_run: it only reads other runs'
       # results and never checks out or runs code from the triggering PR.
       - all-checks.yml
+      # claude.yml answers an @claude mention in an issue or PR comment, which is the point of the workflow. The
+      # action itself refuses a commenter without write access, and the job runs with read-only permissions.
+      - claude.yml
   secrets-inherit:
     ignore:
       # release.yml, promote.yml and deploy-authentik.yml pass the repository's and the target environment's secrets
