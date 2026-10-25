@@ -52,7 +52,7 @@ def test_a_service_is_started_with_compose_s_command_network_environment_and_mou
 def test_the_broker_gets_its_compose_environment_too(tmp_path):
     options = check_image_starts.run_options("countdown-server", _on_broker_image()["countdown-server"], tmp_path)
 
-    assert "--env=SPOTIFY_REDIRECT_URI=https://auth.nikolaivorkinn.com/auth/spotify/callback" in options
+    assert "--env=SPOTIFY_REDIRECT_URI=https://auth.dev.nikolaivorkinn.com/auth/spotify/callback" in options
     assert check_image_starts.command(_on_broker_image()["countdown-server"])[0] == "gunicorn"
 
 

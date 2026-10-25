@@ -41,12 +41,12 @@ def _request(**query):
 @pytest.mark.parametrize(
     ("redirect", "allowed"),
     [
-        ("https://auth.nikolaivorkinn.com/pair", True),
-        ("https://auth.nikolaivorkinn.com/pair?t=" + "a" * 64, True),
-        ("https://auth.nikolaivorkinn.com/device", False),
-        ("https://auth.nikolaivorkinn.com/", False),
-        ("https://auth.nikolaivorkinn.com/pair/token", False),
-        ("https://logs.nikolaivorkinn.com/pair", False),
+        ("https://auth.dev.nikolaivorkinn.com/pair", True),
+        ("https://auth.dev.nikolaivorkinn.com/pair?t=" + "a" * 64, True),
+        ("https://auth.dev.nikolaivorkinn.com/device", False),
+        ("https://auth.dev.nikolaivorkinn.com/", False),
+        ("https://auth.dev.nikolaivorkinn.com/pair/token", False),
+        ("https://logs.dev.nikolaivorkinn.com/pair", False),
         ("https://evil.example/pair", False),
         ("", False),
     ],
