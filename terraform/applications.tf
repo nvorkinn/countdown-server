@@ -83,6 +83,16 @@ resource "authentik_provider_oauth2" "this" {
   }
 }
 
+# The provider is the proxy one above (same object, same id), so this can't be created, only imported. The id is
+# looked up from the live server, so a new environment has to create the proxy providers first (an apply targeting
+# authentik_provider_proxy.this), and only then does a plan find them to import.
+import {
+  for_each = local.oauth_clients
+
+  to = authentik_provider_oauth2.this[each.key]
+  id = local.ids.providers[local.proxy_providers[each.key].name]
+}
+
 resource "authentik_application" "broker" {
   name              = "Broker"
   slug              = "broker"
