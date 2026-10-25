@@ -108,11 +108,6 @@ resource "authentik_policy_binding" "enrollment_gate" {
   timeout = 30
 }
 
-import {
-  to = authentik_policy_binding.enrollment_gate
-  id = local.ids.policy_bindings["${local.ids.flows["broker-enrollment"]}/0/${local.ids.policies["broker-enrollment-from-broker"]}"]
-}
-
 resource "authentik_policy_binding" "source_authentication_if_sso" {
   target  = authentik_flow.source_authentication.uuid
   policy  = local.ids.policies["default-source-authentication-if-sso"]

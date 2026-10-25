@@ -68,7 +68,3 @@ resource "authentik_source_oauth" "google" {
   }
 }
 
-import {
-  to = authentik_source_oauth.google
-  id = "google"
-}

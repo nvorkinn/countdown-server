@@ -38,13 +38,6 @@ resource "authentik_provider_proxy" "this" {
   }
 }
 
-import {
-  for_each = local.proxy_providers
-
-  to = authentik_provider_proxy.this[each.key]
-  id = local.ids.providers[each.value.name]
-}
-
 # A proxy provider is also an OAuth2 provider (one object in Authentik). Logs and Metrics have a fixed client id and
 # secret, and this resource manages their OAuth2 side too: it is a second resource on the same provider, which is why
 # these are imported with the same ids as the proxy ones. The only grant is the authorization code, all a forward-auth
@@ -90,13 +83,6 @@ resource "authentik_provider_oauth2" "this" {
   }
 }
 
-import {
-  for_each = local.oauth_clients
-
-  to = authentik_provider_oauth2.this[each.key]
-  id = local.ids.providers[local.proxy_providers[each.key].name]
-}
-
 resource "authentik_application" "broker" {
   name              = "Broker"
   slug              = "broker"
@@ -118,21 +104,6 @@ resource "authentik_application" "metrics" {
   protocol_provider = authentik_provider_proxy.this["metrics"].id
 }
 
-import {
-  to = authentik_application.broker
-  id = "broker"
-}
-
-import {
-  to = authentik_application.logs
-  id = "logs"
-}
-
-import {
-  to = authentik_application.metrics
-  id = "metrics"
-}
-
 resource "authentik_policy_binding" "logs_admins" {
   target  = authentik_application.logs.uuid
   group   = local.ids.groups["authentik Admins"]
@@ -149,16 +120,6 @@ resource "authentik_policy_binding" "metrics_admins" {
   enabled = true
   negate  = false
   timeout = 30
-}
-
-import {
-  to = authentik_policy_binding.logs_admins
-  id = local.ids.policy_bindings["${local.ids.applications["logs"]}/0/${local.ids.groups["authentik Admins"]}"]
-}
-
-import {
-  to = authentik_policy_binding.metrics_admins
-  id = local.ids.policy_bindings["${local.ids.applications["metrics"]}/0/${local.ids.groups["authentik Admins"]}"]
 }
 
 resource "authentik_outpost" "embedded" {

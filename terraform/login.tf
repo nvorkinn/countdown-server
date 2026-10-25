@@ -107,7 +107,3 @@ resource "authentik_brand" "nikolaivorkinn" {
   flow_recovery                    = authentik_flow.recovery.uuid
 }
 
-import {
-  to = authentik_brand.nikolaivorkinn
-  id = local.ids.brands[local.settings.APEX_HOST]
-}
