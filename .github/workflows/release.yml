@@ -187,9 +187,25 @@ jobs:
   # images; authentik runs upstream's image, so it only needs the bundle and
   # can start while the images are still building. A target's environment holds
   # its host's secrets (DEPLOY_HOST and the rest).
+  # The DNS records for both environments (infra/cloudflare), planned, and applied after approval if they change, before
+  # anything is deployed, since Caddy needs its names to resolve to get certificates. A release that leaves DNS as it
+  # is asks for no approval.
+  dns:
+    name: dns
+    needs: tag
+    # The plan job it calls comments on pull requests, so its token asks for this even here.
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/cloudflare.yml
+    with:
+      apply: true
+      tag: ${{ needs.tag.outputs.value }}
+    secrets: inherit
+
   deploy-services-dev:
     name: services (dev-qa)
-    needs: [tag, images, package]
+    needs: [tag, images, package, dns]
     uses: ./.github/workflows/deploy-services.yml
     with:
       environment: dev-qa
@@ -200,7 +216,7 @@ jobs:
 
   deploy-authentik-dev:
     name: authentik (dev-qa)
-    needs: [tag, package]
+    needs: [tag, package, dns]
     # The terraform job it calls comments on pull requests, so its token asks for this even here.
     permissions:
       contents: read

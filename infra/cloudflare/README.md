@@ -10,8 +10,11 @@ The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are 
 
 Edit `host_ips` in `variables.tf` (for example, to move production to a new host), or the hostnames in
 `config/<environment>.env`, in a pull request. The workflow (`.github/workflows/cloudflare.yml`) comments the plan on the
-PR, and applies it after approval in `terraform-production` once the change is on `main`. The *Cloudflare* workflow's
-*Run workflow* button plans `main` (drift), and applies it with *apply* ticked.
+PR. Nothing is applied when the PR merges: the next **Release** plans DNS before it deploys anything and, if it changes,
+waits for approval in `terraform-production` and applies it. A release that leaves DNS as it is asks for no approval.
+So to cut a name over to another host: merge the change, release, then promote. The *Cloudflare* workflow's *Run workflow*
+button plans any ref (drift), and with *apply* ticked applies, on the latest release tag only (how a failed apply is
+retried).
 
 ## Setup
 

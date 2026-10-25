@@ -1,17 +1,12 @@
 name: Cloudflare
 
-# Checks and plans infra/cloudflare (the DNS records) on pull requests that change it, and applies it after approval
-# when a change reaches main. The plan reads the live zone, so it needs the secrets below and is skipped without them
-# (fork and Dependabot pull requests). The "Run workflow" button plans main, which shows drift; with "apply" ticked it
-# also applies. See infra/cloudflare/README.md.
+# Checks and plans infra/cloudflare (the DNS records) on pull requests that change it. The plan reads the live zone, so
+# it needs the secrets below and is skipped without them (fork and Dependabot pull requests). Applies run only from a
+# release tag: the Release workflow calls this with apply on, before it deploys, and nothing is applied when a change
+# merges. The "Run workflow" button (Actions > Cloudflare) plans any ref, which shows drift; with "apply" ticked it also
+# applies, on the latest release tag only, which is how a failed apply is retried. See infra/cloudflare/README.md.
 on:
   pull_request:
-    branches: [main]
-    paths:
-      - infra/cloudflare/**
-      - config/*.env
-      - .github/workflows/cloudflare.yml
-  push:
     branches: [main]
     paths:
       - infra/cloudflare/**
@@ -23,11 +18,20 @@ on:
         description: Apply the plan after approval
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      apply:
+        type: boolean
+        default: false
+      # The release tag to plan and apply. A release started with the button runs on main, so github.ref isn't it.
+      tag:
+        type: string
+        required: true
 
 permissions:
   contents: read
 
-# A new push to a PR replaces its running checks; plans and applies on main take turns.
+# A new push to a PR replaces its running checks.
 concurrency:
   group: cloudflare-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -46,8 +50,9 @@ env:
   # plain one (see terraform.yml).
   AWS_REQUEST_CHECKSUM_CALCULATION: when_required
   AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
-  # Whether this run applies: a change on main, or the button with "apply" ticked.
-  APPLY: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.apply) }}
+  # The release tag being planned, empty for a pull request or a button run on a branch. Apply needs one.
+  TF_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+  APPLY: ${{ inputs.apply == true }}
 
 defaults:
   run:
@@ -84,7 +89,7 @@ jobs:
       contents: read
       pull-requests: write
     outputs:
-      # Whether the plan changes anything, so a push that leaves DNS as it is asks for no approval.
+      # Whether the plan changes anything, so a release that leaves DNS as it is asks for no approval.
       changes: ${{ steps.plan.outputs.changes }}
     # The plan only needs to read, so the repository-level CLOUDFLARE_API_TOKEN can be a Zone:DNS:Read token; apply
     # gets the terraform-production environment's, which may write.
@@ -96,7 +101,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.TF_TAG }}
           persist-credentials: false
+
+      # Applying an older tag would quietly put DNS back to that release's config, so a retry has to be on the latest
+      # one. Checked before planning, so a wrong pick fails at once rather than after an approval.
+      - name: Check apply is on the latest release tag
+        if: env.APPLY == 'true'
+        run: |
+          [ -n "$TF_TAG" ] || { echo "::error::Apply runs from a release tag: pick the latest v* tag under \"Use workflow from\""; exit 1; }
+          latest="$(git ls-remote --tags --refs "https://github.com/$GITHUB_REPOSITORY" 'v*' \
+            | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+          [ "$TF_TAG" = "$latest" ] || { echo "::error::$TF_TAG is not the latest release ($latest), so it isn't applied"; exit 1; }
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
@@ -166,7 +182,7 @@ jobs:
   # applied. A plan with no changes skips this, approval included.
   apply:
     needs: plan
-    if: github.event_name != 'pull_request' && needs.plan.outputs.changes == 'true' && (github.event_name == 'push' || inputs.apply)
+    if: inputs.apply && needs.plan.outputs.changes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: terraform-production
@@ -182,6 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.TF_TAG }}
           persist-credentials: false
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
