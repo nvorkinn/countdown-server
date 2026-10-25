@@ -46,5 +46,10 @@ def load(app: Flask) -> None:
     app.config["GITHUB_APP_CLIENT_SECRET"] = os.environ.get("GITHUB_APP_CLIENT_SECRET", "")
     app.config["GITHUB_APP_WEBHOOK_SECRET"] = os.environ.get("GITHUB_APP_WEBHOOK_SECRET", "")
 
+    # Which deployment this is (config/<environment>.env sets it). Anything but prod is named in a banner on every page
+    # and before each page's title, so the dev site can't be mistaken for the real one.
+    environment = os.environ.get("ENVIRONMENT", "prod").strip().lower()
+    app.config["ENVIRONMENT_LABEL"] = "" if environment in ("", "prod") else environment.upper()
+
     # For debugging sign-in redirects only (request_log.py).
     app.config["LOG_REQUEST_HEADERS"] = os.environ.get("LOG_REQUEST_HEADERS", "").lower() in ("1", "true")

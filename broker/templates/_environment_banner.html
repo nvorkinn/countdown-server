@@ -1,0 +1,49 @@
+{# A strip pinned across the top of the page on any deployment but prod (config.py's ENVIRONMENT_LABEL), so dev can't
+   be mistaken for the real site. Styled inline, as the pages that include it each have their own stylesheet; the
+   padding on <html> makes room for it whatever the page does with <body>. #}
+{% if environment_label %}
+<div class="environment-banner" role="note" aria-label="{{ environment_label }} environment">
+    <strong>{{ environment_label }}</strong>
+    <span>{{ request.host }}</span>
+    <span class="environment-banner-note">&middot; not the live site</span>
+</div>
+<style>
+    html {
+        padding-top: 30px;
+    }
+    .environment-banner {
+        position: fixed;
+        inset: 0 0 auto;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 30px;
+        padding: 0 16px;
+        overflow: hidden;
+        white-space: nowrap;
+        background: repeating-linear-gradient(-45deg, #f2c200 0 14px, #ffd426 14px 28px);
+        border-bottom: 2px solid #111;
+        color: #111;
+    }
+    .environment-banner,
+    .environment-banner * {
+        margin: 0;
+        font: 500 13px/1 "Ubuntu Mono", ui-monospace, monospace;
+    }
+    .environment-banner strong {
+        padding: 3px 8px;
+        border-radius: 3px;
+        background: #111;
+        color: #ffd426;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+    }
+    @media (max-width: 480px) {
+        .environment-banner-note {
+            display: none;
+        }
+    }
+</style>
+{% endif %}
