@@ -30,5 +30,5 @@ def test_every_file_the_sign_in_names_is_shipped():
     """The CSS and the brand name files by their served path; each must be in authentik-assets/, which deploys them."""
     names = set(re.findall(r"/static/dist/assets/countdown/([\w.-]+)", CSS.read_text() + LOGIN_TF.read_text()))
 
-    assert {"wallpaper.jpg", "screen-landscape.png", "countdown-pill.svg"} <= names
+    assert {"wallpaper-day.jpg", "wallpaper-night.jpg", "countdown-pill.svg"} <= names
     assert sorted(name for name in names if not (ASSETS / name).is_file()) == []

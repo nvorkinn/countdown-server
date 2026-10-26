@@ -87,16 +87,17 @@ import {
   id = local.ids.brands["authentik-default"]
 }
 
-# The sign-in's look: the wallpaper and the CSS that draws the login box as the Countdown screen, both shipped in
+# The sign-in's look: the walls and the CSS that draws the login box as the Countdown screen, all shipped in
 # authentik-assets/ (served at /static/dist/assets/countdown/, deployed with the authentik service). The CSS also
-# puts the wallpaper behind every flow, whatever background the flow names. Authentik keeps the CSS without its
-# final newline, so it's chomped here, or every plan would show it changed.
+# puts the wall behind every flow, whatever background the flow names: the day one here, the night one when the
+# device is in dark mode. Authentik keeps the CSS without its final newline, so it's chomped here, or every plan
+# would show it changed.
 resource "authentik_brand" "nikolaivorkinn" {
   domain                           = local.settings.APEX_HOST
   branding_title                   = "Countdown"
   branding_logo                    = "/static/dist/assets/countdown/countdown-pill.svg"
   branding_favicon                 = "countdown-favicon.svg.svg"
-  branding_default_flow_background = "/static/dist/assets/countdown/wallpaper.jpg"
+  branding_default_flow_background = "/static/dist/assets/countdown/wallpaper-day.jpg"
   branding_custom_css              = chomp(file("${path.module}/../authentik-assets/countdown.css"))
   flow_authentication              = authentik_flow.authentication.uuid
   flow_recovery                    = authentik_flow.recovery.uuid
