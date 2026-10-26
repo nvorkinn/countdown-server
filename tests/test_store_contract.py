@@ -1,7 +1,7 @@
 """The broker's side of the store contract (countdown-api's store.yaml, the vendor/countdown-api submodule).
 
-Every key the broker writes or reads that pi-dashboard reads or writes is the contract's, with the contract's TTL, and
-what it writes is the contract's canonical example (countdown_api.fixtures), which pi-dashboard's tests read too. The
+Every key the broker writes or reads that countdown reads or writes is the contract's, with the contract's TTL, and
+what it writes is the contract's canonical example (countdown_api.fixtures), which countdown's tests read too. The
 other modules' tests round-trip most of the values through those examples (test_config_store, test_pairing_key,
 test_render_screens, test_render_jobs, test_frame_record, test_glow, test_music_provider, test_album_art,
 test_developer_provider, test_weather_place); here are the subscriptions, the pace hints, and the keys themselves.
@@ -86,7 +86,7 @@ def test_the_subscriptions_written_are_the_contracts_example(app, fake_redis):
 
 
 def test_the_pace_a_provider_writes_is_read_as_a_hint(app):
-    # As pi-dashboard's provider runner and the broker's developer provider write it: seconds, with the pace TTL.
+    # As countdown's provider runner and the broker's developer provider write it: seconds, with the pace TTL.
     store = fakeredis.FakeRedis(decode_responses=True)
     app.extensions["redis"] = store
     device_id = CONFIG["device_id"]

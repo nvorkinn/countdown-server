@@ -1,6 +1,6 @@
 """The screens the render pool draws: `v1:render:screens`, written by the broker from its database.
 
-pi-dashboard's render pool (its docs/stateless-renderers.md, "The pool, the queue and the render function") draws the
+countdown's render pool (its docs/stateless-renderers.md, "The pool, the queue and the render function") draws the
 screens listed in `v1:render:screens`, a hash of device id to slug (the slug names the screen: it's the `device` label
 of the pool's metrics), and drops a job for any other. The broker is the only one that writes it.
 
@@ -14,7 +14,7 @@ A screen is listed while the pool has something to draw for it:
 - it has been seen in the last assignments.SUSPEND_AFTER (assignments.is_quiet). A screen that's back is listed
   again within config_store.RESYNC_S.
 
-The contract's render_screens.json pins the hash's shape (pi-dashboard's countdown_core.store.render_queue reads it:
+The contract's render_screens.json pins the hash's shape (countdown's countdown_core.store.render_queue reads it:
 `screens()`, and the claim script's HGET).
 
 The hash is written whole, only where it differs (HDEL and HSET in one transaction), whenever the configs are
@@ -40,7 +40,7 @@ from broker.services import assignments, render_jobs
 
 logger = logging.getLogger(__name__)
 
-# pi-dashboard's keys.RENDER_SCREENS: the screens the pool renders, a hash of device id to slug.
+# countdown's keys.RENDER_SCREENS: the screens the pool renders, a hash of device id to slug.
 SCREENS = render_jobs.SCREENS
 
 

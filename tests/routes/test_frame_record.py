@@ -1,7 +1,7 @@
 """The screen served from the render pool's frame record in Redis (services/frame_record.py), through the real app.
 
-The record is written as pi-dashboard's render pool does (the shape the store contract's frame_record.json pins, which
-pi-dashboard's tests read too), and the screen polls POST /api/frame with If-None-Match as the ESP32 does
+The record is written as countdown's render pool does (the shape the store contract's frame_record.json pins, which
+countdown's tests read too), and the screen polls POST /api/frame with If-None-Match as the ESP32 does
 (countdown-esp32's frame_client.cpp keeps the ETag header as sent, quotes and all, and draws only a 200).
 """
 
@@ -59,7 +59,7 @@ def _etag(frame: bytes) -> str:
 
 
 def _write(store, device_id: str, picture: bytes, at: datetime, **fields) -> None:
-    """Write the screen's record as pi-dashboard's render pool does (store.frame_record), but for `fields`.
+    """Write the screen's record as countdown's render pool does (store.frame_record), but for `fields`.
 
     A field given as None is left out.
     """

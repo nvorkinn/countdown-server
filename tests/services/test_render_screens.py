@@ -1,6 +1,6 @@
 """The render pool's list of screens, `v1:render:screens` (broker/services/render_screens.py), as the broker writes it.
 
-The contract's render_screens.json is the hash's shape, which pi-dashboard's render pool reads (keys.RENDER_SCREENS):
+The contract's render_screens.json is the hash's shape, which countdown's render pool reads (keys.RENDER_SCREENS):
 both repositories' tests read that file. The rest goes through the real routes and `flask devices` commands, with the
 broker's Redis a fakeredis.
 """
@@ -58,11 +58,11 @@ def _headers(secret):
     return {"Authorization": f"Bearer {secret}"}
 
 
-# --- the hash, against the fixture shared with pi-dashboard --------------------------------------------------------
+# --- the hash, against the fixture shared with countdown --------------------------------------------------------
 
 
 def test_the_key_is_the_pools():
-    # pi-dashboard's keys.RENDER_SCREENS, which render_jobs reads to queue only the screens the pool draws.
+    # countdown's keys.RENDER_SCREENS, which render_jobs reads to queue only the screens the pool draws.
     assert render_screens.SCREENS == SCREENS == render_jobs.SCREENS
 
 

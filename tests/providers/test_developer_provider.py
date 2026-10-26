@@ -1,6 +1,6 @@
 """The developer provider (broker/providers/developer.py): what it writes to the store and the pace it asks for.
 
-The store contract's developer.json (countdown_api.fixtures) is the stored value: pi-dashboard's renderer tests read the
+The store contract's developer.json (countdown_api.fixtures) is the stored value: countdown's renderer tests read the
 same file, so a change to either side that breaks the other shows up in both.
 """
 

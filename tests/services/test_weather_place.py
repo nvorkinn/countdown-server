@@ -80,7 +80,7 @@ def test_weather_key_of_free_text_with_nothing_to_slug_is_the_text_so_the_screen
     assert weather_key(_config(weather_location="  東京  ")) == "東京"
 
 
-# The keys pi-dashboard's weather provider is written for: its tests read the same file.
+# The keys countdown's weather provider is written for: its tests read the same file.
 WEATHER_KEYS = fixtures.load("weather_keys.json")["keys"]
 
 

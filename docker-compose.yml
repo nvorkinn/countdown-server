@@ -165,9 +165,9 @@ services:
     volumes:
       - victoria_metrics_data:/victoria-metrics-data
 
-  # The store shared with pi-dashboard (every key is in countdown-api). A cache only: everything in it is refetched
+  # The store shared with countdown (every key is in countdown-api). A cache only: everything in it is refetched
   # within minutes or rebuilt from the broker's database, so it keeps nothing on disk. Upstream's image, pinned
-  # here. On 127.0.0.1:6379 with host networking, so the broker, its providers and pi-dashboard reach it on loopback.
+  # here. On 127.0.0.1:6379 with host networking, so the broker, its providers and countdown reach it on loopback.
   redis:
     image: docker.io/library/redis:8.10-alpine
     container_name: redis

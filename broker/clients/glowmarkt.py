@@ -1,7 +1,7 @@
 """Glowmarkt (Glow's smart-meter API): signing in to a device's account and fetching its electricity readings.
 
 What the glow-provider needs: the sign-in, the meter's "electricity consumption" resource and its readings, for the
-windows pi-dashboard's GlowClient cuts its pages from. Answers are kept as Glowmarkt sent them: the renderer parses
+windows countdown's GlowClient cuts its pages from. Answers are kept as Glowmarkt sent them: the renderer parses
 them.
 """
 

@@ -1,6 +1,6 @@
 """The glow-provider: Glowmarkt mocked (responses), Redis faked (fakeredis), the broker's database a real one.
 
-The store contract's glow_energy.json (countdown_api.fixtures), which pi-dashboard's tests read too: what Glowmarkt
+The store contract's glow_energy.json (countdown_api.fixtures), which countdown's tests read too: what Glowmarkt
 answers, what the provider asks it, and the `v1:energy:<device id>` value that comes of it.
 """
 

@@ -55,7 +55,7 @@ def test_every_panel_has_queries_an_alias_for_each_and_a_width_vmui_allows(path)
 
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.stem)
 def test_every_query_reads_countdown_series(path):
-    """Every query names a countdown.* series (pi-dashboard's otlp_publisher and pool_metrics)."""
+    """Every query names a countdown.* series (countdown's otlp_publisher and pool_metrics)."""
     for panel in _panels(path):
         for expr in panel["expr"]:
             assert re.search(r"\bcountdown\.[a-z_.]+", expr), expr

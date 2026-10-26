@@ -3,9 +3,9 @@
 Each cover is stored once, however many screens show it, under the store contract's key for its URL
 (countdown_api.keys.album_art), as the image file's raw bytes: base64 would take a third more of Redis's 128 MB. The
 provider's decoding client can write them because it never reads one back (EXPIRE answers with a number);
-pi-dashboard reads them with a client that doesn't decode.
+countdown reads them with a client that doesn't decode.
 
-Of an album's sizes, the one stored is the smallest at least ART_SIZE tall, else the tallest. pi-dashboard's
+Of an album's sizes, the one stored is the smallest at least ART_SIZE tall, else the tallest. countdown's
 store.music.art_image picks the same way to find the key, so change both together; the store contract's
 music_art.json, which both repositories' tests read, pins it.
 
