@@ -18,7 +18,7 @@ from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredential
 from broker.services import config_store, pairing, render_jobs
 
 ROOT = Path(__file__).parent.parent.parent
-# The stored shape, which pi-dashboard's renderer reads: both repositories' tests read this file.
+# The stored shape, which countdown's renderer reads: both repositories' tests read this file.
 FIXTURE = fixtures.load("config_store.json")
 
 

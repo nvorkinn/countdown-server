@@ -1,6 +1,6 @@
 """Jobs for the render pool: asking for a screen to be drawn now, rather than at the next minute's tick.
 
-pi-dashboard's render pool (its docs/stateless-renderers.md, "What queues a render") draws a screen when a
+countdown's render pool (its docs/stateless-renderers.md, "What queues a render") draws a screen when a
 job for it is on `v1:render:jobs`. Its ticker queues every pooled screen on the minute; the broker and its providers
 queue one sooner when what it shows has just changed (the developer provider on each cycle of a release, so a pooled
 screen follows the release at the burst's pace).
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The store contract's (countdown_api.keys), as pi-dashboard's render pool reads them. The job queue, a list of device
+# The store contract's (countdown_api.keys), as countdown's render pool reads them. The job queue, a list of device
 # ids:
 JOBS = store_keys.RENDER_JOBS
 # The screens the pool renders, a hash of device id to slug:
@@ -49,7 +49,7 @@ def queued_key(device_id: str) -> str:
     return store_keys.render_queued(device_id)
 
 
-# The store contract's enqueue script (countdown-api's lua/enqueue.lua), which pi-dashboard's render pool runs too.
+# The store contract's enqueue script (countdown-api's lua/enqueue.lua), which countdown's render pool runs too.
 # KEYS: queued, jobs. ARGV: the device id, the queued flag's TTL. Returns 1 if it queued the screen, 0 if it was queued
 # already.
 _ENQUEUE = scripts.ENQUEUE.source

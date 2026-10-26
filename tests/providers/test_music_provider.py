@@ -1,6 +1,6 @@
 """The music provider (broker/providers/music.py): what it writes to the store, and how it copes with failures.
 
-The store contract's music_player.json and music_top.json (countdown_api.fixtures) are the stored values: pi-dashboard's
+The store contract's music_player.json and music_top.json (countdown_api.fixtures) are the stored values: countdown's
 renderer tests read the same two files, so a change to either side that breaks the other shows up in both. So is
 music_art.json, the covers stored for music_player.json (each music_art.jpg's bytes here); tests/test_album_art.py has
 the rest of the covers' tests.

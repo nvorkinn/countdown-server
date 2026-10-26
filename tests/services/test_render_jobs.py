@@ -1,7 +1,7 @@
 """Jobs for the render pool (broker/services/render_jobs.py): the pool's own enqueue script, and who queues a job.
 
-The script is the store contract's (countdown_api.scripts.ENQUEUE), which pi-dashboard's render pool runs too; the
-contract's render_queue.json pins its SHA1, keys and TTL, and pi-dashboard's tests check their side against that file.
+The script is the store contract's (countdown_api.scripts.ENQUEUE), which countdown's render pool runs too; the
+contract's render_queue.json pins its SHA1, keys and TTL, and countdown's tests check their side against that file.
 It runs on fakeredis's Lua and, where marked, on a redis-server of the tests' own when one is installed (CI installs
 it). Who queues: here a config save, a code issued and a code spent; the developer provider in
 tests/providers/test_developer_provider.py.
@@ -187,7 +187,7 @@ def _headers(secret):
     return {"Authorization": f"Bearer {secret}"}
 
 
-# --- on a real Redis too, against the fixture shared with pi-dashboard ---------------------------------------------
+# --- on a real Redis too, against the fixture shared with countdown ---------------------------------------------
 
 
 def test_the_script_is_the_pools():

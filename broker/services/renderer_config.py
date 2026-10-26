@@ -2,7 +2,7 @@
 
 The store keeps it per screen (services/config_store.py, `v1:config:<device id>`, without a pairing code), and with
 the screen's live code while it has one (services/pairing_key.py, `v1:pairing:<device id>`). Both are made here, the
-same way. The contract (vendor/countdown-api) is the shape pi-dashboard's renderer reads them with.
+same way. The contract (vendor/countdown-api) is the shape countdown's renderer reads them with.
 """
 
 from typing import Literal

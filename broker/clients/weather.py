@@ -55,7 +55,7 @@ def _place(result: dict[str, Any]) -> dict[str, Any]:
 def search_places(name: str, count: int = SEARCH_COUNT) -> list[dict[str, Any]]:
     """Return the places Open-Meteo finds for a name, best first; [] for none.
 
-    The first is the one pi-dashboard's weather provider finds for the name too. Raises GeocodingUnavailableError if
+    The first is the one countdown's weather provider finds for the name too. Raises GeocodingUnavailableError if
     Open-Meteo couldn't be asked.
     """
     try:

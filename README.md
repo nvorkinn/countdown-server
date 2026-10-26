@@ -1,13 +1,13 @@
 # countdown-server
 
 The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare panel) whose frames are drawn by
-[pi-dashboard](https://github.com/nvorkinn/pi-dashboard)'s render pool. It:
+[countdown](https://github.com/nvorkinn/countdown)'s render pool. It:
 
 - registers screens and pairs each with its owner's login;
 - hosts the settings site at **https://auth.nikolaivorkinn.com**;
 - holds every account a screen's owner links (Spotify, Apple Music, Glowmarkt, GitHub) and runs the providers that use
   them, so no credential leaves the broker;
-- writes each screen's config and subscriptions to Redis for pi-dashboard, and serves each screen the frame the render
+- writes each screen's config and subscriptions to Redis for countdown, and serves each screen the frame the render
   pool drew;
 - runs the shared infrastructure on the Oracle Cloud ARM host: Caddy, authentik, Redis, Fluent Bit, VictoriaLogs and
   VictoriaMetrics.
@@ -29,7 +29,7 @@ Everything runs from `docker-compose.yml` on one host, in `/opt/auth-broker/` (t
 | `developer-provider` | Polls each screen's GitHub and AI plans for the developer panel (every 2 minutes, every 20 seconds while a release runs). |
 | `caddy` | TLS and routing for `auth.`, `sso.`, `logs.` and `metrics.nikolaivorkinn.com`, and the authentik sign-in gate. |
 | `authentik-server`, `-worker`, `-postgresql` | Sign-in, sign-up, passkeys and Google login, at `sso.nikolaivorkinn.com`. |
-| `redis` | The store shared with pi-dashboard. A cache only: nothing on disk. |
+| `redis` | The store shared with countdown. A cache only: nothing on disk. |
 | `fluent-bit`, `victoria-logs`, `victoria-metrics` | Logs and metrics from every container, the render pool and the screens. |
 
 The three providers run the broker's own image with another command and the broker's secrets. The glow and developer
@@ -96,7 +96,7 @@ the providers' data for it is deleted from Redis too (`broker/services/device_ke
 
 ## What's in Redis
 
-SQLite is the source of truth; Redis holds what pi-dashboard reads. The broker writes:
+SQLite is the source of truth; Redis holds what countdown reads. The broker writes:
 
 - `v1:sub:<source>`: what the providers should fetch (stops, weather places, postcodes, devices), then publishes
   `v1:sub:changed`;
@@ -165,7 +165,7 @@ passed, and refuses while any are still running or failed.
 and creates the release on the default branch. It's never retried automatically, so after a timeout check GitHub before
 trying again. A release deploys to dev/QA only.
 
-**Promote** shows for a project with an active `.github/workflows/promote.yml` (this repository and pi-dashboard), named
+**Promote** shows for a project with an active `.github/workflows/promote.yml` (this repository and countdown), named
 after its latest release (`Promote v3.1.0`). It starts that workflow on the default branch with the tag, also with no
 confirmation: the workflow's check job refuses a tag that isn't on main or wasn't deployed to dev/QA, and then waits
 for `approve-production`, which shows on the dashboard with an Approve button like a release's. To roll back to an older
@@ -386,7 +386,7 @@ in vmui before changing one, as CI checks every query parses. The ingest paths o
 ### Redis
 
 Capped at 128 MB, evicting only keys with a TTL. After a restart, the configs and screen list come back within a
-minute and the broker's providers refetch on their own. pi-dashboard's providers need the subscriptions, which come back
+minute and the broker's providers refetch on their own. countdown's providers need the subscriptions, which come back
 on the next settings save or broker restart; run `flask config publish` to restore them at once.
 
 ```bash

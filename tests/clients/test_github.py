@@ -35,7 +35,7 @@ def _repo(name, pushed_at=RECENT, *, archived=False):
     }
 
 
-REPOS = [_repo("pi-dashboard"), _repo("auth-broker"), _repo("old-thing", STALE), _repo("attic", archived=True)]
+REPOS = [_repo("countdown"), _repo("auth-broker"), _repo("old-thing", STALE), _repo("attic", archived=True)]
 RUNS = {
     # One workflow failing, the other's latest passing, though it failed before.
     "nvorkinn/auth-broker": [
@@ -43,7 +43,7 @@ RUNS = {
         {"workflow_id": 2, "conclusion": "failure"},
         {"workflow_id": 1, "conclusion": "failure"},
     ],
-    "nvorkinn/pi-dashboard": [{"workflow_id": 1, "conclusion": "success"}, {"workflow_id": 1, "conclusion": "failure"}],
+    "nvorkinn/countdown": [{"workflow_id": 1, "conclusion": "success"}, {"workflow_id": 1, "conclusion": "failure"}],
 }
 
 

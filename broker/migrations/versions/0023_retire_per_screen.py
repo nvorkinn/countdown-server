@@ -1,6 +1,6 @@
 """Retire the per-screen renderers: no frames table, no renderer secrets, no claim tokens or orchestrator states.
 
-Every screen is drawn by pi-dashboard's render pool, which writes its frame to Redis (`v1:frame:<device id>`), so
+Every screen is drawn by countdown's render pool, which writes its frame to Redis (`v1:frame:<device id>`), so
 the broker keeps no copy of it (frames). With no renderer containers there's no renderer to authenticate
 (devices.renderer_secret_hash), to claim its screen (renderer_assignments.claim_token), or for an orchestrator to
 report on (renderer_assignments.status and detail). An assignment is now only a screen's name, its slug; those left

@@ -1,7 +1,7 @@
 """The covers the music provider stores (broker/album_art.py): which size, under which key, and when it's fetched.
 
 The contract's music_art.json is the keys stored for music_player.json, each holding music_art.jpg's bytes in these
-tests: pi-dashboard's renderer tests read copies of the same files, and find the covers by the same keys.
+tests: countdown's renderer tests read copies of the same files, and find the covers by the same keys.
 """
 
 import re
@@ -74,7 +74,7 @@ def logger():
 
 @pytest.mark.parametrize("service", ["spotify", "apple_music"])
 def test_the_stored_cover_is_the_one_the_renderer_reads(service):
-    """The size pi-dashboard's store.music.art_image picks, under the key its store.keys.album_art makes."""
+    """The size countdown's store.music.art_image picks, under the key its store.keys.album_art makes."""
     url = art_url(PLAYER[service]["currently_playing"])
 
     assert url == COVERS[service]["url"]

@@ -8,15 +8,15 @@ it; [the database](database.md) has the tables.
 | Part | Where | What it does |
 |---|---|---|
 | **Screen** | [countdown-esp32](https://github.com/nvorkinn/countdown-esp32) | An ESP32 driving a 7.5" 800x480 black-and-white e-paper panel. Registers with the broker, then polls it for finished frames. It draws nothing itself. |
-| **Render pool** | [pi-dashboard](https://github.com/nvorkinn/pi-dashboard), on the same host | Workers and a ticker. Draws every screen in `v1:render:screens` from its config and panel data in Redis, and writes the frame back to Redis. It never calls the broker. |
-| **pi-dashboard's providers** | pi-dashboard, on the same host | Fetch TfL, Entur, weather and notice data for the stops and places in the broker's subscriptions, into Redis. |
+| **Render pool** | [countdown](https://github.com/nvorkinn/countdown), on the same host | Workers and a ticker. Draws every screen in `v1:render:screens` from its config and panel data in Redis, and writes the frame back to Redis. It never calls the broker. |
+| **countdown's providers** | countdown, on the same host | Fetch TfL, Entur, weather and notice data for the stops and places in the broker's subscriptions, into Redis. |
 | **countdown-server** (the broker) | this repository | Device identities, pairing, settings, linked accounts, the configs and subscriptions in Redis, and serving frames. State is one SQLite file. |
 | **The broker's providers** | this repository, the broker's image | glow (energy), spotify (Spotify and Apple Music) and developer (GitHub). They need credentials only the broker holds, so they run here. |
 | **Caddy** | this repository | TLS, routing, and the authentik sign-in gate for browser pages. |
 | **authentik** | this repository (`terraform/`) | Sign-in, sign-up, passkeys and Google login. Its embedded outpost answers Caddy's forward auth. |
 | **Redis** | this repository | The store between the broker, the providers and the render pool. A cache: nothing on disk. |
 | **Fluent Bit, VictoriaLogs, VictoriaMetrics** | this repository | Logs and metrics from the containers, the render pool and the screens. |
-| **countdown-api** | [countdown-api](https://github.com/nvorkinn/countdown-api), the `vendor/countdown-api` submodule | The store contract: every Redis key shared with pi-dashboard, the models of their values, and the fixtures both sides test against. |
+| **countdown-api** | [countdown-api](https://github.com/nvorkinn/countdown-api), the `vendor/countdown-api` submodule | The store contract: every Redis key shared with countdown, the models of their values, and the fixtures both sides test against. |
 
 ## Who talks to whom
 
@@ -35,7 +35,7 @@ flowchart TB
         BP["Providers: glow,<br/>spotify, developer"]
     end
     RD[("Redis")]
-    subgraph pid["pi-dashboard"]
+    subgraph pid["countdown"]
         PP["Providers: TfL, Entur,<br/>weather, notices"]
         RP["Render pool"]
     end
@@ -88,7 +88,7 @@ makes it safe for the broker to trust them. The broker has no user table: the ui
 | **`STATUS_TOKEN`** | operator | `secrets/<environment>/broker.env` | Bearer for `GET /api/status/devices`. |
 | **GitHub App sign-in** | the dashboard's user, through Connect GitHub | `github_app_tokens`, encrypted | Acts as them for 8 hours, renewed for 6 months. The `/github` dashboard's only GitHub access. |
 | **`GITHUB_APP_CLIENT_SECRET`**, **`GITHUB_APP_WEBHOOK_SECRET`** | operator | `secrets/<environment>/broker.env` | The dashboard's GitHub App: signing in, and checking its webhook's signature. |
-| **`REDIS_PASSWORD`** | operator | `secrets/<environment>/redis.env` | Used by everything that talks to Redis, including pi-dashboard. |
+| **`REDIS_PASSWORD`** | operator | `secrets/<environment>/redis.env` | Used by everything that talks to Redis, including countdown. |
 | **`LOGS_INGEST_TOKEN`** | operator | `secrets/<environment>/caddy.env` | Bearer for the ingest paths on `logs.` and `metrics.`. The broker forwards on loopback without it. |
 
 No credential is ever written to Redis: configs carry only flags like `glowmarkt.enabled`, and the providers write only

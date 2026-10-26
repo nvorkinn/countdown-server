@@ -1,6 +1,6 @@
 """Each screen's latest frame in the store, `v1:frame:<device id>`: the render pool writes it, and the broker serves it.
 
-pi-dashboard's render pool (its docs/stateless-renderers.md) writes each new picture of a screen to its record in Redis
+countdown's render pool (its docs/stateless-renderers.md) writes each new picture of a screen to its record in Redis
 (its countdown_core.store.frame_record), and that is the only copy there is: the broker keeps none in its database.
 The screen is served the record (routes/frames.py), and the config page's preview shows the same.
 
