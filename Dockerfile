@@ -4,7 +4,7 @@ FROM --platform=$BUILDPLATFORM python:3.14-slim AS geodata
 COPY scripts/fetch_geodata.py /
 RUN python /fetch_geodata.py /geodata
 
-FROM ghcr.io/astral-sh/uv:0.13.5 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
 # The Python .python-version pins, which the tests run on (Dependabot leaves its minor version alone).
 FROM python:3.14-slim
