@@ -31,7 +31,6 @@ Everything runs from `docker-compose.yml` on one host, in `/opt/auth-broker/` (t
 | `authentik-server`, `-worker`, `-postgresql` | Sign-in, sign-up, passkeys and Google login, at `sso.nikolaivorkinn.com`. |
 | `redis` | The store shared with countdown. A cache only: nothing on disk. |
 | `fluent-bit`, `victoria-logs`, `victoria-metrics` | Logs and metrics from every container, the render pool and the screens. |
-| `the-max-mix` | [THE MAX MIX](https://github.com/nvorkinn/the-max-mix), a Spotify web app, on dev/QA only at `spotify.dev.nikolaivorkinn.com`, for the authentik Admins group ([below](#the-max-mix-dev-qa)). |
 
 The three providers run the broker's own image with another command and the broker's secrets. The glow and developer
 providers open the database read-only; the music provider writes refreshed Spotify tokens back. Each wakes at once when
@@ -336,23 +335,16 @@ Make compose changes in the repo: each deploy replaces the host's copy.
 
 ### THE MAX MIX (dev/QA)
 
-[THE MAX MIX](https://github.com/nvorkinn/the-max-mix) is a Spotify web app that has nothing to do with the screens; this
-is just where its dev/QA copy runs. Its image, `ghcr.io/nvorkinn/the-max-mix:latest`, is built and pushed by that
-project's own release, and **every dev/QA release here pulls the latest one** (the `the-max-mix` service isn't pinned
-to this repository's tag, and compose recreates the container when the image changed). It is not deployed to
-production: promotion's matrix leaves it out, and `config/prod.env` has no `MAXMIX_HOST`.
+[THE MAX MIX](https://github.com/nvorkinn/the-max-mix) is a Spotify web app that has nothing to do with the screens. It is
+static files hosted on Vercel (deployed from that repository, which holds the Vercel setup and the Spotify redirect URI);
+nothing of it runs on this server. This repository only owns its DNS name: `MAXMIX_HOST` in `config/dev.env`
+(`spotify.dev.nikolaivorkinn.com`) is a DNS-only CNAME to `cname.vercel-dns.com` (`infra/cloudflare`), on dev/QA only
+(`config/prod.env` has no `MAXMIX_HOST`). The Vercel project has the same name as a custom domain.
 
-- **Where:** `MAXMIX_HOST` in `config/dev.env` (`spotify.dev.nikolaivorkinn.com`), an A record like the others
-  (`infra/cloudflare`). Caddy proxies it to the container on `127.0.0.1:3000`; the container's only state is the Spotify
-  login, which lives in the browser, not the container. The container is a static file server with no settings, state or
-  volume. It needs no secret: the page signs in to Spotify with PKCE and has its client ID built in.
-- **Who gets in:** the authentik Admins group, signed in through Caddy's forward auth as for Logs and Metrics (a proxy
-  provider, application and group binding in `terraform/`, applied by the release's authentik job). The app has no
-  sign-in of its own, and its port is loopback's, so Caddy is the only way in.
-- **One-time setup:** register `https://spotify.dev.nikolaivorkinn.com/` (with the trailing slash) as a redirect URI in the
-  Spotify app, then release. The release's DNS job creates the record (approve it in `terraform`), and the authentik job
-  adds the application. Then open the URL, sign in to authentik, and sign in to Spotify from Settings (once per browser profile). The old
-  `the_max_mix_data` volume is no longer used; `docker volume rm the_max_mix_data` on the host removes it.
+It used to run here as a container behind Caddy and authentik. That was removed, so the next release's Terraform applies
+**destroy** its authentik application, group binding and proxy provider (and take it out of the embedded outpost) and
+**replace** the DNS record (the A record is deleted and the CNAME created). On the dev/QA host, remove what is left over
+with `docker rm -f the-max-mix && docker volume rm the_max_mix_data`.
 
 ### Secrets
 
@@ -376,10 +368,10 @@ key changes.
 
 What differs between environments and isn't secret is in `config/<environment>.env`: the names Caddy serves
 (`AUTH_HOST`, `SSO_HOST`, `LOGS_HOST`, `METRICS_HOST` and the bare `APEX_HOST`, which redirects to `AUTH_HOST`), the
-Spotify redirect URI and the sender of authentik's emails. Dev/QA alone also has `MAXMIX_HOST`, the name of
-[THE MAX MIX](#the-max-mix-dev-qa). The environment's deploy bundle carries its file as
+Spotify redirect URI and the sender of authentik's emails. Dev/QA alone also has `MAXMIX_HOST`, the DNS name of
+[THE MAX MIX](#the-max-mix-dev-qa) (hosted on Vercel, so only DNS). The environment's deploy bundle carries its file as
 `settings.env`, which `deploy.sh` installs next to `docker-compose.yml` and the services that need it list in their
-`env_file`, so one image and one compose file serve every environment. Each name needs an A record to its
+`env_file`, so one image and one compose file serve every environment. Each name Caddy serves needs an A record to its
 environment's host before Caddy can get a certificate for it, and the Spotify redirect URI has to be registered in the
 Spotify app. A test fails if the environments' files don't set the same things.
 

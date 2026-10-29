@@ -40,9 +40,7 @@ jobs:
       # services are independent, so a failure doesn't stop the rest.
       max-parallel: 2
       matrix:
-        # Recreated only when its service changes: redis, and the-max-mix (another project's image, pulled at its
-        # latest on every deploy). THE MAX MIX is dev/QA's alone: config/prod.env has none of its settings.
-        service: ${{ fromJSON(inputs.target == 'dev' && '["caddy","countdown-server","fluent-bit","victoria-logs","victoria-metrics","redis","the-max-mix"]' || '["caddy","countdown-server","fluent-bit","victoria-logs","victoria-metrics","redis"]') }}
+        service: [caddy, countdown-server, fluent-bit, victoria-logs, victoria-metrics, redis]
     concurrency:
       # Per service: a group the whole matrix shared would cancel all but one
       # of its pending jobs.

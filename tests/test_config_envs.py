@@ -3,8 +3,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 CONFIG = ROOT / "config"
-# Settings only dev/QA has, because it alone runs THE MAX MIX (docker-compose.yml's the-max-mix, deploy-services.yml).
-# Caddy gives its site an inert default where MAXMIX_HOST is unset, and infra/cloudflare and terraform/ skip it.
+# Settings only dev/QA has, because it alone has a name for THE MAX MIX (hosted on Vercel; infra/cloudflare makes
+# the DNS record and skips it where MAXMIX_HOST is unset).
 DEV_ONLY = {"MAXMIX_HOST"}
 
 

@@ -4,7 +4,7 @@
 # /opt/auth-broker/releases/<tag>/ and runs it. It installs the bundled
 # docker-compose.yml, pins the service to the tag in .env, then pulls and
 # recreates just that service.
-# Usage: deploy.sh <countdown-server|caddy|fluent-bit|victoria-logs|victoria-metrics|redis|the-max-mix|authentik> <tag>
+# Usage: deploy.sh <countdown-server|caddy|fluent-bit|victoria-logs|victoria-metrics|redis|authentik> <tag>
 #
 # The bundle's settings.env (the environment's non-secret settings) is installed next to the compose file too.
 #
@@ -16,8 +16,6 @@
 # hand (AUTHENTIK_VERSION in .env, redis's tag in docker-compose.yml), so
 # they aren't pinned to the release tag. They're brought up rather than
 # force-recreated, so a release that doesn't change them leaves them running.
-# the-max-mix is another project's image, always its latest: it is pulled on every
-# deploy and compose recreates the container only if the image changed.
 set -euo pipefail
 
 service="$1"
@@ -48,7 +46,7 @@ case "$service" in
     fi
     ;;
   authentik) services=(authentik-postgresql authentik-server authentik-worker) ;;
-  redis | the-max-mix) ;;
+  redis) ;;
   *) echo "unknown service: $service" >&2; exit 1 ;;
 esac
 export SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-$PWD/age.key}"

@@ -17,7 +17,7 @@ login.tf       the login flow's title, passkey login, the brands and the sign-in
 passwordless.tf  the passkey-only sign-in flow linked from the login screen
 google.tf      the Google login source and its two flows
 bindings.tf    which stages each flow runs, and the policy bindings
-applications.tf  the Broker, Logs, Metrics and (dev/QA) THE MAX MIX proxy providers and apps, and the embedded outpost
+applications.tf  the Broker, Logs and Metrics proxy providers and apps, and the embedded outpost
 scripts/       authentik_ids.py, the read-only lookup behind imports.tf
 .terraform.lock.hcl   provider checksums; committed
 ```
@@ -30,8 +30,8 @@ touch the rest of those objects: each attribute the blueprint never set is under
 Terraform leaves it as Authentik has it. Users, groups and their members, tokens and passkeys are not here.
 
 The Broker app deliberately has no group binding: sign-up lets any new user reach `/pair`. Logs and Metrics are
-bound to the `authentik Admins` group, and so is THE MAX MIX, which only dev/QA has (`MAXMIX_HOST` in
-`config/dev.env`): the other environments get no provider, application or binding for it.
+bound to the `authentik Admins` group. (THE MAX MIX used to have an application here too; it is hosted on Vercel now,
+so applying removes its provider, application and binding from authentik.)
 
 A proxy provider is also an OAuth2 provider (one object in Authentik), so Logs and Metrics have two resources
 each on the same provider: `authentik_provider_proxy` for the proxy side and `authentik_provider_oauth2` for the

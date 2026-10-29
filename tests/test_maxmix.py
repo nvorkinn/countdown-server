@@ -1,4 +1,4 @@
-"""THE MAX MIX (github.com/nvorkinn/the-max-mix) on dev/QA: its compose service, Caddy site and deploy."""
+"""THE MAX MIX (github.com/nvorkinn/the-max-mix) is hosted on Vercel: this repository only owns its DNS name."""
 
 import re
 from pathlib import Path
@@ -7,56 +7,47 @@ import yaml
 
 ROOT = Path(__file__).parent.parent
 COMPOSE = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
-SERVICE = COMPOSE["services"]["the-max-mix"]
-CADDYFILE = (ROOT / "caddy" / "Caddyfile").read_text()
 DEV = ROOT / "config" / "dev.env"
 PROD = ROOT / "config" / "prod.env"
+DNS = (ROOT / "infra" / "cloudflare" / "main.tf").read_text()
 
 
-def _site(address: str) -> str:
-    return CADDYFILE.split(address + " {", 1)[1].split("\n}\n", 1)[0]
+def test_nothing_of_it_runs_here():
+    """It is static files on Vercel: no container, no volume, no port."""
+    assert "the-max-mix" not in COMPOSE["services"]
+    assert not any("max" in name and "mix" in name for name in COMPOSE.get("volumes", {}))
+    assert "the-max-mix" not in (ROOT / "docker-compose.yml").read_text()
 
 
-def test_it_runs_the_latest_image_and_pulls_it_on_every_deploy():
-    """A dev/QA release is meant to bring the newest build, not one pinned to this repository's tag."""
-    assert SERVICE["image"] == "ghcr.io/nvorkinn/the-max-mix:latest"
-    assert SERVICE["pull_policy"] == "always"
+def test_caddy_has_no_site_for_it():
+    assert "MAXMIX" not in (ROOT / "caddy" / "Caddyfile").read_text()
 
 
-def test_only_caddy_can_reach_it():
-    """Its port is loopback's only: Caddy, with host networking, is the way in (and authentik guards that)."""
-    assert SERVICE["ports"] == ["127.0.0.1:3000:3000"]
-    assert "network_mode" not in SERVICE
+def test_it_is_not_deployed():
+    """Neither deploy-services.yml's matrix (which promote.yml reuses) nor deploy.sh knows the service."""
+    workflow = (ROOT / ".github" / "workflows" / "deploy-services.yml").read_text()
+    assert "the-max-mix" not in workflow
+    assert "the-max-mix" not in (ROOT / "scripts" / "deploy.sh").read_text()
+    for path in (ROOT / ".github" / "workflows").glob("*.yml"):
+        assert "the-max-mix" not in path.read_text(), path.name
 
 
-def test_caddy_serves_its_host_to_the_authentik_admins_only_and_has_an_inert_default():
-    """It has no sign-in of its own; and production has no MAXMIX_HOST, yet a site without an address stops Caddy."""
-    site = _site("{$MAXMIX_HOST:maxmix.localhost}")
-    assert "import admin_only 127.0.0.1:3000" in site
-    assert "reverse_proxy" not in site.replace("import admin_only", "")
+def test_authentik_no_longer_guards_it():
+    for path in (ROOT / "terraform").glob("*.tf"):
+        assert "maxmix" not in path.read_text().lower(), path.name
 
 
-def test_the_container_has_no_settings_and_no_state():
-    """The app is a static page that signs in to Spotify in the browser: its login lives there, not in a volume."""
-    assert "command" not in SERVICE
-    assert "env_file" not in SERVICE
-    assert "volumes" not in SERVICE
-    assert "the_max_mix_data" not in COMPOSE.get("volumes", {})
-    assert set(SERVICE["environment"]) == {"HOST", "PORT"}
-
-
-def test_its_host_is_set_for_dev_qa():
-    """Caddy, DNS and authentik take the name from MAXMIX_HOST."""
+def test_its_host_is_set_for_dev_qa_only():
+    """infra/cloudflare takes the name from MAXMIX_HOST, which production does not have."""
     assert re.search(r"^MAXMIX_HOST=\S+$", DEV.read_text(), re.MULTILINE)
-
-
-def test_production_does_not_deploy_it():
-    """promote.yml deploys the same matrix, so the-max-mix is in it for dev/QA only."""
-    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "deploy-services.yml").read_text())
-    expression = workflow["jobs"]["deploy"]["strategy"]["matrix"]["service"]
-    dev, prod = re.findall(r"'(\[[^']*\])'", expression)
-    assert "the-max-mix" in dev
-    assert "the-max-mix" not in prod
-    assert set(re.findall(r'"([^"]+)"', dev)) - set(re.findall(r'"([^"]+)"', prod)) == {"the-max-mix"}
-    assert "inputs.target == 'dev'" in expression
     assert not re.search(r"^MAXMIX_", PROD.read_text(), re.MULTILINE)
+
+
+def test_its_dns_record_is_a_dns_only_cname_to_vercel():
+    """Vercel asks for a record Cloudflare does not proxy; the name is built only where MAXMIX_HOST is set."""
+    assert 'lookup(local.settings, "MAXMIX_HOST", "")' in DNS
+    assert re.search(r'type = "CNAME", content = "cname\.vercel-dns\.com"', DNS)
+    assert "for name in local.maxmix_hosts" in DNS
+    resource = DNS.split('resource "cloudflare_dns_record" "host" {', 1)[1]
+    assert "proxied = false" in resource
+    assert "proxied = true" not in DNS
