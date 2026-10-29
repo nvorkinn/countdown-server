@@ -222,6 +222,40 @@ services:
       redis:
         condition: service_healthy
 
+  # THE MAX MIX (github.com/nvorkinn/the-max-mix), a Spotify web app, on dev/QA only (deploy-services.yml). Its image
+  # is not pinned to this repo's release: every dev/QA release pulls the latest one (pull_policy always, and compose
+  # recreates the container when the image changed). Cloudflare Access guards MAXMIX_HOST, which Caddy proxies to
+  # 127.0.0.1:3000, and the app checks the Access token itself. Its only state is the Spotify login, in the volume.
+  the-max-mix:
+    <<: *release-image
+    image: ghcr.io/nvorkinn/the-max-mix:latest
+    container_name: the-max-mix
+    logging: *logging
+    # MAXMIX_* from settings.env, which the app reads as PUBLIC_URL and ACCESS_*; the rest of that file isn't its own.
+    env_file: settings.env
+    command:
+      - sh
+      - -c
+      - |
+        export PUBLIC_URL="https://$$MAXMIX_HOST" ACCESS_TEAM_DOMAIN="$$MAXMIX_ACCESS_TEAM_DOMAIN" ACCESS_AUD="$$MAXMIX_ACCESS_AUD"
+        exec node server/src/index.js
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATA_DIR: /data
+    # Loopback only: Caddy (host networking) is the one way in.
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - the_max_mix_data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 256m
+
   # authentik: upstream's release, pinned by AUTHENTIK_VERSION in .env and
   # bumped by hand, one minor version at a time.
   authentik-postgresql:
@@ -284,3 +318,6 @@ volumes:
     name: victoria_logs_data
   victoria_metrics_data:
     name: victoria_metrics_data
+  # THE MAX MIX's Spotify login (its refresh token): signing in again is all that is lost with it.
+  the_max_mix_data:
+    name: the_max_mix_data

@@ -22,3 +22,21 @@ variable "host_ips" {
     prod = "130.162.189.60" # production
   }
 }
+
+variable "account_id" {
+  type        = string
+  description = "The Cloudflare account that owns the zone and its Zero Trust (Access) setup (not a secret)."
+  default     = "1b9f3a9bf1519b6b51a19f194df0b0bd"
+}
+
+variable "access_emails" {
+  type        = list(string)
+  description = "The addresses Cloudflare Access lets into THE MAX MIX, each proving itself with a one-time PIN."
+  default     = ["n.vorkinn@gmail.com"]
+}
+
+variable "access_session_duration" {
+  type        = string
+  description = "How long an Access login lasts before it asks again."
+  default     = "24h"
+}

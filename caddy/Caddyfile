@@ -104,3 +104,11 @@
 	# authentik, published on loopback only.
 	reverse_proxy 127.0.0.1:9000
 }
+
+# THE MAX MIX, the the-max-mix compose service (dev/QA only): Cloudflare proxies this name and applies Access before a
+# request gets here, and the app checks the Access token itself. Where MAXMIX_HOST isn't set (production) the site is
+# maxmix.localhost, a name that gets a private certificate and no public one, so the Caddyfile still loads.
+{$MAXMIX_HOST:maxmix.localhost} {
+	import access_log
+	reverse_proxy 127.0.0.1:3000
+}
