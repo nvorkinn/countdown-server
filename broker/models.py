@@ -67,7 +67,19 @@ type Style = Literal["airy", "hero", "card"]
 type WeatherDesign = Literal["columns", "timeline", "overview", "poster"]
 type FrameFormat = Literal["mono-1bpp-packed", "png"]
 type Layout = Literal[
-    "classic", "masthead", "column", "lockscreen", "timeline", "board", "pages", "sidebar", "focus", "newspaper"
+    "classic",
+    "masthead",
+    "column",
+    "lockscreen",
+    "timeline",
+    "board",
+    "pages",
+    "sidebar",
+    "focus",
+    "newspaper",
+    "track",
+    "ledger",
+    "queue",
 ]
 
 ORIENTATIONS = ("horizontal", "vertical")
@@ -104,7 +116,23 @@ LAYOUTS: tuple[Layout, ...] = (
     "sidebar",
     "focus",
     "newspaper",
+    "track",
+    "ledger",
+    "queue",
 )
+# The kerbside layouts, which both sizes of screen have hung portrait: the weather in brief over one stop, both big,
+# so the screen reads from across the room (nothing else is drawn). Each size's picker offers them after its own.
+KERBSIDE_LAYOUTS: dict[Layout, tuple[str, str]] = {
+    "track": (
+        "Track",
+        "The weather in brief over one stop, big: each route's departures along a line of the next half hour",
+    ),
+    "ledger": (
+        "Ledger",
+        "The weather in brief over one stop, big: each route once, the times after the next under where it's going",
+    ),
+    "queue": ("Queue", "The weather in brief over one stop, big: every departure on a row of its own"),
+}
 # The layouts of an HD screen hung portrait, its default first, with the name and description the config page shows
 # beside each one's picture (broker/static/layouts/<layout>.png).
 HD_PORTRAIT_LAYOUTS: dict[Layout, tuple[str, str]] = {
@@ -115,6 +143,13 @@ HD_PORTRAIT_LAYOUTS: dict[Layout, tuple[str, str]] = {
     "timeline": ("Timeline", "Each departure placed by its minute along a line"),
     "board": ("Route board", "Each route once, with its next three times"),
     "pages": ("Two pages", "The stops and the other panels take turns"),
+    **KERBSIDE_LAYOUTS,
+}
+# The layouts of a 7.5" screen hung portrait, likewise, beside broker/static/layouts/small-<layout>.png (its classic
+# is drawn differently from the HD screen's, so their pictures can't share a name). Hung landscape it has one layout.
+SMALL_PORTRAIT_LAYOUTS: dict[Layout, tuple[str, str]] = {
+    "classic": ("Classic", "The weather on top, then the stops, Spotify and the notices"),
+    **KERBSIDE_LAYOUTS,
 }
 # The layouts of an HD screen hung landscape, likewise, beside broker/static/layouts/landscape-<layout>.png (board,
 # column and pages are portrait's ids too, but drawn differently, so their pictures can't share a name).
@@ -126,7 +161,7 @@ HD_LANDSCAPE_LAYOUTS: dict[Layout, tuple[str, str]] = {
     "newspaper": ("Newspaper", "A front page in columns under a masthead"),
     "pages": ("Two pages", "Going out and at home, taking turns each minute"),
 }
-# The HD screen's layouts each way it hangs, the one screen with more than one to pick (layout_choices).
+# The HD screen's layouts each way it hangs (layout_choices).
 HD_LAYOUTS: dict[Orientation, dict[Layout, tuple[str, str]]] = {
     "vertical": HD_PORTRAIT_LAYOUTS,
     "horizontal": HD_LANDSCAPE_LAYOUTS,
@@ -160,8 +195,8 @@ class DeviceConfig(Model):
     weather_lon: Mapped[float | None] = mapped_column(Float)
     # How the weather is drawn on an HD screen, one of WEATHER_DESIGNS; other screens ignore it.
     weather_design: Mapped[WeatherDesign] = mapped_column(String, default="columns", server_default=text("'columns'"))
-    # Which layout the screen is drawn in, one of LAYOUTS; None for the screen's default (classic on an HD screen hung
-    # portrait, sidebar hung landscape).
+    # Which layout the screen is drawn in, one of LAYOUTS; None for the screen's default (classic, but sidebar on an
+    # HD screen hung landscape).
     layout: Mapped[Layout | None] = mapped_column(String)
     # A UK postcode ("SW1A 1AA") or a Norwegian one ("0150"); see pages.normalize_postcode.
     postcode: Mapped[str] = mapped_column(String, default="", server_default=text("''"))
@@ -193,9 +228,12 @@ def is_hd_screen(config: DeviceConfig) -> bool:
 def layout_choices(config: DeviceConfig) -> dict[Layout, tuple[str, str]] | None:
     """Return the layouts the config page offers the config's screen, its default first.
 
-    The way an HD screen hangs has its own (HD_LAYOUTS); every other screen has one layout, so None (no picker).
+    The way an HD screen hangs has its own (HD_LAYOUTS), and a 7.5" screen hung portrait has SMALL_PORTRAIT_LAYOUTS;
+    hung landscape it has one layout, so None (no picker).
     """
-    return HD_LAYOUTS[config.orientation] if is_hd_screen(config) else None
+    if is_hd_screen(config):
+        return HD_LAYOUTS[config.orientation]
+    return SMALL_PORTRAIT_LAYOUTS if config.orientation == "vertical" else None
 
 
 class SpotifyToken(Model):
