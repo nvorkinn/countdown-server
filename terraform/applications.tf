@@ -1,19 +1,12 @@
-# Forward-auth for the Broker, Logs, Metrics and (dev/QA only) THE MAX MIX through the embedded outpost. No group
-# binding on the Broker: any signed-in user may use the broker's pairing and config pages, which is what lets the
-# sign-up reach /pair. Logs, Metrics and THE MAX MIX are for the authentik Admins group only.
+# Forward-auth for the Broker, Logs and Metrics through the embedded outpost. No group binding on the Broker: any
+# signed-in user may use the broker's pairing and config pages, which is what lets the sign-up reach /pair. Logs
+# and Metrics are for the authentik Admins group only.
 locals {
-  # THE MAX MIX's name, for the environments that host it (dev/QA so far); none elsewhere, which then have no provider,
-  # application or binding for it.
-  maxmix_hosts = compact([lookup(local.settings, "MAXMIX_HOST", "")])
-
-  proxy_providers = merge(
-    {
-      logs    = { name = "Provider for Logs", host = "https://${local.settings.LOGS_HOST}" }
-      metrics = { name = "Provider for Metrics", host = "https://${local.settings.METRICS_HOST}" }
-      broker  = { name = "Provider for Broker", host = "https://${local.settings.AUTH_HOST}" }
-    },
-    { for host in local.maxmix_hosts : "maxmix" => { name = "Provider for THE MAX MIX", host = "https://${host}" } },
-  )
+  proxy_providers = {
+    logs    = { name = "Provider for Logs", host = "https://${local.settings.LOGS_HOST}" }
+    metrics = { name = "Provider for Metrics", host = "https://${local.settings.METRICS_HOST}" }
+    broker  = { name = "Provider for Broker", host = "https://${local.settings.AUTH_HOST}" }
+  }
 
   oauth_scopes = [
     "goauthentik.io/providers/oauth2/scope-openid",
@@ -125,15 +118,6 @@ resource "authentik_application" "metrics" {
   protocol_provider = authentik_provider_proxy.this["metrics"].id
 }
 
-resource "authentik_application" "maxmix" {
-  count = length(local.maxmix_hosts)
-
-  name              = "THE MAX MIX"
-  slug              = "the-max-mix"
-  meta_icon         = "/static/dist/assets/countdown/countdown-pill.svg"
-  protocol_provider = authentik_provider_proxy.this["maxmix"].id
-}
-
 resource "authentik_policy_binding" "logs_admins" {
   target  = authentik_application.logs.uuid
   group   = local.ids.groups["authentik Admins"]
@@ -152,21 +136,10 @@ resource "authentik_policy_binding" "metrics_admins" {
   timeout = 30
 }
 
-resource "authentik_policy_binding" "maxmix_admins" {
-  count = length(local.maxmix_hosts)
-
-  target  = authentik_application.maxmix[0].uuid
-  group   = local.ids.groups["authentik Admins"]
-  order   = 0
-  enabled = true
-  negate  = false
-  timeout = 30
-}
-
 resource "authentik_outpost" "embedded" {
   name               = "authentik Embedded Outpost"
   type               = "proxy"
-  protocol_providers = [for key in concat(["logs", "metrics", "broker"], slice(["maxmix"], 0, length(local.maxmix_hosts))) : authentik_provider_proxy.this[key].id]
+  protocol_providers = [for key in ["logs", "metrics", "broker"] : authentik_provider_proxy.this[key].id]
   config = jsonencode({
     authentik_host = "https://${local.settings.SSO_HOST}"
   })
