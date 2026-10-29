@@ -4,9 +4,6 @@ The A records for the names each environment's Caddy serves (`APEX_HOST`, `www.`
 `LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`), for dev/QA and production, in the `nikolaivorkinn.com`
 zone. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
 
-On dev/QA, `MAXMIX_HOST` (THE MAX MIX, hosted on Vercel) is a DNS-only CNAME to `cname.vercel-dns.com` instead. It was an
-A record to the host, so the apply that introduced the CNAME replaces that record (delete, then create).
-
 The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are not managed here.
 
 ## Changing DNS

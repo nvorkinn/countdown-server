@@ -1,6 +1,6 @@
 # Forward-auth for the Broker, Logs and Metrics through the embedded outpost. No group binding on the Broker: any
-# signed-in user may use the broker's pairing and config pages, which is what lets the sign-up reach /pair. Logs and
-# Metrics are for the authentik Admins group only.
+# signed-in user may use the broker's pairing and config pages, which is what lets the sign-up reach /pair. Logs
+# and Metrics are for the authentik Admins group only.
 locals {
   proxy_providers = {
     logs    = { name = "Provider for Logs", host = "https://${local.settings.LOGS_HOST}" }

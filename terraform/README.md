@@ -30,8 +30,7 @@ touch the rest of those objects: each attribute the blueprint never set is under
 Terraform leaves it as Authentik has it. Users, groups and their members, tokens and passkeys are not here.
 
 The Broker app deliberately has no group binding: sign-up lets any new user reach `/pair`. Logs and Metrics are
-bound to the `authentik Admins` group. (THE MAX MIX used to have an application here too; it is hosted on Vercel now,
-so applying removes its provider, application and binding from authentik.)
+bound to the `authentik Admins` group.
 
 A proxy provider is also an OAuth2 provider (one object in Authentik), so Logs and Metrics have two resources
 each on the same provider: `authentik_provider_proxy` for the proxy side and `authentik_provider_oauth2` for the

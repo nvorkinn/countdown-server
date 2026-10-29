@@ -275,7 +275,7 @@ and `deploy-authentik.yml`), each taking an optional approval environment (revie
 
 | Job | Deploys |
 |---|---|
-| services | Caddy, the broker and its providers, Fluent Bit, VictoriaLogs, VictoriaMetrics and Redis, and on dev/QA THE MAX MIX, a job each, two at a time |
+| services | Caddy, the broker and its providers, Fluent Bit, VictoriaLogs, VictoriaMetrics and Redis, a job each, two at a time |
 | authentik | authentik, on the `AUTHENTIK_VERSION` pinned in the host's `.env` |
 
 A job SSHes into the host named by its target environment's secrets (`dev-qa` or `production`) and runs
@@ -283,8 +283,7 @@ A job SSHes into the host named by its target environment's secrets (`dev-qa` or
 `/opt/auth-broker/releases/<tag>/` (checking its SHA-256, and keeping the newest 5 bundles) and runs its `deploy.sh`.
 That decrypts the secrets, installs the compose file, backs up the database (`data/broker.db.bak-<tag>`, the newest 5
 kept) when deploying the broker, pins the service's `<SERVICE>_VERSION` in `/opt/auth-broker/.env` and recreates it.
-Redis and authentik are only recreated if their service changed, and so is THE MAX MIX, which isn't pinned to a tag: every
-dev/QA release pulls its image's `latest`. Then it removes the service's older images, keeping
+Redis and authentik are only recreated if their service changed. Then it removes the service's older images, keeping
 the running one and one other to roll back to, so the host's disk doesn't fill up with a set of images per release.
 After authentik is deployed, the `terraform` job applies this tag's authentik configuration, asking for approval
 only when the plan changes something (see [terraform/README.md](terraform/README.md)).
@@ -333,19 +332,6 @@ Make compose changes in the repo: each deploy replaces the host's copy.
   host, with the matching `prod` rule in `.sops.yaml` uncommented (see Secrets below), and a release made after that:
   releases from before it have no prod bundle and can't be promoted.
 
-### THE MAX MIX (dev/QA)
-
-[THE MAX MIX](https://github.com/nvorkinn/the-max-mix) is a Spotify web app that has nothing to do with the screens. It is
-static files hosted on Vercel (deployed from that repository, which holds the Vercel setup and the Spotify redirect URI);
-nothing of it runs on this server. This repository only owns its DNS name: `MAXMIX_HOST` in `config/dev.env`
-(`spotify.dev.nikolaivorkinn.com`) is a DNS-only CNAME to `cname.vercel-dns.com` (`infra/cloudflare`), on dev/QA only
-(`config/prod.env` has no `MAXMIX_HOST`). The Vercel project has the same name as a custom domain.
-
-It used to run here as a container behind Caddy and authentik. That was removed, so the next release's Terraform applies
-**destroy** its authentik application, group binding and proxy provider (and take it out of the embedded outpost) and
-**replace** the DNS record (the A record is deleted and the CNAME created). On the dev/QA host, remove what is left over
-with `docker rm -f the-max-mix && docker volume rm the_max_mix_data`.
-
 ### Secrets
 
 Every secret is in `secrets/<environment>/` (`dev/` today; `prod/` for production), as `broker.env`, `caddy.env`,
@@ -368,10 +354,9 @@ key changes.
 
 What differs between environments and isn't secret is in `config/<environment>.env`: the names Caddy serves
 (`AUTH_HOST`, `SSO_HOST`, `LOGS_HOST`, `METRICS_HOST` and the bare `APEX_HOST`, which redirects to `AUTH_HOST`), the
-Spotify redirect URI and the sender of authentik's emails. Dev/QA alone also has `MAXMIX_HOST`, the DNS name of
-[THE MAX MIX](#the-max-mix-dev-qa) (hosted on Vercel, so only DNS). The environment's deploy bundle carries its file as
+Spotify redirect URI and the sender of authentik's emails. The environment's deploy bundle carries its file as
 `settings.env`, which `deploy.sh` installs next to `docker-compose.yml` and the services that need it list in their
-`env_file`, so one image and one compose file serve every environment. Each name Caddy serves needs an A record to its
+`env_file`, so one image and one compose file serve every environment. Each name needs an A record to its
 environment's host before Caddy can get a certificate for it, and the Spotify redirect URI has to be registered in the
 Spotify app. A test fails if the environments' files don't set the same things.
 
