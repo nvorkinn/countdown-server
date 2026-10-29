@@ -31,7 +31,7 @@ Everything runs from `docker-compose.yml` on one host, in `/opt/auth-broker/` (t
 | `authentik-server`, `-worker`, `-postgresql` | Sign-in, sign-up, passkeys and Google login, at `sso.nikolaivorkinn.com`. |
 | `redis` | The store shared with countdown. A cache only: nothing on disk. |
 | `fluent-bit`, `victoria-logs`, `victoria-metrics` | Logs and metrics from every container, the render pool and the screens. |
-| `the-max-mix` | [THE MAX MIX](https://github.com/nvorkinn/the-max-mix), a Spotify web app, on dev/QA only at `spotify.dev.nikolaivorkinn.com` behind [Cloudflare Access](#the-max-mix-dev-qa). |
+| `the-max-mix` | [THE MAX MIX](https://github.com/nvorkinn/the-max-mix), a Spotify web app, on dev/QA only at `spotify.dev.nikolaivorkinn.com`, for the authentik Admins group ([below](#the-max-mix-dev-qa)). |
 
 The three providers run the broker's own image with another command and the broker's secrets. The glow and developer
 providers open the database read-only; the music provider writes refreshed Spotify tokens back. Each wakes at once when
@@ -340,27 +340,19 @@ Make compose changes in the repo: each deploy replaces the host's copy.
 is just where its dev/QA copy runs. Its image, `ghcr.io/nvorkinn/the-max-mix:latest`, is built and pushed by that
 project's own release, and **every dev/QA release here pulls the latest one** (the `the-max-mix` service isn't pinned
 to this repository's tag, and compose recreates the container when the image changed). It is not deployed to
-production: promotion's matrix leaves it out, and `config/prod.env` has none of its settings.
+production: promotion's matrix leaves it out, and `config/prod.env` has no `MAXMIX_HOST`.
 
-- **Where:** `MAXMIX_HOST` in `config/dev.env` (`spotify.dev.nikolaivorkinn.com`). Caddy proxies it to the container on
-  `127.0.0.1:3000`; the container's only state is the Spotify login (`the_max_mix_data` volume, so a new image keeps it).
-  The container reads these as `PUBLIC_URL` (`https://<MAXMIX_HOST>`, from which it derives its Spotify redirect URI and
-  the host it accepts) and `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` (below). It needs no secret: it signs in to Spotify with
-  PKCE and has its client ID built in.
-- **Who gets in:** [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/), managed in
-  `infra/cloudflare` (an application and an allow policy for the addresses in `access_emails`, each proving itself with
-  a one-time PIN). Access is enforced by Cloudflare's proxy, so this name's record is proxied, unlike the others. The app
-  has no login of its own and hands out the Spotify access token, so it checks the signed Access token on every request
-  too (`ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`) and refuses with a 503 until they are set, which also closes the way round
-  the proxy to the origin's address.
-- **One-time setup:**
-  1. Turn on Zero Trust for the Cloudflare account (Zero Trust in the dashboard; the free plan covers it) and choose a
-     team name: its `<team>.cloudflareaccess.com` is `MAXMIX_ACCESS_TEAM_DOMAIN`.
-  2. Give the `CLOUDFLARE_API_TOKEN`s the Access permission ([infra/cloudflare/README.md](infra/cloudflare/README.md)).
-  3. Register `https://spotify.dev.nikolaivorkinn.com/api/auth/callback` as a redirect URI in the Spotify app.
-  4. Release once: the DNS job creates the record and the Access application. Copy the `maxmix_access_aud` output (also
-     shown on the application in Zero Trust) into `MAXMIX_ACCESS_AUD`, set the team domain, and release again.
-  5. Open the URL, pass Access with a PIN sent to your address, then sign in to Spotify from Settings.
+- **Where:** `MAXMIX_HOST` in `config/dev.env` (`spotify.dev.nikolaivorkinn.com`), an A record like the others
+  (`infra/cloudflare`). Caddy proxies it to the container on `127.0.0.1:3000`; the container's only state is the Spotify
+  login (`the_max_mix_data` volume, so a new image keeps it). The container reads the host as `PUBLIC_URL`, from which it
+  derives its Spotify redirect URI and the host name it accepts. It needs no secret: it signs in to Spotify with PKCE and
+  has its client ID built in.
+- **Who gets in:** the authentik Admins group, signed in through Caddy's forward auth as for Logs and Metrics (a proxy
+  provider, application and group binding in `terraform/`, applied by the release's authentik job). The app has no
+  sign-in of its own and hands out the Spotify access token, and its port is loopback's, so Caddy is the only way in.
+- **One-time setup:** register `https://spotify.dev.nikolaivorkinn.com/api/auth/callback` as a redirect URI in the
+  Spotify app, then release. The release's DNS job creates the record (approve it in `terraform`), and the authentik job
+  adds the application. Then open the URL, sign in to authentik, and sign in to Spotify from Settings.
 
 ### Secrets
 
@@ -384,7 +376,7 @@ key changes.
 
 What differs between environments and isn't secret is in `config/<environment>.env`: the names Caddy serves
 (`AUTH_HOST`, `SSO_HOST`, `LOGS_HOST`, `METRICS_HOST` and the bare `APEX_HOST`, which redirects to `AUTH_HOST`), the
-Spotify redirect URI and the sender of authentik's emails. Dev/QA alone also has the `MAXMIX_*` settings of
+Spotify redirect URI and the sender of authentik's emails. Dev/QA alone also has `MAXMIX_HOST`, the name of
 [THE MAX MIX](#the-max-mix-dev-qa). The environment's deploy bundle carries its file as
 `settings.env`, which `deploy.sh` installs next to `docker-compose.yml` and the services that need it list in their
 `env_file`, so one image and one compose file serve every environment. Each name needs an A record to its

@@ -224,20 +224,20 @@ services:
 
   # THE MAX MIX (github.com/nvorkinn/the-max-mix), a Spotify web app, on dev/QA only (deploy-services.yml). Its image
   # is not pinned to this repo's release: every dev/QA release pulls the latest one (pull_policy always, and compose
-  # recreates the container when the image changed). Cloudflare Access guards MAXMIX_HOST, which Caddy proxies to
-  # 127.0.0.1:3000, and the app checks the Access token itself. Its only state is the Spotify login, in the volume.
+  # recreates the container when the image changed). Caddy serves MAXMIX_HOST to the authentik Admins group and proxies
+  # it to 127.0.0.1:3000; the app has no sign-in of its own. Its only state is the Spotify login, in the volume.
   the-max-mix:
     <<: *release-image
     image: ghcr.io/nvorkinn/the-max-mix:latest
     container_name: the-max-mix
     logging: *logging
-    # MAXMIX_* from settings.env, which the app reads as PUBLIC_URL and ACCESS_*; the rest of that file isn't its own.
+    # MAXMIX_HOST from settings.env, which the app reads as PUBLIC_URL; the rest of that file isn't its own.
     env_file: settings.env
     command:
       - sh
       - -c
       - |
-        export PUBLIC_URL="https://$$MAXMIX_HOST" ACCESS_TEAM_DOMAIN="$$MAXMIX_ACCESS_TEAM_DOMAIN" ACCESS_AUD="$$MAXMIX_ACCESS_AUD"
+        export PUBLIC_URL="https://$$MAXMIX_HOST"
         exec node server/src/index.js
     environment:
       HOST: 0.0.0.0
