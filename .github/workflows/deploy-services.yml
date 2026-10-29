@@ -1,7 +1,8 @@
 name: Deploy services
 
 # One target's deploy of this repo's own services (Caddy, the broker and its providers, Fluent Bit, VictoriaLogs,
-# VictoriaMetrics, Redis), called by release.yml (dev/QA) and promote.yml (production). See also deploy-authentik.yml.
+# VictoriaMetrics, Redis, and on dev/QA THE MAX MIX), called by release.yml (dev/QA) and promote.yml (production). See
+# also deploy-authentik.yml.
 on:
   workflow_call:
     inputs:
@@ -39,14 +40,9 @@ jobs:
       # services are independent, so a failure doesn't stop the rest.
       max-parallel: 2
       matrix:
-        include:
-          - service: caddy
-          - service: countdown-server
-          - service: fluent-bit
-          - service: victoria-logs
-          - service: victoria-metrics
-          # Recreated only when its service changes.
-          - service: redis
+        # Recreated only when its service changes: redis, and the-max-mix (another project's image, pulled at its
+        # latest on every deploy). THE MAX MIX is dev/QA's alone: config/prod.env has none of its settings.
+        service: ${{ fromJSON(inputs.target == 'dev' && '["caddy","countdown-server","fluent-bit","victoria-logs","victoria-metrics","redis","the-max-mix"]' || '["caddy","countdown-server","fluent-bit","victoria-logs","victoria-metrics","redis"]') }}
     concurrency:
       # Per service: a group the whole matrix shared would cancel all but one
       # of its pending jobs.

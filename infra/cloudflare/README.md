@@ -1,7 +1,7 @@
 # Cloudflare DNS
 
 The A records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, `AUTH_HOST`, `SSO_HOST`,
-`LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`), for dev/QA and production, in the `nikolaivorkinn.com`
+`LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`, and on dev/QA `MAXMIX_HOST`, THE MAX MIX's), for dev/QA and production, in the `nikolaivorkinn.com`
 zone. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
 
 The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are not managed here.
