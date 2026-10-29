@@ -242,9 +242,9 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
 
     config = db.session.get_one(DeviceConfig, device_id)
     choices = {field: request.form.get(field, getattr(config, field)) for field in CHOICES}
-    # Only on an HD screen's page (layout_choices), so another screen's save keeps what's stored. Any of the contract's
-    # layouts is taken, whichever way the screen hangs: one its size doesn't have is drawn as its default. Empty is the
-    # screen's default (None).
+    # Only on a page with the picker (layout_choices), so a save from one without keeps what's stored. Any of the
+    # contract's layouts is taken, whatever the screen's size and whichever way it hangs: one it doesn't have is drawn
+    # as its default. Empty is the screen's default (None).
     raw_layout = request.form.get("layout", config.layout or "")
     layout = next((known for known in LAYOUTS if known == raw_layout), None)
 
@@ -482,7 +482,7 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         # The weather design is only an HD screen's to pick: elsewhere the weather has one way to fit its panel.
         weather_designs=WEATHER_DESIGNS,
         hd_screen=is_hd_screen(config),
-        # The layout is only an HD screen's to pick, from the ones of the way it hangs: every other screen has one.
+        # The layouts the screen's size has the way it hangs; None where it has one (a 7.5" screen hung landscape).
         layouts=layouts,
         layout=_shown_layout(config, layouts),
         landscape=config.orientation == "horizontal",

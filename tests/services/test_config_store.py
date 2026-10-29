@@ -105,6 +105,17 @@ def test_the_stored_config_has_the_layout_picked(app, store, paired_client, conf
     assert _stored(store, device_id) == config_of(device_id)
 
 
+def test_the_stored_config_has_a_small_screens_layout_picked(app, store, paired_client, config_of):
+    """A 7.5" screen hung portrait (the size registered) picks from the kerbside layouts too."""
+    client, device_id, _secret = paired_client
+
+    client.post("/device", data={"layout": "track"})
+
+    assert _stored(store, device_id)["screen"]["layout"] == "track"
+    assert _stored(store, device_id)["screen"]["width"] == 480
+    assert _stored(store, device_id) == config_of(device_id)
+
+
 def test_the_stored_config_has_the_landscape_layout_picked(app, store, paired_client, config_of):
     client, device_id, _secret = paired_client
     with app.app_context():

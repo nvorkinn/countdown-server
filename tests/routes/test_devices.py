@@ -366,7 +366,21 @@ def test_the_config_sends_no_layout_by_default(app, register_device):
 
 @pytest.mark.parametrize(
     "layout",
-    ["classic", "masthead", "column", "lockscreen", "timeline", "board", "pages", "sidebar", "focus", "newspaper"],
+    [
+        "classic",
+        "masthead",
+        "column",
+        "lockscreen",
+        "timeline",
+        "board",
+        "pages",
+        "sidebar",
+        "focus",
+        "newspaper",
+        "track",
+        "ledger",
+        "queue",
+    ],
 )
 def test_the_config_sends_the_layout(app, register_device, layout):
     """As stored, whatever the screen's size: a renderer draws a layout its size doesn't have as its default."""

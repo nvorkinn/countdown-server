@@ -147,8 +147,10 @@
                 {% if layouts %}
                     {% if landscape %}
                         {{ style_picker("layout", "How your HD screen arranges its panels, hung landscape.", layouts, layout, "layouts", 468, 351, legend="Layout", prefix="landscape-") }}
-                    {% else %}
+                    {% elif hd_screen %}
                         {{ style_picker("layout", "How your HD screen arranges its panels, hung portrait.", layouts, layout, "layouts", 351, 468, legend="Layout") }}
+                    {% else %}
+                        {{ style_picker("layout", "How your screen arranges its panels.", layouts, layout, "layouts", 240, 400, legend="Layout", prefix="small-") }}
                     {% endif %}
                 {% endif %}
             </div>
