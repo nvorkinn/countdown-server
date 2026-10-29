@@ -36,18 +36,18 @@ def test_caddy_serves_its_host_to_the_authentik_admins_only_and_has_an_inert_def
     assert "reverse_proxy" not in site.replace("import admin_only", "")
 
 
-def test_the_app_is_given_its_public_address_from_the_host_setting():
-    """The app reads PUBLIC_URL, which its command builds from settings.env's MAXMIX_HOST."""
-    command = " ".join(SERVICE["command"])
-    assert 'PUBLIC_URL="https://$$MAXMIX_HOST"' in command
+def test_the_container_has_no_settings_and_no_state():
+    """The app is a static page that signs in to Spotify in the browser: its login lives there, not in a volume."""
+    assert "command" not in SERVICE
+    assert "env_file" not in SERVICE
+    assert "volumes" not in SERVICE
+    assert "the_max_mix_data" not in COMPOSE.get("volumes", {})
+    assert set(SERVICE["environment"]) == {"HOST", "PORT"}
+
+
+def test_its_host_is_set_for_dev_qa():
+    """Caddy, DNS and authentik take the name from MAXMIX_HOST."""
     assert re.search(r"^MAXMIX_HOST=\S+$", DEV.read_text(), re.MULTILINE)
-    assert "settings.env" in SERVICE["env_file"]
-
-
-def test_its_login_survives_a_new_image():
-    volumes = SERVICE["volumes"]
-    assert volumes == ["the_max_mix_data:/data"]
-    assert COMPOSE["volumes"]["the_max_mix_data"] == {"name": "the_max_mix_data"}
 
 
 def test_production_does_not_deploy_it():

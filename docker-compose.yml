@@ -225,29 +225,19 @@ services:
   # THE MAX MIX (github.com/nvorkinn/the-max-mix), a Spotify web app, on dev/QA only (deploy-services.yml). Its image
   # is not pinned to this repo's release: every dev/QA release pulls the latest one (pull_policy always, and compose
   # recreates the container when the image changed). Caddy serves MAXMIX_HOST to the authentik Admins group and proxies
-  # it to 127.0.0.1:3000; the app has no sign-in of its own. Its only state is the Spotify login, in the volume.
+  # it to 127.0.0.1:3000. The image is only a static file server: the app signs in to Spotify in the browser, which keeps
+  # the login, so the container has no settings and no state.
   the-max-mix:
     <<: *release-image
     image: ghcr.io/nvorkinn/the-max-mix:latest
     container_name: the-max-mix
     logging: *logging
-    # MAXMIX_HOST from settings.env, which the app reads as PUBLIC_URL; the rest of that file isn't its own.
-    env_file: settings.env
-    command:
-      - sh
-      - -c
-      - |
-        export PUBLIC_URL="https://$$MAXMIX_HOST"
-        exec node server/src/index.js
     environment:
       HOST: 0.0.0.0
       PORT: "3000"
-      DATA_DIR: /data
     # Loopback only: Caddy (host networking) is the one way in.
     ports:
       - "127.0.0.1:3000:3000"
-    volumes:
-      - the_max_mix_data:/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 30s
@@ -318,6 +308,3 @@ volumes:
     name: victoria_logs_data
   victoria_metrics_data:
     name: victoria_metrics_data
-  # THE MAX MIX's Spotify login (its refresh token): signing in again is all that is lost with it.
-  the_max_mix_data:
-    name: the_max_mix_data
