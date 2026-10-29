@@ -344,15 +344,15 @@ production: promotion's matrix leaves it out, and `config/prod.env` has no `MAXM
 
 - **Where:** `MAXMIX_HOST` in `config/dev.env` (`spotify.dev.nikolaivorkinn.com`), an A record like the others
   (`infra/cloudflare`). Caddy proxies it to the container on `127.0.0.1:3000`; the container's only state is the Spotify
-  login (`the_max_mix_data` volume, so a new image keeps it). The container reads the host as `PUBLIC_URL`, from which it
-  derives its Spotify redirect URI and the host name it accepts. It needs no secret: it signs in to Spotify with PKCE and
-  has its client ID built in.
+  login, which lives in the browser, not the container. The container is a static file server with no settings, state or
+  volume. It needs no secret: the page signs in to Spotify with PKCE and has its client ID built in.
 - **Who gets in:** the authentik Admins group, signed in through Caddy's forward auth as for Logs and Metrics (a proxy
   provider, application and group binding in `terraform/`, applied by the release's authentik job). The app has no
-  sign-in of its own and hands out the Spotify access token, and its port is loopback's, so Caddy is the only way in.
-- **One-time setup:** register `https://spotify.dev.nikolaivorkinn.com/api/auth/callback` as a redirect URI in the
+  sign-in of its own, and its port is loopback's, so Caddy is the only way in.
+- **One-time setup:** register `https://spotify.dev.nikolaivorkinn.com/` (with the trailing slash) as a redirect URI in the
   Spotify app, then release. The release's DNS job creates the record (approve it in `terraform`), and the authentik job
-  adds the application. Then open the URL, sign in to authentik, and sign in to Spotify from Settings.
+  adds the application. Then open the URL, sign in to authentik, and sign in to Spotify from Settings (once per browser profile). The old
+  `the_max_mix_data` volume is no longer used; `docker volume rm the_max_mix_data` on the host removes it.
 
 ### Secrets
 
