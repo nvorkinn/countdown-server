@@ -20,6 +20,10 @@ CVE-2026-111497 exp:2026-11-24
 # on it. Nothing in the Caddy container runs curl.
 CVE-2026-92392 exp:2026-11-24
 
+# caddy:2-alpine: go-jose/v4 v4.1.5 built into the upstream Caddy binary (DoS parsing JWKs with RSA keys). Fixed in
+# 4.1.6; waiting on a Caddy release built with it (Dependabot proposes the tag).
+CVE-2026-116587 exp:2026-11-24
+
 # broker (python:3.14-slim): pip's bundled copies of msgpack, setuptools and urllib3 in the base image's own pip.
 # pip is not on the broker's PATH at runtime (the app runs from /app/.venv, which has none) and never runs in the
 # container. Goes away with the next python:3.14-slim that ships a newer pip.
@@ -27,3 +31,7 @@ GHSA-6v7p-g79w-8964 exp:2026-11-24
 CVE-2025-47273 exp:2026-11-24
 CVE-2026-97687 exp:2026-11-24
 CVE-2026-97689 exp:2026-11-24
+
+# broker (python:3.14-slim): msgpack 1.1.2 in the same pip (memory leak deserializing maps), fixed in 1.2.3. Same reasoning
+# as above: pip never runs in the container.
+CVE-2026-114613 exp:2026-11-24
