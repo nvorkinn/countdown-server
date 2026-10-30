@@ -1,9 +1,12 @@
 """A device's Parcel API key: kept encrypted, read back by the parcel provider (broker/services/parcel_key.py)."""
 
+from unittest.mock import Mock
+
 import fakeredis
 import pytest
 from countdown_api import keys as store_keys
 from redis import ConnectionError as RedisConnectionError
+from redis import Redis
 
 from broker.db import db
 from broker.models import ParcelKey
@@ -52,8 +55,7 @@ def test_the_link_status_is_none_before_the_provider_has_tried_or_for_a_value_it
 
 
 def test_the_link_status_is_none_when_redis_is_down():
-    class Down:
-        def get(self, _key):
-            raise RedisConnectionError
+    store = Mock(spec=Redis)
+    store.get.side_effect = RedisConnectionError
 
-    assert parcel_key.link_status(Down(), "d") is None
+    assert parcel_key.link_status(store, "d") is None

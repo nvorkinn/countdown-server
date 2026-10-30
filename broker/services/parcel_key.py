@@ -8,18 +8,16 @@ parcels panel on: DeviceConfig.parcels_enabled, so `parcels.enabled` in the devi
 Whether Parcel takes the key is the provider's to say, in `v1:parcels-status:<device id>`; link_status reads it.
 """
 
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING
 
 from countdown_api import keys as store_keys
-from countdown_api.models import ParcelsLinkStatus
 from redis import Redis, RedisError
 
 from broker.models import ParcelKey
 
 if TYPE_CHECKING:
+    from countdown_api.models import ParcelsLinkStatus
     from flask_sqlalchemy import SQLAlchemy
-
-_STATUSES = frozenset(get_args(ParcelsLinkStatus))
 
 
 def get_parcel_api_key(db: SQLAlchemy, device_id: str) -> str | None:
@@ -43,5 +41,8 @@ def link_status(store: Redis, device_id: str) -> ParcelsLinkStatus | None:
         value = store.get(store_keys.parcels_status(device_id))
     except RedisError:
         return None
-    text = value.decode() if isinstance(value, bytes) else value
-    return text if text in _STATUSES else None  # type: ignore[return-value]  # a member of the contract's enum
+    match value.decode() if isinstance(value, bytes) else value:
+        case "ok" | "invalid_key" | "rate_limited" as status:
+            return status
+        case _:
+            return None
