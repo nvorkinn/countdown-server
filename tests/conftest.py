@@ -265,6 +265,17 @@ def cli(app):
     return _invoke
 
 
+def account_of(device_id: str) -> str:
+    """Return the account a device's services are linked to: its owner's, made one of its own if it has none.
+
+    So a test can link a service to a device that isn't paired, each device its own account (app context).
+    """
+    device = db.session.get_one(Device, device_id)
+    if device.owner is None:
+        device.owner = f"owner-{device_id}"
+    return str(device.owner)
+
+
 def name_screen(device_id: str) -> None:
     """Give a registered screen its stable name, as pairing does, so the render pool can list it (app context)."""
     assignments.auto_name(db.session.get_one(Device, device_id))

@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from broker.clients import apple_music
 from broker.db import db
 from broker.models import AppleMusicPlay, AppleMusicToken
+from tests.conftest import account_of
 from tests.conftest import apple_song as song
 
 
@@ -99,7 +100,7 @@ def test_recently_played_reads_two_pages_with_both_tokens(app, musickit):
 
 def _link(app, device_id, seen=()):
     with app.app_context():
-        stored = AppleMusicToken(device_id=device_id, seen_ids=list(seen))
+        stored = AppleMusicToken(user_id=account_of(device_id), seen_ids=list(seen))
         stored.token = "user-token"
         db.session.add(stored)
         db.session.commit()
@@ -114,7 +115,7 @@ def test_recent_tracks_logs_only_the_new_plays(app, musickit, register_device):
             tracks = apple_music.recent_tracks(device_id)
         assert tracks is not None
         plays = db.session.query(AppleMusicPlay).all()
-        assert db.session.get_one(AppleMusicToken, device_id).seen_ids == ["3", "1", "2"]
+        assert db.session.get_one(AppleMusicToken, account_of(device_id)).seen_ids == ["3", "1", "2"]
 
     assert len(tracks) == 3
     assert [play.song_id for play in plays] == ["3"]
@@ -127,7 +128,7 @@ def test_a_refused_token_is_cleared_but_the_log_kept(app, musickit, register_dev
     with app.app_context():
         with patch("broker.clients.apple_music.recently_played", side_effect=apple_music.AppleMusicRefusedError):
             assert apple_music.recent_tracks(device_id) is None
-        stored = db.session.get_one(AppleMusicToken, device_id)
+        stored = db.session.get_one(AppleMusicToken, account_of(device_id))
         assert stored.token is None
         assert stored.seen_ids == ["1"]
         assert not apple_music.linked(device_id)
@@ -144,7 +145,7 @@ def test_recently_played_raises_refused_on_401(app, musickit):
 
 def _play(device_id, song_id, artist, days_ago):
     return AppleMusicPlay(
-        device_id=device_id,
+        user_id=account_of(device_id),
         played_at=datetime.now(UTC) - timedelta(days=days_ago),
         song_id=song_id,
         artist=artist,

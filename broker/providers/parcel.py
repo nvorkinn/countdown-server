@@ -213,6 +213,9 @@ class ParcelProvider(ProviderLoop):
         self._backoff_until: dict[str, float] = {}
         self._carriers: dict[str, str] = {}
         self._carriers_at = float("-inf")
+        # By key: the deliveries Parcel last gave for it, and when. The key is the owner's account's, so all their
+        # screens have the same one, and a screen asking within MIN_GAP_S of another reuses its answer.
+        self._answers: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
     def interval_s(self) -> float:
         """Return how far apart the ticks are: INTERVAL_S unless the tests say otherwise."""
@@ -291,7 +294,7 @@ class ParcelProvider(ProviderLoop):
         stamp = datetime.fromtimestamp(now, UTC)
         self._asked[want.device_id] = (want.api_key, now)
         try:
-            deliveries = self._deliveries(want.api_key)
+            deliveries = self._deliveries_for(want.api_key, now, fresh=self.nudged)
         except parcel_client.InvalidKeyError:
             self._refused[want.device_id] = want.api_key
             self.logger.warning(
@@ -319,6 +322,19 @@ class ParcelProvider(ProviderLoop):
             # After the write, so the render reads the new data. Never raises: the tick draws the screen anyway.
             render_jobs.enqueue(self.store, [want.device_id])
         return 2
+
+    def _deliveries_for(self, api_key: str, now: float, *, fresh: bool) -> list[dict[str, Any]]:
+        """Return the key's deliveries: asked of Parcel, unless another screen of the same account just did.
+
+        A cycle a config save started (`fresh`) always asks: the owner may have just fixed something on Parcel's side.
+        """
+        answered = self._answers.get(api_key)
+        if not fresh and answered is not None and now - answered[0] < MIN_GAP_S:
+            return answered[1]
+        deliveries = self._deliveries(api_key)
+        self._answers = {key: answer for key, answer in self._answers.items() if now - answer[0] < MIN_GAP_S}
+        self._answers[api_key] = (now, deliveries)
+        return deliveries
 
     def _previous(self, device_id: str) -> dict[str, Any] | None:
         """Return the device's stored ParcelList, or None if it has none (or an unreadable one)."""

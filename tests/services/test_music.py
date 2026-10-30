@@ -14,12 +14,13 @@ from broker.clients import apple_music
 from broker.db import db
 from broker.models import AppleMusicPlay, AppleMusicToken
 from broker.services import music
+from tests.conftest import account_of
 from tests.conftest import apple_song as song
 
 
 def _connect(app, device_id):
     with app.app_context():
-        stored = AppleMusicToken(device_id=device_id, seen_ids=[])
+        stored = AppleMusicToken(user_id=account_of(device_id), seen_ids=[])
         stored.token = "user-token"
         db.session.add(stored)
         db.session.commit()
@@ -84,7 +85,7 @@ def test_the_top_lists_count_the_logged_plays(app, register_device):
         for song_id in ("1", "1", "2"):
             db.session.add(
                 AppleMusicPlay(
-                    device_id=device_id,
+                    user_id=account_of(device_id),
                     played_at=datetime.now(UTC),
                     song_id=song_id,
                     artist="Flume",

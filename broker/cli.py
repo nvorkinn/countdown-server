@@ -116,9 +116,9 @@ def owner(device_id: str, user: str) -> None:
 
 @devices.command()
 @click.argument("device_id")
-@click.option("--config", "wipe_config", is_flag=True, help="Also reset its settings and linked accounts.")
+@click.option("--config", "wipe_config", is_flag=True, help="Also reset its settings.")
 def unpair(device_id: str, *, wipe_config: bool) -> None:
-    """Make a device show a pairing code again."""
+    """Make a device show a pairing code again. Its owner's linked services stay with their account."""
     device = _get_device(device_id)
     device.paired_at = None
     device.owner = None
@@ -129,15 +129,9 @@ def unpair(device_id: str, *, wipe_config: bool) -> None:
         device.config = None
         db.session.flush()
         device.config = DeviceConfig()
-        device.spotify_token = None
-        device.glowmarkt_credentials = None
-        device.github_token = None
-        device.parcel_key = None
-        device.apple_music_token = None
-        device.apple_music_plays = []
     db.session.commit()
-    # Its data in the store, so the next owner never sees the last one's. With its accounts kept (no --config), the
-    # providers write their keys again from them.
+    # Its data in the store, so the next owner never sees the last one's. The services it showed are its last owner's
+    # account's and stay with them; the providers write its keys again from its next owner's.
     device_keys.forget(device_id)
     if wipe_config:
         frame_record.forget(device_id)

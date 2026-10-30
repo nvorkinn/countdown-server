@@ -16,6 +16,7 @@ from broker.providers import music
 from broker.providers.developer import pace_key, stored_key
 from broker.providers.glow import energy_key
 from broker.services import config_store, device_keys, frame_record
+from tests.conftest import account_of
 
 GLOWMARKT = {"interval": "15", "glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"}
 
@@ -220,7 +221,7 @@ def test_removing_the_parcel_key_deletes_the_parcel_providers_keys_only(app, sto
 
     assert _left(store, device_id) == EVERYTHING - {"parcels", "parcels-status"}
     with app.app_context():
-        assert db.session.get(ParcelKey, device_id) is None
+        assert db.session.get(ParcelKey, account_of(device_id)) is None
 
 
 def test_disconnecting_github_deletes_the_developer_panel_only(app, store, paired_client):
@@ -232,13 +233,13 @@ def test_disconnecting_github_deletes_the_developer_panel_only(app, store, paire
 
     assert _left(store, device_id) == EVERYTHING - {"developer", "pace"}
     with app.app_context():
-        assert db.session.get(GitHubToken, device_id) is None
+        assert db.session.get(GitHubToken, account_of(device_id)) is None
 
 
 def test_disconnecting_spotify_deletes_the_music_only(app, store, paired_client):
     client, device_id, _ = paired_client
     with app.app_context():
-        db.session.add(SpotifyToken(device_id=device_id, refresh_token="refresh"))
+        db.session.add(SpotifyToken(user_id=account_of(device_id), refresh_token="refresh"))
         db.session.commit()
     _provide(store, device_id)
 
@@ -292,7 +293,7 @@ def test_a_redis_that_cant_be_asked_still_lets_the_glowmarkt_account_be_cleared(
 
     assert response.status_code == 302
     with app.app_context():
-        assert db.session.get_one(GlowmarktCredentials, device_id).sign_in() is None
+        assert db.session.get_one(GlowmarktCredentials, account_of(device_id)).sign_in() is None
     assert logged.warning.call_args.args == (
         "Couldn't delete a device's data from Redis (%s); it lapses by its TTL",
         "ConnectionError",

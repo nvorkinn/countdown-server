@@ -80,12 +80,12 @@ makes it safe for the broker to trust them. The broker has no user table: the ui
 | **Pairing code** | `flask devices code` / `unpair` | `pairing_codes`, and `v1:pairing:<device id>` for the pool to draw | 6 characters, 10 minutes, one use. |
 | **Spotify tokens** | Spotify OAuth, `/auth/spotify/callback` | `spotify_tokens`, plaintext | Refreshed by the music provider. |
 | **Apple Music user token** | MusicKit JS on the settings page | `apple_music_tokens`, encrypted | Lasts about six months, can't be refreshed: cleared when Apple refuses it. |
-| **Glowmarkt password** | the owner, on the settings page | `glowmarkt_credentials`, encrypted | Never leaves the broker's image: the glow provider signs in with it. |
-| **Parcel API key** | the owner, on the settings page | `parcel_keys`, encrypted | From the owner's own Parcel Premium account (web.parcelapp.net). Read through `services/parcel_key.get_parcel_api_key`; never sent to the browser or logged. |
-| **GitHub token** | the owner, on the settings page | `github_tokens`, encrypted | A read-only fine-grained PAT, used only by the developer provider. |
+| **Glowmarkt password** | the owner, on the settings page (for their account) | `glowmarkt_credentials`, encrypted | Never leaves the broker's image: the glow provider signs in with it. |
+| **Parcel API key** | the owner, on the settings page (for their account) | `parcel_keys`, encrypted | From the owner's own Parcel Premium account (web.parcelapp.net). Read through `services/parcel_key.get_parcel_api_key`; never sent to the browser or logged. |
+| **GitHub token** | the owner, on the settings page (for their account) | `github_tokens`, encrypted | A read-only fine-grained PAT, used only by the developer provider. |
 | **`CREDENTIAL_ENCRYPTION_KEY`** | operator | `secrets/<environment>/broker.env` | The Fernet key for the encrypted columns. Changing it makes them unreadable. |
 | **App keys** | operator | `secrets/<environment>/broker.env` | Spotify client id and secret, the MusicKit key (signs Apple developer tokens), `TFL_APP_KEY` (only for the settings page's stop search). |
-| **`FLASK_SECRET_KEY`** | operator | `secrets/<environment>/broker.env` | Signs the session cookie, which holds only the Spotify OAuth state (and which screen it's for) and the GitHub dashboard's CSRF token. |
+| **`FLASK_SECRET_KEY`** | operator | `secrets/<environment>/broker.env` | Signs the session cookie, which holds only the Spotify OAuth state (and which screen's page to go back to) and the GitHub dashboard's CSRF token. |
 | **`STATUS_TOKEN`** | operator | `secrets/<environment>/broker.env` | Bearer for `GET /api/status/devices`. |
 | **GitHub App sign-in** | the dashboard's user, through Connect GitHub | `github_app_tokens`, encrypted | Acts as them for 8 hours, renewed for 6 months. The `/github` dashboard's only GitHub access. |
 | **`GITHUB_APP_CLIENT_SECRET`**, **`GITHUB_APP_WEBHOOK_SECRET`** | operator | `secrets/<environment>/broker.env` | The dashboard's GitHub App: signing in, and checking its webhook's signature. |
@@ -257,7 +257,7 @@ save, broker restart or `flask config publish`.
 - `flask devices forget` deletes the device and everything hanging off it, and its keys in Redis. The screen's next
   poll is a `401`, so it registers again as a new device with the same pairing token; its owner pairs it again.
 - `flask devices unpair` clears the owner and issues a new code, which the pool draws. `--config` also resets the
-  settings and linked accounts and deletes the frame.
+  settings and deletes the frame. The linked services are the owner's account's, so they stay.
 
 ## Pace
 

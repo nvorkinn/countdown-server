@@ -172,6 +172,15 @@ def current_user() -> str | None:
     return request.headers.get(current_app.config["USER_HEADER"], "").strip() or None
 
 
+def signed_in_user() -> str:
+    """Return the signed-in user's id, in a view only they reach (require_paired_user has turned anyone else away)."""
+    user_id = current_user()
+    if user_id is None:  # pragma: no cover -- the view's decorator has already answered 401
+        msg = "no signed-in user"
+        raise RuntimeError(msg)
+    return user_id
+
+
 def current_username() -> str | None:
     """Return the signed-in user's username, from the header the login proxy sets next to the user id.
 

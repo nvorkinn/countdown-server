@@ -39,12 +39,8 @@ class Device(Model):
 
     config: Mapped[DeviceConfig | None] = relationship(back_populates="device", cascade="all, delete-orphan")
     pairing_codes: Mapped[list[PairingCode]] = relationship(back_populates="device", cascade="all, delete-orphan")
-    spotify_token: Mapped[SpotifyToken | None] = relationship(cascade="all, delete-orphan")
-    glowmarkt_credentials: Mapped[GlowmarktCredentials | None] = relationship(cascade="all, delete-orphan")
-    github_token: Mapped[GitHubToken | None] = relationship(cascade="all, delete-orphan")
-    parcel_key: Mapped[ParcelKey | None] = relationship(cascade="all, delete-orphan")
-    apple_music_token: Mapped[AppleMusicToken | None] = relationship(cascade="all, delete-orphan")
-    apple_music_plays: Mapped[list[AppleMusicPlay]] = relationship(cascade="all, delete-orphan")
+    # The services a screen shows (Spotify, Apple Music, GitHub, Parcel, Glowmarkt) are linked to its owner's account,
+    # not to the screen: see SpotifyToken and the rest, keyed by user_id.
     assignment: Mapped[RendererAssignment | None] = relationship(back_populates="device", cascade="all, delete-orphan")
 
 
@@ -201,13 +197,17 @@ class DeviceConfig(Model):
     layout: Mapped[Layout | None] = mapped_column(String)
     # A UK postcode ("SW1A 1AA") or a Norwegian one ("0150"); see pages.normalize_postcode.
     postcode: Mapped[str] = mapped_column(String, default="", server_default=text("''"))
+    # Whether the screen shows each service; the service itself is linked to the owner's account (SpotifyToken etc.),
+    # so one link serves all their screens and each screen picks which it shows.
     spotify_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # Apple Music in the Spotify area, beside Spotify or instead of it (see clients/apple_music.py).
     apple_music_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # The developer panel: GitHub pull requests and builds, and AI plans (see broker/providers/developer.py).
     developer_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
-    # The parcels panel: on while a Parcel API key is saved (ParcelKey), set and cleared with it.
+    # The parcels panel, shown while the owner's account has a Parcel API key (ParcelKey).
     parcels_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    # The energy panel, shown while the owner's account has a usable Glowmarkt login (GlowmarktCredentials.sign_in).
+    energy_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # Every departure stop, in the owner's order: despite the name, TfL NaPTAN ids and Entur ids (NSR:...) mixed; the
     # id says which (services/stops.py).
     tfl_stop_ids: Mapped[list[str]] = mapped_column(JSON, default=list, server_default=text("'[]'"))
@@ -240,11 +240,12 @@ def layout_choices(config: DeviceConfig) -> dict[Layout, tuple[str, str]] | None
 
 
 class SpotifyToken(Model):
-    """The Spotify account linked to a device: its OAuth tokens."""
+    """The Spotify account linked to a user's account: its OAuth tokens."""
 
     __tablename__ = "spotify_tokens"
 
-    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"), primary_key=True)
+    # The Authentik user id (auth.current_user) whose account it is, as Device.owner names them.
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
     refresh_token: Mapped[str] = mapped_column(String)
     access_token: Mapped[str | None] = mapped_column(String)
     # A Unix timestamp, as Spotify's expires_in is counted from "now".
@@ -252,11 +253,11 @@ class SpotifyToken(Model):
 
 
 class GlowmarktCredentials(Model):
-    """The Glowmarkt account linked to a device, its password encrypted at rest."""
+    """The Glowmarkt account linked to a user's account, its password encrypted at rest."""
 
     __tablename__ = "glowmarkt_credentials"
 
-    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
     username: Mapped[str] = mapped_column(String, default="", server_default=text("''"))
     password_encrypted: Mapped[str | None] = mapped_column(String)
 
@@ -283,14 +284,14 @@ class GlowmarktCredentials(Model):
 
 
 class GitHubToken(Model):
-    """The GitHub token the owner gave for a device's developer panel, encrypted at rest.
+    """The GitHub token a user gave for their screens' developer panel, encrypted at rest.
 
     A read-only fine-grained personal access token, used only by the developer provider.
     """
 
     __tablename__ = "github_tokens"
 
-    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
     token_encrypted: Mapped[str] = mapped_column(String)
 
     @property
@@ -304,15 +305,15 @@ class GitHubToken(Model):
 
 
 class ParcelKey(Model):
-    """The Parcel API key the owner gave for a device's parcels panel, encrypted at rest.
+    """The Parcel API key a user gave for their screens' parcels panel, encrypted at rest.
 
-    Issued from the owner's own Parcel Premium account (web.parcelapp.net); only the parcel provider uses it, to read
-    their active deliveries. Having one is what switches the panel on (`parcels.enabled`).
+    Issued from their own Parcel Premium account (web.parcelapp.net); only the parcel provider uses it, to read their
+    active deliveries. A screen shows the panel while it has one and its parcels_enabled is on (`parcels.enabled`).
     """
 
     __tablename__ = "parcel_keys"
 
-    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
     key_encrypted: Mapped[str] = mapped_column(String)
 
     @property
@@ -361,7 +362,7 @@ class GitHubAppToken(Model):
 
 
 class AppleMusicToken(Model):
-    """The Apple Music account linked to a device: its Music User Token, encrypted at rest.
+    """The Apple Music account linked to a user's account: its Music User Token, encrypted at rest.
 
     MusicKit JS gets the token on the config page when the listener signs in to Apple; it lasts about six months and
     can't be refreshed, so it is cleared when Apple refuses it and the page asks them to connect again. The row stays,
@@ -370,7 +371,7 @@ class AppleMusicToken(Model):
 
     __tablename__ = "apple_music_tokens"
 
-    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
     token_encrypted: Mapped[str | None] = mapped_column(String)
     # The recently played songs' ids, newest first, as last read: new plays are the ones ahead of them.
     seen_ids: Mapped[list[str]] = mapped_column(JSON, default=list, server_default=text("'[]'"))
@@ -386,12 +387,12 @@ class AppleMusicToken(Model):
 
 
 class AppleMusicPlay(Model):
-    """One play of a song seen in a device's Apple Music history, which the top lists are counted from."""
+    """One play of a song seen in a user's Apple Music history, which the top lists are counted from."""
 
     __tablename__ = "apple_music_plays"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"), index=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
     # When the broker first saw it, which is within a poll of when it was played.
     played_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
     song_id: Mapped[str] = mapped_column(String)

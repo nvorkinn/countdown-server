@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 from broker.clients import spotify as spotify_module
 from broker.db import db
 from broker.models import SpotifyToken
+from tests.conftest import account_of
 
 
 def _mock_response(json_data=None, status_code=200, content=b"{}"):
@@ -17,7 +18,9 @@ def _mock_response(json_data=None, status_code=200, content=b"{}"):
 
 def _link_spotify(device_id):
     db.session.add(
-        SpotifyToken(device_id=device_id, refresh_token="refresh", access_token="access", expires_at=time.time() + 3600)
+        SpotifyToken(
+            user_id=account_of(device_id), refresh_token="refresh", access_token="access", expires_at=time.time() + 3600
+        )
     )
     db.session.commit()
 
@@ -105,7 +108,7 @@ def test_get_queue_refreshes_expired_token(app, paired_client):
     with app.app_context():
         db.session.add(
             SpotifyToken(
-                device_id=device_id,
+                user_id=account_of(device_id),
                 refresh_token="old-refresh",
                 access_token="old-access",
                 expires_at=time.time() - 100,
@@ -126,7 +129,7 @@ def test_get_queue_refreshes_expired_token(app, paired_client):
         assert refresh.call_args.kwargs["data"]["grant_type"] == "refresh_token"
         assert refresh.call_args.kwargs["data"]["refresh_token"] == "old-refresh"
         assert mocked.call_args.kwargs["headers"] == {"Authorization": "Bearer new-access"}
-        row = db.session.get_one(SpotifyToken, device_id)
+        row = db.session.get_one(SpotifyToken, account_of(device_id))
         assert row.access_token == "new-access"
         # Spotify didn't rotate the refresh token in this response - the old one must survive.
         assert row.refresh_token == "old-refresh"

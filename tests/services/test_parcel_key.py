@@ -1,4 +1,4 @@
-"""A device's Parcel API key: kept encrypted, read back by the parcel provider (broker/services/parcel_key.py)."""
+"""A user's Parcel API key: kept encrypted, read back for each of their screens (broker/services/parcel_key.py)."""
 
 from unittest.mock import Mock
 
@@ -9,12 +9,13 @@ from redis import ConnectionError as RedisConnectionError
 from redis import Redis
 
 from broker.db import db
-from broker.models import ParcelKey
+from broker.models import Device, ParcelKey
 from broker.services import parcel_key
+from tests.conftest import account_of
 
 
 def _save(device_id: str, key: str = "parcel-secret") -> None:
-    row = ParcelKey(device_id=device_id)
+    row = ParcelKey(user_id=account_of(device_id))
     row.key = key
     db.session.add(row)
     db.session.commit()
@@ -26,16 +27,33 @@ def test_the_provider_reads_the_key_decrypted(app, register_device):
         _save(device_id)
 
         assert parcel_key.get_parcel_api_key(db, device_id) == "parcel-secret"
-        assert db.session.get_one(ParcelKey, device_id).key_encrypted != "parcel-secret"
+        assert db.session.get_one(ParcelKey, account_of(device_id)).key_encrypted != "parcel-secret"
 
 
-def test_a_device_with_no_key_has_none_and_the_panel_off(app, register_device):
+def test_a_device_whose_owner_has_no_key_has_none(app, register_device):
     device_id, _ = register_device()
     with app.app_context():
         assert parcel_key.get_parcel_api_key(db, device_id) is None
-        assert not parcel_key.has_key(db, device_id)
+        assert not parcel_key.has_key(db, account_of(device_id))
         _save(device_id)
-        assert parcel_key.has_key(db, device_id)
+        assert parcel_key.has_key(db, account_of(device_id))
+
+
+def test_every_screen_of_the_owner_reads_their_one_key(app, register_device):
+    first, _ = register_device("a-very-long-device-secret-first")
+    second, _ = register_device("a-very-long-device-secret-second")
+    with app.app_context():
+        _save(first)
+        db.session.get_one(Device, second).owner = account_of(first)
+        db.session.commit()
+
+        assert parcel_key.get_parcel_api_key(db, second) == "parcel-secret"
+
+
+def test_a_device_nobody_owns_has_no_key(app, register_device):
+    device_id, _ = register_device()
+    with app.app_context():
+        assert parcel_key.get_parcel_api_key(db, device_id) is None
 
 
 @pytest.mark.parametrize("status", ["ok", "invalid_key", "rate_limited"])

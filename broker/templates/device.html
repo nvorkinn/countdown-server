@@ -241,6 +241,7 @@
 
     <div class="integrations">
         <p class="group-label">Integrations</p>
+        <p class="form-hint">Logins are your account's, for all your screens. The ticks pick what this screen shows.</p>
         <div class="integration-grid">
             <section class="section integration" data-tour="music">
                 <header class="card-header">
@@ -323,7 +324,10 @@
                     <h2 class="card-title">Parcels</h2>
                 </header>
                 <div class="service-row">
-                    <span class="service-name">Parcel</span>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="parcels_enabled" name="parcels_enabled" {% if config.parcels_enabled %}checked{% endif %}>
+                        <label for="parcels_enabled">Parcel</label>
+                    </div>
                     <div class="service-actions">
                         {% if parcel_linked %}
                             {% if parcel_status == 'ok' %}
@@ -361,6 +365,19 @@
                 <header class="card-header">
                     <h2 class="card-title">Energy</h2>
                 </header>
+                <div class="service-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="energy_enabled" name="energy_enabled" {% if config.energy_enabled %}checked{% endif %}>
+                        <label for="energy_enabled">Glowmarkt</label>
+                    </div>
+                    <div class="service-actions">
+                        {% if glowmarkt.has_password %}
+                            <span class="status-pill status-linked">Login saved</span>
+                        {% else %}
+                            <span class="status-pill status-unlinked">Not connected</span>
+                        {% endif %}
+                    </div>
+                </div>
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="glowmarkt_username">Glowmarkt username</label>
