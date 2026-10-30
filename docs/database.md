@@ -14,6 +14,7 @@ erDiagram
     devices ||--o{ apple_music_plays : "play log"
     devices ||--o| glowmarkt_credentials : "energy"
     devices ||--o| github_tokens : "developer panel"
+    devices ||--o| parcel_keys : "parcels panel"
 
     devices {
         string device_id PK "token_hex(6)"
@@ -88,6 +89,10 @@ erDiagram
         string device_id PK, FK
         string token_encrypted
     }
+    parcel_keys {
+        string device_id PK, FK
+        string key_encrypted
+    }
 ```
 
 | Table | One row per | Notes |
@@ -101,6 +106,7 @@ erDiagram
 | `apple_music_plays` | play seen | Apple Music has no top lists, so the music provider logs plays and counts them. |
 | `glowmarkt_credentials` | linked Glowmarkt account | The password is encrypted. |
 | `github_tokens` | developer panel token | Encrypted. |
+| `parcel_keys` | parcels panel Parcel API key | Encrypted. Saving one sets `device_config.parcels_enabled`, removing it clears it. |
 
 - **Encryption.** The encrypted columns use Fernet with `CREDENTIAL_ENCRYPTION_KEY`. The screen secret is stored as an
   unsalted SHA-256, which is enough for a long random string. The pairing token, pairing codes and Spotify tokens are

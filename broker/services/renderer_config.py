@@ -15,6 +15,7 @@ from countdown_api.models import (
     Developer,
     Glowmarkt,
     NoticeBoard,
+    Parcels,
     Screen,
     Spotify,
     Tfl,
@@ -83,6 +84,9 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
         # Only the switch, like the developer panel's: the Apple token stays here, and the music provider fills the
         # store the screen reads.
         apple_music=AppleMusic(enabled=config.apple_music_enabled),
+        # Only the switch, on while a Parcel API key is saved: the key stays here, and the parcel provider fills the
+        # store the screen reads.
+        parcels=Parcels(enabled=config.parcels_enabled),
         pairing_code=pairing_code,
     )
 
