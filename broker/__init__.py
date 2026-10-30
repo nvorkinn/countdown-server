@@ -10,6 +10,7 @@ from . import cli, config, log_format, request_log
 from . import db as db_module
 from .auth import current_username
 from .routes import (
+    account,
     apple_music_link,
     devices,
     frames,
@@ -69,6 +70,7 @@ def create_app() -> Flask:
     app.register_blueprint(spotify_oauth.bp)
     app.register_blueprint(apple_music_link.bp)
     app.register_blueprint(pages.bp)
+    app.register_blueprint(account.bp)
     app.register_blueprint(github_dashboard.bp)
     app.register_blueprint(github_webhook.bp)
     app.register_blueprint(stop_search.bp)

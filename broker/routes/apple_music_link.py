@@ -1,8 +1,8 @@
-"""Browser-facing Apple Music linking."""
+"""Browser-facing Apple Music linking, from the account page (routes/account.py)."""
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, current_app, g, jsonify, redirect, request, url_for
+from flask import Blueprint, current_app, jsonify, redirect, request, url_for
 
 from broker.auth import require_paired_user, signed_in_user
 from broker.clients import apple_music
@@ -16,8 +16,7 @@ if TYPE_CHECKING:
 bp = Blueprint("apple_music_link", __name__)
 
 
-@bp.get("/device/apple-music/developer-token", defaults={"device_id": None})
-@bp.get("/device/<device_id>/apple-music/developer-token")
+@bp.get("/account/apple-music/developer-token")
 @require_paired_user
 def developer_token() -> ResponseReturnValue:
     """Return the developer token and app name that MusicKit JS is configured with."""
@@ -26,8 +25,7 @@ def developer_token() -> ResponseReturnValue:
     return jsonify(developer_token=apple_music.developer_token(), app_name=current_app.config["APPLE_MUSIC_APP_NAME"])
 
 
-@bp.post("/device/apple-music/connect", defaults={"device_id": None})
-@bp.post("/device/<device_id>/apple-music/connect")
+@bp.post("/account/apple-music/connect")
 @require_paired_user
 def connect() -> ResponseReturnValue:
     """Store the Music User Token MusicKit JS got when the listener signed in to Apple, against their account."""
@@ -39,11 +37,10 @@ def connect() -> ResponseReturnValue:
     stored.token = token
     db.session.add(stored)
     db.session.commit()
-    return redirect(url_for("pages.device_config", device_id=g.device_id))
+    return redirect(url_for("account.account"))
 
 
-@bp.post("/device/apple-music/disconnect", defaults={"device_id": None})
-@bp.post("/device/<device_id>/apple-music/disconnect")
+@bp.post("/account/apple-music/disconnect")
 @require_paired_user
 def disconnect() -> ResponseReturnValue:
     """Forget the account's Apple Music token and the plays it logged, for all the user's screens."""
@@ -56,4 +53,4 @@ def disconnect() -> ResponseReturnValue:
     # What it last played, and the top lists counted from its plays: the music provider writes them again within a
     # minute for whatever is still linked.
     accounts.forget_keys(user_id, device_keys.music)
-    return redirect(url_for("pages.device_config", device_id=g.device_id))
+    return redirect(url_for("account.account"))

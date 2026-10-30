@@ -81,8 +81,7 @@ def test_the_forms_on_a_page_point_at_that_screen(client, two_screens):
     page = client.get(f"/device/{first}").data.decode()
 
     assert f'action="/device/{first}"' in page
-    assert f'action="/device/{first}/spotify/disconnect"' in page
-    assert f"/auth/spotify/login?device={first}" in page
+    assert f'action="/device/{first}/display/unlink"' in page
 
 
 def test_saving_one_screen_leaves_the_other_alone(app, client, two_screens):
@@ -120,7 +119,7 @@ def test_disconnecting_spotify_unlinks_the_account_and_unlinking_acts_on_the_cho
         db.session.get_one(Device, second).display_secret_hash = "b" * 64
         db.session.commit()
 
-    assert client.post(f"/device/{first}/spotify/disconnect").headers["Location"] == f"/device/{first}"
+    assert client.post("/account/spotify/disconnect").headers["Location"] == "/account"
     assert client.post(f"/device/{first}/display/unlink").headers["Location"] == f"/device/{first}"
 
     with app.app_context():
@@ -149,7 +148,6 @@ def test_a_second_screen_is_named_on_its_own_page(app, client, two_screens):
         ("post", ""),
         ("get", "/name"),
         ("post", "/name"),
-        ("post", "/spotify/disconnect"),
         ("post", "/display/unlink"),
     ],
 )
@@ -216,47 +214,31 @@ def _callback(client, state):
         return client.get(f"/auth/spotify/callback?code=abc&state={state}")
 
 
-def test_spotify_links_to_the_account_and_returns_to_the_screen_the_login_was_started_for(app, client, two_screens):
+def test_spotify_links_to_the_account_and_returns_to_the_account_page(app, client, two_screens):
     first, second = two_screens
-    state = client.get(f"/auth/spotify/login?device={first}").headers["Location"].split("state=")[1].split("&")[0]
+    state = client.get("/auth/spotify/login").headers["Location"].split("state=")[1].split("&")[0]
 
     response = _callback(client, state)
 
-    assert response.headers["Location"] == f"/device/{first}"
+    assert response.headers["Location"] == "/account"
     with app.app_context():
         # One account, so one link both screens share.
         assert account_of(first) == account_of(second) == USER
         assert db.session.get(SpotifyToken, USER) is not None
 
 
-def test_spotify_login_without_a_device_uses_the_most_recent_screen(app, client, two_screens):
-    _, second = two_screens
+def test_spotify_callback_refuses_a_user_who_no_longer_has_a_screen(app, client, two_screens):
     state = client.get("/auth/spotify/login").headers["Location"].split("state=")[1].split("&")[0]
-
-    assert _callback(client, state).headers["Location"] == f"/device/{second}"
-
-
-def test_spotify_login_refuses_someone_elses_screen(app, client, two_screens, other_screen):
-    response = client.get(f"/auth/spotify/login?device={other_screen}")
-
-    assert response.headers["Location"] == "/pair"
     with app.app_context():
-        assert db.session.get(SpotifyToken, account_of(other_screen)) is None
-
-
-def test_spotify_callback_refuses_a_screen_the_user_no_longer_owns(app, client, two_screens):
-    first, _ = two_screens
-    state = client.get(f"/auth/spotify/login?device={first}").headers["Location"].split("state=")[1].split("&")[0]
-    with app.app_context():
-        db.session.get_one(Device, first).owner = "user-2"
+        for device_id in two_screens:
+            db.session.get_one(Device, device_id).owner = "user-2"
         db.session.commit()
 
     response = _callback(client, state)
 
     with app.app_context():
-        assert db.session.get(SpotifyToken, account_of(first)) is None
-    assert response.status_code == 302
-    assert response.headers["Location"] != f"/device/{first}"
+        assert db.session.get(SpotifyToken, USER) is None
+    assert response.headers["Location"] == "/pair"
 
 
 def test_spotify_login_needs_a_signed_in_user(anonymous_client):
@@ -287,11 +269,16 @@ def test_a_screen_with_no_name_is_called_screen_and_its_id(client, two_screens):
 def test_a_login_saved_on_one_screen_is_every_screens_and_each_picks_what_it_shows(app, client, two_screens):
     first, second = two_screens
 
-    client.post(f"/device/{first}", data={"github_token": "ghp_shared", "developer_enabled": "on"})
+    client.post("/account", data={"github_token": "ghp_shared"})
+    client.post(f"/device/{first}", data={"developer_enabled": "on"})
 
     # The second screen's page shows the token as saved, and its own switch still off.
     page = client.get(f"/device/{second}").data.decode()
-    assert "GitHub connected" in page
+    assert re.search(
+        r'<label for="developer_enabled">GitHub</label>\s*</div>\s*<div class="service-actions">\s*'
+        r'<span class="status-pill status-linked">Connected</span>',
+        page,
+    )
     assert not re.search(r'id="developer_enabled"[^>]*checked', page)
     with app.app_context():
         assert db.session.get_one(GitHubToken, USER).token == "ghp_shared"
@@ -300,8 +287,35 @@ def test_a_login_saved_on_one_screen_is_every_screens_and_each_picks_what_it_sho
 
 
 def test_another_users_screen_never_sees_the_accounts_logins(app, client, two_screens, other_screen):
-    client.post(f"/device/{two_screens[0]}", data={"parcel_api_key": "parcel-mine", "parcels_enabled": "on"})
+    client.post("/account", data={"parcel_api_key": "parcel-mine"})
+    client.post(f"/device/{two_screens[0]}", data={"parcels_enabled": "on"})
 
     with app.app_context():
         assert account_of(other_screen) == "user-2"
         assert db.session.get(ParcelKey, "user-2") is None
+
+
+def test_the_account_page_is_marked_in_the_sidebar_rather_than_a_screen(client, two_screens):
+    first, _ = two_screens
+
+    page = client.get("/account").data.decode()
+
+    assert '<a href="/account" class="nav-heading nav-account current" aria-current="page">Account</a>' in page
+    assert 'class="current"' not in page
+    on_a_screen = client.get(f"/device/{first}").data.decode()
+    assert '<a href="/account" class="nav-heading nav-account">Account</a>' in on_a_screen
+
+
+def test_a_login_change_draws_all_the_users_screens_again_and_no_change_none(client, fake_redis, two_screens):
+    fake_redis.jobs.clear()  # pairing's
+    client.post("/account", data={"glowmarkt_username": ""})
+    assert fake_redis.jobs == []
+
+    assert client.post("/account", data={"github_token": "ghp_new"}).headers["Location"] == "/account"
+
+    assert sorted(fake_redis.jobs) == sorted(two_screens)
+
+
+def test_the_account_page_needs_a_screen(client, anonymous_client):
+    assert client.get("/account").headers["Location"] == "/pair"
+    assert anonymous_client.get("/account").status_code == 401

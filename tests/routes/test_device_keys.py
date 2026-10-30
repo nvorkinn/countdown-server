@@ -154,10 +154,10 @@ def test_giving_the_device_an_owner_deletes_its_data_unless_it_was_theirs(store,
 
 def test_clearing_the_glowmarkt_account_deletes_the_energy_readings_only(store, paired_client):
     client, device_id, _ = paired_client
-    client.post("/device", data=GLOWMARKT)
+    client.post("/account", data=GLOWMARKT)
     _provide(store, device_id)
 
-    assert client.post("/device", data={"interval": "15", "glowmarkt_username": ""}).status_code == 302
+    assert client.post("/account", data={"interval": "15", "glowmarkt_username": ""}).status_code == 302
 
     assert _left(store, device_id) == EVERYTHING - {"energy"}
 
@@ -169,10 +169,10 @@ def test_clearing_the_glowmarkt_account_deletes_the_energy_readings_only(store, 
 )
 def test_another_glowmarkt_account_deletes_the_last_ones_readings(store, paired_client, change):
     client, device_id, _ = paired_client
-    client.post("/device", data=GLOWMARKT)
+    client.post("/account", data=GLOWMARKT)
     _provide(store, device_id)
 
-    client.post("/device", data=GLOWMARKT | change)
+    client.post("/account", data=GLOWMARKT | change)
 
     assert "energy" not in _left(store, device_id)
 
@@ -181,23 +181,23 @@ def test_another_glowmarkt_account_deletes_the_last_ones_readings(store, paired_
 def test_saving_the_same_glowmarkt_account_keeps_its_readings(store, paired_client, password):
     """The provider has nothing new to fetch for it, so deleting them would blank the panel until its next tick."""
     client, device_id, _ = paired_client
-    client.post("/device", data=GLOWMARKT)
+    client.post("/account", data=GLOWMARKT)
     _provide(store, device_id)
 
-    client.post("/device", data=GLOWMARKT | {"glowmarkt_password": password})
+    client.post("/account", data=GLOWMARKT | {"glowmarkt_password": password})
 
     assert _left(store, device_id) == EVERYTHING
 
 
 def test_another_github_token_deletes_the_developer_panel_but_the_same_one_keeps_it(store, paired_client):
     client, device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "github_token": "github_pat_one"})
+    client.post("/account", data={"interval": "15", "github_token": "github_pat_one"})
     _provide(store, device_id)
 
-    client.post("/device", data={"interval": "15", "github_token": "github_pat_one"})
+    client.post("/account", data={"interval": "15", "github_token": "github_pat_one"})
     assert _left(store, device_id) == EVERYTHING
 
-    client.post("/device", data={"interval": "15", "github_token": "github_pat_two"})
+    client.post("/account", data={"interval": "15", "github_token": "github_pat_two"})
     assert _left(store, device_id) == EVERYTHING - {"developer", "pace"}
 
 
@@ -208,16 +208,16 @@ def test_posting_a_parcel_key_clears_the_parcel_providers_keys_but_a_blank_one_d
     client.post("/device", data={"interval": "15"})
     assert _left(store, device_id) == EVERYTHING
 
-    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-one"})
+    client.post("/account", data={"interval": "15", "parcel_api_key": "parcel-one"})
     assert _left(store, device_id) == EVERYTHING - {"parcels", "parcels-status"}
 
 
 def test_removing_the_parcel_key_deletes_the_parcel_providers_keys_only(app, store, paired_client):
     client, device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-one"})
+    client.post("/account", data={"interval": "15", "parcel_api_key": "parcel-one"})
     _provide(store, device_id)
 
-    assert client.post("/device/parcel/disconnect").status_code == 302
+    assert client.post("/account/parcel/disconnect").status_code == 302
 
     assert _left(store, device_id) == EVERYTHING - {"parcels", "parcels-status"}
     with app.app_context():
@@ -226,10 +226,10 @@ def test_removing_the_parcel_key_deletes_the_parcel_providers_keys_only(app, sto
 
 def test_disconnecting_github_deletes_the_developer_panel_only(app, store, paired_client):
     client, device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "github_token": "github_pat_one"})
+    client.post("/account", data={"interval": "15", "github_token": "github_pat_one"})
     _provide(store, device_id)
 
-    assert client.post("/device/github/disconnect").status_code == 302
+    assert client.post("/account/github/disconnect").status_code == 302
 
     assert _left(store, device_id) == EVERYTHING - {"developer", "pace"}
     with app.app_context():
@@ -243,17 +243,17 @@ def test_disconnecting_spotify_deletes_the_music_only(app, store, paired_client)
         db.session.commit()
     _provide(store, device_id)
 
-    assert client.post("/device/spotify/disconnect").status_code == 302
+    assert client.post("/account/spotify/disconnect").status_code == 302
 
     assert _left(store, device_id) == EVERYTHING - {"player", "top"}
 
 
 def test_disconnecting_apple_music_deletes_the_music_only(store, paired_client, musickit):
     client, device_id, _ = paired_client
-    client.post("/device/apple-music/connect", data={"music_user_token": "mut"})
+    client.post("/account/apple-music/connect", data={"music_user_token": "mut"})
     _provide(store, device_id)
 
-    assert client.post("/device/apple-music/disconnect").status_code == 302
+    assert client.post("/account/apple-music/disconnect").status_code == 302
 
     assert _left(store, device_id) == EVERYTHING - {"player", "top"}
 
@@ -286,10 +286,10 @@ def test_a_redis_that_cant_be_asked_still_lets_the_device_be_forgotten(app, pair
 @pytest.mark.usefixtures("redis_down")
 def test_a_redis_that_cant_be_asked_still_lets_the_glowmarkt_account_be_cleared(app, paired_client):
     client, device_id, _ = paired_client
-    client.post("/device", data=GLOWMARKT)
+    client.post("/account", data=GLOWMARKT)
 
     with patch.object(device_keys, "logger") as logged:
-        response = client.post("/device", data={"interval": "15", "glowmarkt_username": ""})
+        response = client.post("/account", data={"interval": "15", "glowmarkt_username": ""})
 
     assert response.status_code == 302
     with app.app_context():

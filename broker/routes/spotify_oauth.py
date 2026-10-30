@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from flask import Blueprint, redirect, request, session, url_for
 
-from broker.auth import current_user, user_devices
+from broker.auth import current_user, require_paired_user, user_devices
 from broker.clients import spotify
 
 if TYPE_CHECKING:
@@ -14,32 +14,18 @@ if TYPE_CHECKING:
 bp = Blueprint("spotify_oauth", __name__, url_prefix="/auth/spotify")
 
 
-def _owned(device_id: str | None) -> str | None:
-    """Return the device to link: the one asked for if it's the signed-in user's, else their most recently paired."""
-    owned = [device.device_id for device in user_devices()]
-    if device_id in owned:
-        return device_id
-    return None if device_id or not owned else owned[0]
-
-
 @bp.get("/login")
+@require_paired_user
 def login() -> ResponseReturnValue:
-    """Send the signed-in user to Spotify to link it to their account, from one of their screens' pages."""
-    if current_user() is None:
-        return "Sign in required.", 401
-    device_id = _owned(request.args.get("device"))
-    if device_id is None:
-        return redirect(url_for("pages.pair"))
+    """Send the signed-in user to Spotify to link it to their account, from the account page."""
     state = secrets.token_urlsafe(16)
     session["spotify_oauth_state"] = state
-    # The screen to come back to survives the round trip to Spotify here, not in the URL Spotify gets back.
-    session["spotify_oauth_device"] = device_id
     return redirect(spotify.authorize_url(state))
 
 
 @bp.get("/callback")
 def callback() -> ResponseReturnValue:
-    """Store the tokens Spotify hands back against the signed-in user's account, and go back to the screen's page."""
+    """Store the tokens Spotify hands back against the signed-in user's account, and go back to the account page."""
     error = request.args.get("error")
     if error:
         return f"Spotify authorization failed: {error}", 400
@@ -47,11 +33,10 @@ def callback() -> ResponseReturnValue:
     if request.args.get("state") != session.pop("spotify_oauth_state", None):
         return "Invalid or expired login attempt, please try connecting again.", 400
 
-    # Checked again: the user may have lost the screen, or signed in as someone else, since they left.
+    # Checked again: the user may have lost their screens, or signed out, since they left.
     user_id = current_user()
-    device_id = _owned(session.pop("spotify_oauth_device", None))
-    if user_id is None or not device_id:
+    if user_id is None or not user_devices():
         return redirect(url_for("pages.pair"))
 
     spotify.exchange_code(user_id, request.args.get("code"))
-    return redirect(url_for("pages.device_config", device_id=device_id))
+    return redirect(url_for("account.account"))

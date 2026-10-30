@@ -467,7 +467,7 @@ def test_disconnect_removes_stored_token(app, paired_client):
         db.session.add(SpotifyToken(user_id=account_of(device_id), refresh_token="refresh"))
         db.session.commit()
 
-    response = client.post("/device/spotify/disconnect")
+    response = client.post("/account/spotify/disconnect")
     assert response.status_code == 302
 
     with app.app_context():
@@ -475,15 +475,15 @@ def test_disconnect_removes_stored_token(app, paired_client):
 
 
 def test_disconnect_requires_pairing(client):
-    response = client.post("/device/spotify/disconnect")
+    response = client.post("/account/spotify/disconnect")
     assert response.status_code == 302
     assert response.headers["Location"] == "/pair"
 
 
-def test_device_config_post_stores_encrypted_glowmarkt_password(app, paired_client):
+def test_the_account_stores_the_glowmarkt_password_encrypted(app, paired_client):
     client, device_id, _ = paired_client
     response = client.post(
-        "/device",
+        "/account",
         data={"interval": "15", "glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"},
     )
     assert response.status_code == 302
@@ -494,24 +494,27 @@ def test_device_config_post_stores_encrypted_glowmarkt_password(app, paired_clie
         assert creds.password_encrypted not in (None, "hunter2")
 
 
-def test_device_config_get_never_shows_saved_password(paired_client):
+def test_the_account_page_never_shows_the_saved_glowmarkt_password(paired_client):
     client, _device_id, _ = paired_client
     client.post(
-        "/device", data={"interval": "15", "glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"}
+        "/account",
+        data={"interval": "15", "glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"},
     )
 
-    response = client.get("/device")
+    response = client.get("/account")
     assert b"hunter2" not in response.data
     assert b"someone@example.com" in response.data
-    assert b"Saved" in response.data
+    assert b"Leave blank to keep it" in response.data
+    assert b"hunter2" not in client.get("/device").data
 
 
-def test_device_config_post_blank_password_keeps_existing_one(app, paired_client):
+def test_a_blank_glowmarkt_password_keeps_the_saved_one(app, paired_client):
     client, device_id, _ = paired_client
     client.post(
-        "/device", data={"interval": "15", "glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"}
+        "/account",
+        data={"interval": "15", "glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"},
     )
-    client.post("/device", data={"interval": "15", "glowmarkt_username": "someone-else@example.com"})
+    client.post("/account", data={"interval": "15", "glowmarkt_username": "someone-else@example.com"})
 
     with app.app_context():
         creds = db.session.get_one(GlowmarktCredentials, account_of(device_id))
@@ -530,7 +533,7 @@ def test_unpairing_a_device_revokes_the_user_that_paired_it(paired_client, cli):
     cli("unpair", device_id)
 
     assert _redirects_to_pair(client.get("/device"))
-    assert _redirects_to_pair(client.post("/device/spotify/disconnect"))
+    assert _redirects_to_pair(client.post("/account/spotify/disconnect"))
     assert _redirects_to_pair(client.get("/"))
 
 
@@ -1211,10 +1214,11 @@ def test_about_page_pictures_are_all_there(anonymous_client):
         assert response.mimetype in {"image/png", "image/jpeg"}
 
 
-def test_device_config_post_switches_the_developer_panel_and_stores_the_github_token_encrypted(app, paired_client):
+def test_a_screen_switches_the_developer_panel_and_the_account_stores_the_github_token_encrypted(app, paired_client):
     client, device_id, _ = paired_client
 
-    client.post("/device", data={"interval": "15", "developer_enabled": "on", "github_token": " github_pat_abc "})
+    client.post("/account", data={"github_token": " github_pat_abc "})
+    client.post("/device", data={"interval": "15", "developer_enabled": "on"})
 
     with app.app_context():
         assert db.session.get_one(DeviceConfig, device_id).developer_enabled
@@ -1225,7 +1229,7 @@ def test_device_config_post_switches_the_developer_panel_and_stores_the_github_t
 
 def test_device_config_post_blank_github_token_keeps_the_saved_one(app, paired_client):
     client, device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "github_token": "github_pat_abc"})
+    client.post("/account", data={"interval": "15", "github_token": "github_pat_abc"})
 
     client.post("/device", data={"interval": "15"})
 
@@ -1234,21 +1238,21 @@ def test_device_config_post_blank_github_token_keeps_the_saved_one(app, paired_c
         assert db.session.get_one(GitHubToken, account_of(device_id)).token == "github_pat_abc"
 
 
-def test_device_config_get_never_shows_the_github_token(paired_client):
+def test_the_pages_never_show_the_github_token(paired_client):
     client, _device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "github_token": "github_pat_abc"})
+    client.post("/account", data={"interval": "15", "github_token": "github_pat_abc"})
 
-    response = client.get("/device")
-
-    assert b"github_pat_abc" not in response.data
-    assert b"GitHub connected" in response.data
+    for page in ("/account", "/device"):
+        response = client.get(page)
+        assert b"github_pat_abc" not in response.data
+        assert b'<span class="status-pill status-linked">Connected</span>' in response.data
 
 
 def test_github_disconnect_forgets_the_token(app, paired_client):
     client, device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "github_token": "github_pat_abc"})
+    client.post("/account", data={"interval": "15", "github_token": "github_pat_abc"})
 
-    response = client.post("/device/github/disconnect")
+    response = client.post("/account/github/disconnect")
 
     assert response.status_code == 302
     with app.app_context():
@@ -1336,15 +1340,8 @@ def test_saving_the_config_subscribes_the_notice_boards_postcode_in_canonical_fo
 
 def test_saving_the_config_subscribes_a_device_with_a_glowmarkt_password_to_glow(paired_client, fake_redis):
     client, device_id, _ = paired_client
-    client.post(
-        "/device",
-        data={
-            "interval": "15",
-            "glowmarkt_username": "someone@example.com",
-            "glowmarkt_password": "hunter2",
-            "energy_enabled": "on",
-        },
-    )
+    client.post("/account", data={"glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"})
+    client.post("/device", data={"interval": "15", "energy_enabled": "on"})
 
     assert _subscriptions(fake_redis) == {"glow": {device_id}}
 
@@ -1513,10 +1510,13 @@ def test_device_config_shows_a_location_saved_before_places_with_no_id(app, pair
 # --- The Parcel API key ---------------------------------------------------------------------------------------------
 
 
-def test_device_config_post_stores_the_parcel_key_encrypted_and_subscribes_the_device(app, paired_client, fake_redis):
+def test_the_account_stores_the_parcel_key_encrypted_and_a_screen_showing_parcels_is_subscribed(
+    app, paired_client, fake_redis
+):
     client, device_id, _ = paired_client
 
-    client.post("/device", data={"interval": "15", "parcel_api_key": " parcel-key-abc ", "parcels_enabled": "on"})
+    client.post("/account", data={"parcel_api_key": " parcel-key-abc "})
+    client.post("/device", data={"interval": "15", "parcels_enabled": "on"})
 
     with app.app_context():
         row = db.session.get_one(ParcelKey, account_of(device_id))
@@ -1527,7 +1527,7 @@ def test_device_config_post_stores_the_parcel_key_encrypted_and_subscribes_the_d
 
 def test_device_config_post_blank_parcel_key_keeps_the_saved_one(app, paired_client, fake_redis):
     client, device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+    client.post("/account", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
 
     client.post("/device", data={"interval": "15", "parcels_enabled": "on"})
 
@@ -1538,10 +1538,11 @@ def test_device_config_post_blank_parcel_key_keeps_the_saved_one(app, paired_cli
 
 def test_removing_the_parcel_key_unsubscribes_the_device_and_switches_the_panel_off(app, paired_client, fake_redis):
     client, device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc", "parcels_enabled": "on"})
+    client.post("/account", data={"parcel_api_key": "parcel-key-abc"})
+    client.post("/device", data={"interval": "15", "parcels_enabled": "on"})
     assert json.loads(fake_redis.strings[f"v1:config:{device_id}"])["parcels"] == {"enabled": True}
 
-    assert client.post("/device/parcel/disconnect").status_code == 302
+    assert client.post("/account/parcel/disconnect").status_code == 302
 
     with app.app_context():
         assert db.session.get(ParcelKey, account_of(device_id)) is None
@@ -1549,39 +1550,40 @@ def test_removing_the_parcel_key_unsubscribes_the_device_and_switches_the_panel_
     assert json.loads(fake_redis.strings[f"v1:config:{device_id}"])["parcels"] == {"enabled": False}
 
 
-def test_device_config_get_never_shows_the_parcel_key(paired_client):
+def test_the_pages_never_show_the_parcel_key(paired_client):
     client, _device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+    client.post("/account", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
 
-    response = client.get("/device")
-
+    assert b"parcel-key-abc" not in client.get("/device").data
+    response = client.get("/account")
     assert b"parcel-key-abc" not in response.data
-    assert b"Key saved" in response.data
+    assert b"Saved, not checked yet" in response.data
 
 
 @pytest.mark.parametrize(
-    ("status", "shown"),
+    ("status", "on_account", "on_screen"),
     [
-        (None, b"not checked yet"),
-        ("ok", b"Parcel connected"),
-        ("invalid_key", b"rejected the key"),
-        ("rate_limited", b"rate limiting"),
+        (None, b">Saved, not checked yet<", b">Connected<"),
+        ("ok", b">Connected<", b">Connected<"),
+        ("invalid_key", b">Parcel refused the key: paste a new one<", b">Key refused<"),
+        ("rate_limited", b">Rate limited: trying again later<", b">Rate limited<"),
     ],
 )
-def test_device_config_shows_the_link_status_the_provider_wrote(paired_client, fake_redis, status, shown):
+def test_the_pages_show_the_link_status_the_provider_wrote(paired_client, fake_redis, status, on_account, on_screen):
     client, device_id, _ = paired_client
-    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+    client.post("/account", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
     if status:
         fake_redis.strings[f"v1:parcels-status:{device_id}"] = status
 
-    assert shown in client.get("/device").data
+    assert on_account in client.get("/account").data
+    assert on_screen in client.get("/device").data
 
 
 def test_the_parcel_key_does_not_appear_in_the_logs(paired_client, caplog):
     client, _device_id, _ = paired_client
     caplog.set_level("DEBUG")
 
-    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+    client.post("/account", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
     client.get("/device")
 
     assert "parcel-key-abc" not in caplog.text

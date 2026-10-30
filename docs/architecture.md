@@ -79,13 +79,13 @@ makes it safe for the broker to trust them. The broker has no user table: the ui
 | **Pairing token** | both sides: `sha256("pairing:" + sha256hex(secret))` | `devices.pairing_token` | In the URL the phone is sent to after Wi-Fi setup. Safe to show, as it's one-way. |
 | **Pairing code** | `flask devices code` / `unpair` | `pairing_codes`, and `v1:pairing:<device id>` for the pool to draw | 6 characters, 10 minutes, one use. |
 | **Spotify tokens** | Spotify OAuth, `/auth/spotify/callback` | `spotify_tokens`, plaintext | Refreshed by the music provider. |
-| **Apple Music user token** | MusicKit JS on the settings page | `apple_music_tokens`, encrypted | Lasts about six months, can't be refreshed: cleared when Apple refuses it. |
-| **Glowmarkt password** | the owner, on the settings page (for their account) | `glowmarkt_credentials`, encrypted | Never leaves the broker's image: the glow provider signs in with it. |
-| **Parcel API key** | the owner, on the settings page (for their account) | `parcel_keys`, encrypted | From the owner's own Parcel Premium account (web.parcelapp.net). Read through `services/parcel_key.get_parcel_api_key`; never sent to the browser or logged. |
-| **GitHub token** | the owner, on the settings page (for their account) | `github_tokens`, encrypted | A read-only fine-grained PAT, used only by the developer provider. |
+| **Apple Music user token** | MusicKit JS on the account page | `apple_music_tokens`, encrypted | Lasts about six months, can't be refreshed: cleared when Apple refuses it. |
+| **Glowmarkt password** | the owner, on the account page | `glowmarkt_credentials`, encrypted | Never leaves the broker's image: the glow provider signs in with it. |
+| **Parcel API key** | the owner, on the account page | `parcel_keys`, encrypted | From the owner's own Parcel Premium account (web.parcelapp.net). Read through `services/parcel_key.get_parcel_api_key`; never sent to the browser or logged. |
+| **GitHub token** | the owner, on the account page | `github_tokens`, encrypted | A read-only fine-grained PAT, used only by the developer provider. |
 | **`CREDENTIAL_ENCRYPTION_KEY`** | operator | `secrets/<environment>/broker.env` | The Fernet key for the encrypted columns. Changing it makes them unreadable. |
 | **App keys** | operator | `secrets/<environment>/broker.env` | Spotify client id and secret, the MusicKit key (signs Apple developer tokens), `TFL_APP_KEY` (only for the settings page's stop search). |
-| **`FLASK_SECRET_KEY`** | operator | `secrets/<environment>/broker.env` | Signs the session cookie, which holds only the Spotify OAuth state (and which screen's page to go back to) and the GitHub dashboard's CSRF token. |
+| **`FLASK_SECRET_KEY`** | operator | `secrets/<environment>/broker.env` | Signs the session cookie, which holds only the Spotify OAuth state and the GitHub dashboard's CSRF token. |
 | **`STATUS_TOKEN`** | operator | `secrets/<environment>/broker.env` | Bearer for `GET /api/status/devices`. |
 | **GitHub App sign-in** | the dashboard's user, through Connect GitHub | `github_app_tokens`, encrypted | Acts as them for 8 hours, renewed for 6 months. The `/github` dashboard's only GitHub access. |
 | **`GITHUB_APP_CLIENT_SECRET`**, **`GITHUB_APP_WEBHOOK_SECRET`** | operator | `secrets/<environment>/broker.env` | The dashboard's GitHub App: signing in, and checking its webhook's signature. |
@@ -237,14 +237,18 @@ sequenceDiagram
     participant D as Redis
     participant W as Render pool
 
-    P->>B: POST /device/ID
-    Note over B: Saves device_config and any linked accounts
+    P->>B: POST /device/ID (a screen's settings) or /account (the logins)
+    Note over B: Saves device_config, or the account's logins
     B->>D: rewrite v1:sub sets, then PUBLISH v1:sub:changed
     B->>D: write the configs that changed
     B->>D: queue a render for each screen that changed
     B-->>P: 302 back to the settings page
     W->>D: takes the job and redraws at once
 ```
+
+A screen's page saves only that screen's settings, and switches each service on or off for it. The logins are the
+account page's (`routes/account.py`): a change to one clears what the providers made from the last one and queues a
+render of every screen of the user's.
 
 The providers wake on `v1:sub:changed` and fetch anything new straight away. If Redis can't be written, the save
 still succeeds: the minute's rewrite catches up on the configs, and the subscriptions are written again on the next
