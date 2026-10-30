@@ -199,7 +199,9 @@ def test_device_config_has_the_guided_tour(paired_client):
     assert client.get("/static/display/tour.png").status_code == 200
     # Each section is named for the tour, in the order the page shows them.
     sections = re.findall(
-        r'<section class="[a-z -]+" data-tour="([a-z_]+)">\s*<header class="card-header">\s*<h2 class="card-title">([^<]+)', html
+        r'<section class="[a-z -]+" data-tour="([a-z_]+)">\s*<header class="card-header">\s*'
+        r'<h2 class="card-title">([^<]+)',
+        html,
     )
     assert [name for name, _ in sections] == [
         "general",
