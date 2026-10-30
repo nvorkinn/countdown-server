@@ -225,7 +225,8 @@ class ParcelProvider(ProviderLoop):
 
     def run_cycle(self) -> int:
         """Ask Parcel for every device that is due and write what came back; return how many keys were written."""
-        device_ids = sorted(self.store.smembers(store_keys.subscription(store_keys.PARCEL)))
+        # The store's client decodes responses, so these are str.
+        device_ids = sorted(str(d) for d in self.store.smembers(store_keys.subscription(store_keys.PARCEL)))
         with self.app.app_context():
             try:
                 wanted = self._wanted(device_ids)

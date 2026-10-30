@@ -6,6 +6,7 @@ provider is given a fake for it, and the client is tested against `responses`.
 
 import json
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
 
 import fakeredis
 import pytest
@@ -361,8 +362,9 @@ def test_the_client_sends_the_key_in_a_header_only_and_asks_for_active():
 
     [call] = responses.calls
     assert call.request.headers["api-key"] == KEY
-    assert call.request.params == {"filter_mode": "active"}
-    assert KEY not in call.request.url
+    url = call.request.url or ""
+    assert parse_qs(urlsplit(url).query) == {"filter_mode": ["active"]}
+    assert KEY not in url
 
 
 @responses.activate
@@ -372,7 +374,7 @@ def test_the_client_raises_the_matching_error_and_none_carries_the_key():
         with pytest.raises(error) as raised:
             client.deliveries(KEY)
         assert KEY not in str(raised.value)
-        if status == 429:
+        if isinstance(raised.value, client.RateLimitedError):
             assert raised.value.retry_after_s == 90
 
 
