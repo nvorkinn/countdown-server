@@ -24,7 +24,7 @@ def _owned(device_id: str | None) -> str | None:
 
 @bp.get("/login")
 def login() -> ResponseReturnValue:
-    """Send the signed-in user to Spotify to approve access for one of their screens."""
+    """Send the signed-in user to Spotify to link it to their account, from one of their screens' pages."""
     if current_user() is None:
         return "Sign in required.", 401
     device_id = _owned(request.args.get("device"))
@@ -32,14 +32,14 @@ def login() -> ResponseReturnValue:
         return redirect(url_for("pages.pair"))
     state = secrets.token_urlsafe(16)
     session["spotify_oauth_state"] = state
-    # Which screen this is for survives the round trip to Spotify here, not in the URL Spotify gets back.
+    # The screen to come back to survives the round trip to Spotify here, not in the URL Spotify gets back.
     session["spotify_oauth_device"] = device_id
     return redirect(spotify.authorize_url(state))
 
 
 @bp.get("/callback")
 def callback() -> ResponseReturnValue:
-    """Store the tokens Spotify hands back, for the screen the login was started for."""
+    """Store the tokens Spotify hands back against the signed-in user's account, and go back to the screen's page."""
     error = request.args.get("error")
     if error:
         return f"Spotify authorization failed: {error}", 400
@@ -48,9 +48,10 @@ def callback() -> ResponseReturnValue:
         return "Invalid or expired login attempt, please try connecting again.", 400
 
     # Checked again: the user may have lost the screen, or signed in as someone else, since they left.
+    user_id = current_user()
     device_id = _owned(session.pop("spotify_oauth_device", None))
-    if not device_id:
+    if user_id is None or not device_id:
         return redirect(url_for("pages.pair"))
 
-    spotify.exchange_code(device_id, request.args.get("code"))
+    spotify.exchange_code(user_id, request.args.get("code"))
     return redirect(url_for("pages.device_config", device_id=device_id))

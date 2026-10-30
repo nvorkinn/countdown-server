@@ -39,7 +39,7 @@ from broker.providers.music import (
 )
 from broker.services import render_jobs
 from broker.services.render_jobs import JOBS, SCREENS, queued_key
-from tests.conftest import apple_song
+from tests.conftest import account_of, apple_song
 
 PLAYER = fixtures.load("music_player.json")
 TOP = fixtures.load("music_top.json")
@@ -173,13 +173,13 @@ def device(app, register_device):
             if linked:
                 db.session.add(
                     SpotifyToken(
-                        device_id=device_id,
+                        user_id=account_of(device_id),
                         refresh_token=refresh_token,
                         access_token="access",
                         expires_at=time.time() + expires_in,
                     )
                 )
-                apple = AppleMusicToken(device_id=device_id, seen_ids=[])
+                apple = AppleMusicToken(user_id=account_of(device_id), seen_ids=[])
                 apple.token = "user-token"
                 db.session.add(apple)
             db.session.commit()
@@ -358,7 +358,7 @@ def test_apple_music_switched_on_but_not_connected_is_nothing_playing(provider, 
 def _plays(app, device_id):
     with app.app_context():
         plays = db.session.scalars(
-            select(AppleMusicPlay).where(AppleMusicPlay.device_id == device_id).order_by(AppleMusicPlay.id)
+            select(AppleMusicPlay).where(AppleMusicPlay.user_id == account_of(device_id)).order_by(AppleMusicPlay.id)
         )
         return [play.song_id for play in plays]
 
@@ -386,7 +386,7 @@ def test_apple_musics_new_plays_are_logged_once_each(app, store, device, musicki
     _run(provider, apple_songs=[three, three, one])
     assert _plays(app, device_id) == ["2", "1", "3", "3"]
     with app.app_context():
-        assert db.session.get_one(AppleMusicToken, device_id).seen_ids == ["3", "3", "1"]
+        assert db.session.get_one(AppleMusicToken, account_of(device_id)).seen_ids == ["3", "3", "1"]
 
     now[0] += TOP_INTERVAL_S
     _run(provider, apple_songs=[three, three, one])
@@ -441,7 +441,7 @@ def test_a_partial_top_fetch_doesnt_replace_a_full_one(app, store, device, music
     _run(provider)
     assert _stored(store, top_key(device_id)) == TOP
     with app.app_context():
-        db.session.get_one(SpotifyToken, device_id).expires_at = 0
+        db.session.get_one(SpotifyToken, account_of(device_id)).expires_at = 0
         db.session.commit()
 
     now[0] += TOP_INTERVAL_S
@@ -459,7 +459,7 @@ def test_refreshed_tokens_are_stored_for_the_next_calls(app, provider, device):
 
     assert fake.refreshes == ["old-refresh"]  # once: the top lists' calls use the refreshed token
     with app.app_context():
-        token = db.session.get_one(SpotifyToken, device_id)
+        token = db.session.get_one(SpotifyToken, account_of(device_id))
         assert token.access_token == "new-for-old-refresh"
         assert token.refresh_token == "old-refresh"  # Spotify sent no new one, so the old one is kept
         assert token.expires_at is not None

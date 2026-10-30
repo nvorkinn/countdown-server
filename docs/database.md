@@ -9,12 +9,12 @@ erDiagram
     devices ||--o| device_config : "settings"
     devices ||--o{ pairing_codes : "codes"
     devices ||--o| renderer_assignments : "slug"
-    devices ||--o| spotify_tokens : "Spotify"
-    devices ||--o| apple_music_tokens : "Apple Music"
-    devices ||--o{ apple_music_plays : "play log"
-    devices ||--o| glowmarkt_credentials : "energy"
-    devices ||--o| github_tokens : "developer panel"
-    devices ||--o| parcel_keys : "parcels panel"
+    devices }o..o| spotify_tokens : "owner's Spotify"
+    devices }o..o| apple_music_tokens : "owner's Apple Music"
+    devices }o..o{ apple_music_plays : "owner's play log"
+    devices }o..o| glowmarkt_credentials : "owner's energy"
+    devices }o..o| github_tokens : "owner's developer panel"
+    devices }o..o| parcel_keys : "owner's parcels panel"
 
     devices {
         string device_id PK "token_hex(6)"
@@ -45,6 +45,8 @@ erDiagram
         bool spotify_enabled
         bool apple_music_enabled
         bool developer_enabled
+        bool parcels_enabled
+        bool energy_enabled
         json tfl_stop_ids "TfL and Entur ids"
         string orientation "vertical or horizontal"
         int width
@@ -62,35 +64,35 @@ erDiagram
         datetime created_at
     }
     spotify_tokens {
-        string device_id PK, FK
+        string user_id PK "the owner"
         string refresh_token
         string access_token
         float expires_at
     }
     apple_music_tokens {
-        string device_id PK, FK
+        string user_id PK "the owner"
         string token_encrypted
         json seen_ids
     }
     apple_music_plays {
         int id PK
-        string device_id FK
+        string user_id "the owner"
         datetime played_at
         string song_id
         string artist
         json track
     }
     glowmarkt_credentials {
-        string device_id PK, FK
+        string user_id PK "the owner"
         string username
         string password_encrypted
     }
     github_tokens {
-        string device_id PK, FK
+        string user_id PK "the owner"
         string token_encrypted
     }
     parcel_keys {
-        string device_id PK, FK
+        string user_id PK "the owner"
         string key_encrypted
     }
 ```
@@ -106,12 +108,17 @@ erDiagram
 | `apple_music_plays` | play seen | Apple Music has no top lists, so the music provider logs plays and counts them. |
 | `glowmarkt_credentials` | linked Glowmarkt account | The password is encrypted. |
 | `github_tokens` | developer panel token | Encrypted. |
-| `parcel_keys` | parcels panel Parcel API key | Encrypted. Saving one sets `device_config.parcels_enabled`, removing it clears it. |
+| `parcel_keys` | parcels panel Parcel API key | Encrypted. |
+
+- **Accounts.** The five login tables are keyed by the user id `devices.owner` holds, not by screen: a login serves all
+  of a user's screens, and each screen's own `*_enabled` column in `device_config` says whether it shows that service
+  (`services/accounts.py`). The providers still work screen by screen, reaching a screen's login through its owner.
+  Unpairing or forgetting a screen leaves its owner's logins alone.
 
 - **Encryption.** The encrypted columns use Fernet with `CREDENTIAL_ENCRYPTION_KEY`. The screen secret is stored as an
   unsalted SHA-256, which is enough for a long random string. The pairing token, pairing codes and Spotify tokens are
   in the clear.
-- **Deleting.** Every table hangs off `devices`. There's no `ON DELETE` in the schema: the ORM cascades, so
+- **Deleting.** Every table but the logins hangs off `devices`. There's no `ON DELETE` in the schema: the ORM cascades, so
   `flask devices forget` removes the device and all its rows. SQLite enforces the foreign keys.
 - **Resetting.** `flask devices unpair --config` replaces `device_config`, so its width and height go back to the column
   defaults (480x800), not the size the screen registered with. Registering again doesn't update them.

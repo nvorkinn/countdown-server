@@ -8,6 +8,7 @@ from broker.clients import weather
 from broker.db import db
 from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
 from broker.services import pairing, renderer_config, weather_place
+from tests.conftest import account_of
 
 
 def _headers(secret):
@@ -88,16 +89,16 @@ def test_unpair_brings_the_device_back_to_showing_a_code_but_keeps_its_settings(
     assert config["clock_format"] == "12h"
 
 
-def test_unpair_with_config_also_resets_settings_and_linked_accounts(app, client, register_device, cli):
+def test_unpair_with_config_resets_settings_but_leaves_the_owners_logins(app, client, register_device, cli):
     device_id, _secret = _paired_device(app, client, register_device)
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
         config.weather_location, config.tfl_stop_ids = "London", ["940GZZLUKNG"]
         config.clock_format = "12h"
-        db.session.add(SpotifyToken(device_id=device_id, refresh_token="r"))
-        db.session.add(GlowmarktCredentials(device_id=device_id, username="me"))
-        db.session.add(GitHubToken(device_id=device_id, token_encrypted="x"))
-        db.session.add(ParcelKey(device_id=device_id, key_encrypted="x"))
+        db.session.add(SpotifyToken(user_id=account_of(device_id), refresh_token="r"))
+        db.session.add(GlowmarktCredentials(user_id=account_of(device_id), username="me"))
+        db.session.add(GitHubToken(user_id=account_of(device_id), token_encrypted="x"))
+        db.session.add(ParcelKey(user_id=account_of(device_id), key_encrypted="x"))
         db.session.commit()
 
     assert cli("unpair", device_id, "--config").exit_code == 0
@@ -108,10 +109,10 @@ def test_unpair_with_config_also_resets_settings_and_linked_accounts(app, client
     assert config["clock_format"] == "24h"
     assert config["glowmarkt"] == {"enabled": False}
     assert config["notice_board"] == {"postcode": None, "country": None, "style": "airy"}
+    # The logins are the last owner's account's, not the screen's: they stay for their other screens.
     with app.app_context():
-        assert db.session.scalar(select(func.count()).select_from(SpotifyToken)) == 0
-        assert db.session.scalar(select(func.count()).select_from(GitHubToken)) == 0
-        assert db.session.scalar(select(func.count()).select_from(ParcelKey)) == 0
+        for model in (SpotifyToken, GlowmarktCredentials, GitHubToken, ParcelKey):
+            assert db.session.scalar(select(func.count()).select_from(model)) == 1
 
 
 def test_forget_deletes_the_device_so_it_must_register_again(app, client, register_device, cli):

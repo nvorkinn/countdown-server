@@ -18,6 +18,7 @@ from broker.db import db
 from broker.models import Device, DeviceConfig, GlowmarktCredentials
 from broker.providers import glow, loop
 from broker.providers.loop import read_only_app
+from tests.conftest import account_of
 
 FIXTURE = fixtures.load("glow_energy.json")
 DEVICE = FIXTURE["device_id"]
@@ -29,8 +30,8 @@ NOW = datetime.fromisoformat(FIXTURE["now"]).astimezone(UTC)
 def add_device(app, device_id, *, username="me@example.com", password="hunter2", postcode="", **creds):  # noqa: S107
     with app.app_context():
         db.session.add(Device(device_id=device_id, created_at=NOW))
-        db.session.add(DeviceConfig(device_id=device_id, postcode=postcode))
-        stored = GlowmarktCredentials(device_id=device_id, username=username, **creds)
+        db.session.add(DeviceConfig(device_id=device_id, postcode=postcode, energy_enabled=True))
+        stored = GlowmarktCredentials(user_id=account_of(device_id), username=username, **creds)
         if password is not None:
             stored.password = password
         db.session.add(stored)
@@ -166,7 +167,7 @@ def test_a_change_of_password_signs_in_afresh(app, provider, glow_api):
     add_device(app, DEVICE)
     provider.run_cycle()
     with app.app_context():
-        db.session.get_one(GlowmarktCredentials, DEVICE).password = "new-password"
+        db.session.get_one(GlowmarktCredentials, account_of(DEVICE)).password = "new-password"
         db.session.commit()
 
     provider.run_cycle()
@@ -247,6 +248,6 @@ def test_main_runs_the_provider_on_the_read_only_database(monkeypatch):
 def test_the_provider_cant_write_to_the_database(app, provider):
     add_device(app, DEVICE)
     with provider.app.app_context():
-        db.session.get_one(GlowmarktCredentials, DEVICE).username = "changed"
+        db.session.get_one(GlowmarktCredentials, account_of(DEVICE)).username = "changed"
         with pytest.raises(Exception, match="readonly"):
             db.session.commit()

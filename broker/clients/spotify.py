@@ -1,4 +1,7 @@
-"""Talks to Spotify on a device's behalf: the OAuth token exchange, keeping its tokens fresh, and the Web API calls."""
+"""Talks to Spotify on a device's behalf: the OAuth token exchange, keeping its tokens fresh, and the Web API calls.
+
+The tokens are its owner's account's (services/accounts.py): one link serves all their screens.
+"""
 
 import urllib.parse
 from datetime import UTC, datetime
@@ -10,6 +13,7 @@ from flask import current_app
 
 from broker.db import db
 from broker.models import SpotifyToken
+from broker.services import accounts
 
 SCOPE = "user-read-currently-playing user-read-playback-state user-top-read"
 AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
@@ -28,8 +32,8 @@ def authorize_url(state: str) -> str:
     return f"{AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
 
-def exchange_code(device_id: str, code: str | None) -> None:
-    """Swap the code from Spotify's OAuth callback for tokens and store them against the device."""
+def exchange_code(user_id: str, code: str | None) -> None:
+    """Swap the code from Spotify's OAuth callback for tokens and store them against the user's account."""
     response = requests.post(
         TOKEN_URL,
         data={
@@ -41,22 +45,22 @@ def exchange_code(device_id: str, code: str | None) -> None:
         timeout=10,
     )
     response.raise_for_status()
-    _store_tokens(device_id, response.json())
+    _store_tokens(user_id, response.json())
 
 
 def _client_credentials() -> tuple[str, str]:
     return current_app.config["SPOTIFY_CLIENT_ID"], current_app.config["SPOTIFY_CLIENT_SECRET"]
 
 
-def _store_tokens(device_id: str, payload: dict) -> None:
+def _store_tokens(user_id: str, payload: dict) -> None:
     expires_at = datetime.now(UTC).timestamp() + payload["expires_in"]
-    refresh_token = payload.get("refresh_token") or _existing_refresh_token(device_id)
+    refresh_token = payload.get("refresh_token") or _existing_refresh_token(user_id)
     if refresh_token is None:
-        # Spotify sends one with a device's first tokens, and the row keeps it from then on.
-        msg = f"Spotify sent no refresh token and device {device_id} has none stored"
+        # Spotify sends one with an account's first tokens, and the row keeps it from then on.
+        msg = "Spotify sent no refresh token and the account has none stored"
         raise ValueError(msg)
 
-    token = db.session.get(SpotifyToken, device_id) or SpotifyToken(device_id=device_id)
+    token = db.session.get(SpotifyToken, user_id) or SpotifyToken(user_id=user_id)
     token.refresh_token = refresh_token
     token.access_token = payload["access_token"]
     token.expires_at = expires_at
@@ -64,12 +68,12 @@ def _store_tokens(device_id: str, payload: dict) -> None:
     db.session.commit()
 
 
-def _existing_refresh_token(device_id: str) -> str | None:
-    token = db.session.get(SpotifyToken, device_id)
+def _existing_refresh_token(user_id: str) -> str | None:
+    token = db.session.get(SpotifyToken, user_id)
     return token.refresh_token if token else None
 
 
-def _refresh_access_token(device_id: str, refresh_token: str) -> str:
+def _refresh_access_token(user_id: str, refresh_token: str) -> str:
     response = requests.post(
         TOKEN_URL,
         data={"grant_type": "refresh_token", "refresh_token": refresh_token},
@@ -78,21 +82,22 @@ def _refresh_access_token(device_id: str, refresh_token: str) -> str:
     )
     response.raise_for_status()
     payload = response.json()
-    _store_tokens(device_id, payload)
+    _store_tokens(user_id, payload)
     return payload["access_token"]
 
 
 def _get_access_token(device_id: str) -> str | None:
-    """Return a valid access token for the device, refreshing it if needed.
+    """Return a valid access token for the device's owner's Spotify, refreshing it if needed.
 
-    None when the device hasn't linked Spotify.
+    None when their account hasn't linked Spotify (or nobody owns the device).
     """
-    token = db.session.get(SpotifyToken, device_id)
-    if token is None:
+    user_id = accounts.owner(device_id)
+    token = db.session.get(SpotifyToken, user_id) if user_id is not None else None
+    if user_id is None or token is None:
         return None
 
     if token.expires_at is None or token.expires_at - 30 < datetime.now(UTC).timestamp():
-        return _refresh_access_token(device_id, token.refresh_token)
+        return _refresh_access_token(user_id, token.refresh_token)
     return token.access_token
 
 

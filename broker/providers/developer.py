@@ -28,7 +28,7 @@ from sqlalchemy import select
 
 from broker.clients import github
 from broker.db import db
-from broker.models import DeviceConfig, GitHubToken
+from broker.models import Device, DeviceConfig, GitHubToken
 from broker.providers import loop
 from broker.providers.loop import ProviderLoop
 from broker.services import developer, render_jobs
@@ -73,13 +73,14 @@ class Wanted:
 
 
 def wanted_devices() -> list[Wanted]:
-    """Return the devices with the developer panel on, with the token each has given (decrypted).
+    """Return the devices with the developer panel on, with the token each one's owner gave (decrypted).
 
     One without a token is still fetched: the plans don't need it.
     """
     rows = db.session.execute(
         select(DeviceConfig.device_id, GitHubToken)
-        .outerjoin(GitHubToken, GitHubToken.device_id == DeviceConfig.device_id)
+        .join(Device, Device.device_id == DeviceConfig.device_id)
+        .outerjoin(GitHubToken, GitHubToken.user_id == Device.owner)
         .where(DeviceConfig.developer_enabled)
         .order_by(DeviceConfig.device_id)
     ).all()

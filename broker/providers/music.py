@@ -38,7 +38,7 @@ from broker import create_app
 from broker.album_art import AlbumArt, art_urls
 from broker.clients import spotify
 from broker.db import db
-from broker.models import DeviceConfig, SpotifyToken
+from broker.models import Device, DeviceConfig, SpotifyToken
 from broker.providers import loop
 from broker.providers.loop import ProviderLoop
 from broker.services import music, render_jobs
@@ -106,17 +106,18 @@ class Wanted:
 def wanted_devices() -> list[Wanted]:
     """Return the devices to fetch: Spotify switched on and linked, or Apple Music switched on.
 
-    Spotify switched on but not linked has nothing to fetch. Apple Music switched on but not connected is still
-    fetched, as "nothing playing".
+    Spotify switched on but not linked to the device's owner's account has nothing to fetch. Apple Music switched on
+    but not connected is still fetched, as "nothing playing".
     """
     rows = db.session.execute(
         select(
             DeviceConfig.device_id,
             DeviceConfig.spotify_enabled,
             DeviceConfig.apple_music_enabled,
-            SpotifyToken.device_id.is_not(None),
+            SpotifyToken.user_id.is_not(None),
         )
-        .outerjoin(SpotifyToken, SpotifyToken.device_id == DeviceConfig.device_id)
+        .join(Device, Device.device_id == DeviceConfig.device_id)
+        .outerjoin(SpotifyToken, SpotifyToken.user_id == Device.owner)
         .where(or_(DeviceConfig.spotify_enabled, DeviceConfig.apple_music_enabled))
         .order_by(DeviceConfig.device_id)
     ).all()

@@ -10,6 +10,7 @@ from sqlalchemy import func, select, update
 from broker.db import db
 from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, PairingCode, ParcelKey
 from broker.services import pairing, renderer_config
+from tests.conftest import account_of
 
 
 def _config(app, device_id):
@@ -134,7 +135,7 @@ def test_the_config_sends_the_developer_switch_but_never_the_github_token(app, c
     device_id, _secret = register_device()
     _set_config(app, device_id, developer_enabled=True)
     with app.app_context():
-        token = GitHubToken(device_id=device_id)
+        token = GitHubToken(user_id=account_of(device_id))
         token.token = "github_pat_secret"
         db.session.add(token)
         db.session.commit()
@@ -145,12 +146,20 @@ def test_the_config_sends_the_developer_switch_but_never_the_github_token(app, c
     assert b"github_pat_secret" not in response.data
 
 
+def test_the_config_switches_glowmarkt_off_on_a_screen_not_showing_energy(app, paired_client):
+    """The login is the account's; a screen with its energy switch off doesn't show it."""
+    client, device_id, _secret = paired_client
+    client.post("/device", data={"glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"})
+
+    assert _config(app, device_id).get_json()["glowmarkt"] == {"enabled": False}
+
+
 def test_the_config_sends_the_parcels_switch_but_never_the_parcel_key(app, client, register_device):
     device_id, _secret = register_device()
     assert _config(app, device_id).get_json()["parcels"] == {"enabled": False}
     _set_config(app, device_id, parcels_enabled=True)
     with app.app_context():
-        key = ParcelKey(device_id=device_id)
+        key = ParcelKey(user_id=account_of(device_id))
         key.key = "parcel-secret"
         db.session.add(key)
         db.session.commit()
@@ -159,6 +168,11 @@ def test_the_config_sends_the_parcels_switch_but_never_the_parcel_key(app, clien
 
     assert response.get_json()["parcels"] == {"enabled": True}
     assert b"parcel-secret" not in response.data
+    # The switch alone isn't enough: without the account's key there's nothing to show.
+    with app.app_context():
+        db.session.delete(db.session.get_one(ParcelKey, account_of(device_id)))
+        db.session.commit()
+    assert _config(app, device_id).get_json()["parcels"] == {"enabled": False}
 
 
 def test_the_config_sends_the_key_the_weather_is_subscribed_under(app, client, register_device):
@@ -285,7 +299,10 @@ def test_purge_keeps_a_code_up_to_its_expiry(app, register_device):
 
 def test_the_config_switches_glowmarkt_on_but_never_sends_its_credentials(app, paired_client):
     client, device_id, _secret = paired_client
-    client.post("/device", data={"glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"})
+    client.post(
+        "/device",
+        data={"glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2", "energy_enabled": "on"},
+    )
 
     response = _config(app, device_id)
 
@@ -307,8 +324,9 @@ def test_the_config_leaves_glowmarkt_off_without_an_account_the_provider_can_use
     app, client, register_device, credentials
 ):
     device_id, _secret = register_device()
+    _set_config(app, device_id, energy_enabled=True)
     with app.app_context():
-        creds = GlowmarktCredentials(device_id=device_id, **credentials)
+        creds = GlowmarktCredentials(user_id=account_of(device_id), **credentials)
         db.session.add(creds)
         db.session.commit()
 

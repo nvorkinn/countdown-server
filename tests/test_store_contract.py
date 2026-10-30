@@ -15,10 +15,11 @@ from countdown_api import keys as store_keys
 
 from broker import album_art
 from broker.db import db
-from broker.models import Device, DeviceConfig, GlowmarktCredentials
+from broker.models import Device, DeviceConfig, GlowmarktCredentials, ParcelKey
 from broker.providers import developer, glow, loop, music, parcel
 from broker.routes import pages
 from broker.services import config_store, device_keys, frame_record, pace, pairing, pairing_key, render_jobs
+from tests.conftest import account_of
 
 CONFIG = fixtures.load("config_store.json")
 PAIRING = fixtures.load("pairing_key.json")
@@ -61,18 +62,23 @@ def test_the_ttls_are_the_contracts():
 
 
 def _add_example_devices(app) -> None:
-    """Add the devices of config_store.json (paired, with a Glowmarkt account) and pairing_key.json (not yet paired)."""
+    """Add the devices of config_store.json (paired, Glowmarkt and Parcel linked) and pairing_key.json (unpaired)."""
     with app.app_context():
         now = datetime.now(UTC)
         settings = dict(CONFIG["settings"])
         glowmarkt = settings.pop("glowmarkt")
         paired = Device(device_id=CONFIG["device_id"], created_at=now, paired_at=now, owner="user-1")
-        paired.config = DeviceConfig(**settings)
+        # The example shows energy: the screen's switch on, and its owner's account linked to Glowmarkt.
+        paired.config = DeviceConfig(**settings, energy_enabled=True)
         unpaired = Device(device_id=PAIRING["device_id"], created_at=now)
         unpaired.config = DeviceConfig(**PAIRING["settings"])
         db.session.add_all([paired, unpaired])
-        db.session.add(GlowmarktCredentials(device_id=CONFIG["device_id"], username=glowmarkt["username"]))
-        db.session.get_one(GlowmarktCredentials, CONFIG["device_id"]).password = glowmarkt["password"]
+        db.session.add(GlowmarktCredentials(user_id=account_of(CONFIG["device_id"]), username=glowmarkt["username"]))
+        db.session.get_one(GlowmarktCredentials, account_of(CONFIG["device_id"])).password = glowmarkt["password"]
+        # And parcels, from a Parcel API key on the same account.
+        parcel_key = ParcelKey(user_id=account_of(CONFIG["device_id"]))
+        parcel_key.key = "parcel-key"
+        db.session.add(parcel_key)
         db.session.commit()
 
 

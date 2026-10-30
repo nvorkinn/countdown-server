@@ -26,7 +26,7 @@ from sqlalchemy import select
 from broker.clients.glowmarkt import DAILY, HOURLY, MONTHLY, PERIODS, GlowmarktAccount, local_now, utc_offset_param
 from broker.clients.glowmarkt import window_start as page_window_start
 from broker.db import db
-from broker.models import DeviceConfig, GlowmarktCredentials
+from broker.models import Device, DeviceConfig, GlowmarktCredentials
 from broker.providers import loop
 from broker.providers.loop import ProviderLoop
 from broker.services.postcodes import postcode_country
@@ -67,7 +67,7 @@ class Account:
 
 
 def accounts() -> list[Account]:
-    """Return the devices with a usable Glowmarkt account: `v1:sub:glow`, less any with a blank username or password.
+    """Return the devices showing energy whose owner has a usable Glowmarkt account (blank username or password isn't).
 
     One short read, so the broker's writes don't wait on it. Needs an app context. A password that won't decrypt
     (CREDENTIAL_ENCRYPTION_KEY changed) is logged and skipped.
@@ -75,9 +75,10 @@ def accounts() -> list[Account]:
     try:
         rows = db.session.execute(
             select(GlowmarktCredentials, DeviceConfig)
-            .outerjoin(DeviceConfig, DeviceConfig.device_id == GlowmarktCredentials.device_id)
-            .where(GlowmarktCredentials.password_encrypted.is_not(None))
-            .order_by(GlowmarktCredentials.device_id)
+            .join(Device, Device.owner == GlowmarktCredentials.user_id)
+            .join(DeviceConfig, DeviceConfig.device_id == Device.device_id)
+            .where(GlowmarktCredentials.password_encrypted.is_not(None), DeviceConfig.energy_enabled)
+            .order_by(DeviceConfig.device_id)
         ).all()
         found = []
         for creds, config in rows:
@@ -85,12 +86,12 @@ def accounts() -> list[Account]:
             try:
                 sign_in = creds.sign_in()
             except InvalidToken:
-                logger.warning("Can't decrypt the Glowmarkt password of device %s", creds.device_id)
+                logger.warning("Can't decrypt the Glowmarkt password of device %s's owner", config.device_id)
                 continue
             if sign_in is None:
                 continue
-            zone = timezone(postcode_country(config.postcode), config.tfl_stop_ids) if config else DEFAULT_ZONE
-            found.append(Account(creds.device_id, *sign_in, zone))
+            zone = timezone(postcode_country(config.postcode), config.tfl_stop_ids)
+            found.append(Account(config.device_id, *sign_in, zone))
         return found
     finally:
         db.session.remove()

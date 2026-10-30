@@ -6,6 +6,7 @@ tests/providers/test_music_provider.py.
 
 from broker.db import db
 from broker.models import AppleMusicToken, DeviceConfig
+from tests.conftest import account_of
 
 
 def test_developer_token_404s_when_not_set_up(paired_client):
@@ -28,14 +29,14 @@ def test_connect_stores_the_token_encrypted_and_disconnect_forgets_it_and_the_pl
 
     assert client.post("/device/apple-music/connect", data={"music_user_token": " mut "}).status_code == 302
     with app.app_context():
-        stored = db.session.get_one(AppleMusicToken, device_id)
+        stored = db.session.get_one(AppleMusicToken, account_of(device_id))
         assert stored.token_encrypted != "mut"
         assert stored.token == "mut"
     assert b"Connected" in client.get("/device").data
 
     client.post("/device/apple-music/disconnect")
     with app.app_context():
-        assert db.session.get(AppleMusicToken, device_id) is None
+        assert db.session.get(AppleMusicToken, account_of(device_id)) is None
 
 
 def test_connect_needs_a_token(paired_client):

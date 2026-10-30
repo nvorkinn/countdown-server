@@ -14,8 +14,9 @@ from countdown_api import fixtures
 from countdown_api.models import ConfigResponse
 
 from broker.db import db
-from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, SpotifyToken
+from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
 from broker.services import config_store, pairing, render_jobs
+from tests.conftest import account_of
 
 ROOT = Path(__file__).parent.parent.parent
 # The stored shape, which countdown's renderer reads: both repositories' tests read this file.
@@ -50,10 +51,15 @@ def _add_fixture_device(app) -> str:
     with app.app_context():
         now = datetime.now(UTC)
         device = Device(device_id=device_id, created_at=now, paired_at=now, owner="user-1")
-        device.config = DeviceConfig(**settings)
+        # The example shows energy and parcels: the screen's switches on, and its owner's account linked to both.
+        device.config = DeviceConfig(**settings, energy_enabled=True)
         db.session.add(device)
-        db.session.add(GlowmarktCredentials(device_id=device_id, username=glowmarkt["username"]))
-        db.session.get_one(GlowmarktCredentials, device_id).password = glowmarkt["password"]
+        db.session.add(GlowmarktCredentials(user_id=account_of(device_id), username=glowmarkt["username"]))
+        db.session.get_one(GlowmarktCredentials, account_of(device_id)).password = glowmarkt["password"]
+        if settings.get("parcels_enabled"):
+            parcel_key = ParcelKey(user_id=account_of(device_id))
+            parcel_key.key = "parcel-key"
+            db.session.add(parcel_key)
         db.session.commit()
     return device_id
 
@@ -133,10 +139,15 @@ def test_the_stored_config_has_the_landscape_layout_picked(app, store, paired_cl
 def test_the_stored_config_carries_no_secret(app, store, paired_client, monkeypatch):
     client, device_id, _ = paired_client
     app.config.update(TFL_APP_KEY="the-tfl-key")
-    client.post("/device", data={"glowmarkt_username": "me@example.com", "glowmarkt_password": "glow-password"})
+    client.post(
+        "/device",
+        data={"glowmarkt_username": "me@example.com", "glowmarkt_password": "glow-password", "energy_enabled": "on"},
+    )
     with app.app_context():
-        db.session.add(GitHubToken(device_id=device_id, token="ghp_the-github-token"))
-        db.session.add(SpotifyToken(device_id=device_id, refresh_token="spotify-refresh", access_token="spotify-at"))
+        db.session.add(GitHubToken(user_id=account_of(device_id), token="ghp_the-github-token"))
+        db.session.add(
+            SpotifyToken(user_id=account_of(device_id), refresh_token="spotify-refresh", access_token="spotify-at")
+        )
         db.session.commit()
         config_store.publish_all()
 

@@ -17,6 +17,7 @@ from broker import db as db_module
 from broker.auth import hash_secret
 from broker.db import db
 from broker.models import Device, DeviceConfig, PairingCode, SpotifyToken
+from tests.conftest import account_of
 
 
 def _current_revision(app):
@@ -364,7 +365,7 @@ def test_0002_converts_every_string_timestamp_shape_to_utc(app):
     )
 
     with app.app_context():
-        upgrade()
+        upgrade(revision="0028")
 
         offset = db.session.get_one(Device, "offset")
         assert offset.created_at == datetime(2026, 3, 1, 12, 0, 0, 123456, tzinfo=UTC)
@@ -376,8 +377,9 @@ def test_0002_converts_every_string_timestamp_shape_to_utc(app):
         assert date_only.paired_at == datetime(2026, 1, 1, 9, 15, tzinfo=UTC)  # no zone: taken as UTC
 
         assert db.session.get_one(PairingCode, "ABC234").expires_at == datetime(2026, 3, 2, 8, 10, tzinfo=UTC)
-        assert db.session.get_one(SpotifyToken, "offset").expires_at == 1793865600.5
-        assert db.session.get_one(SpotifyToken, "zulu").expires_at is None
+        # Read at 0028, before 0029 rekeys them by owner (and drops these, as nobody owns their screens).
+        expires = dict(db.session.execute(text("SELECT device_id, expires_at FROM spotify_tokens")).all())
+        assert expires == {"offset": 1793865600.5, "zulu": None}
 
 
 def test_0002_converted_timestamps_compare_correctly_in_queries(app):
@@ -402,7 +404,7 @@ def test_0002_converted_timestamps_compare_correctly_in_queries(app):
 def test_0002_downgrade_gives_back_iso_strings(app):
     with app.app_context():
         db.session.add(Device(device_id="d", created_at=datetime(2026, 3, 1, 12, tzinfo=UTC)))
-        db.session.add(SpotifyToken(device_id="d", refresh_token="r", expires_at=1793865600.5))
+        db.session.add(SpotifyToken(user_id=account_of("d"), refresh_token="r", expires_at=1793865600.5))
         db.session.commit()
         db.session.remove()
 
@@ -706,3 +708,82 @@ def test_0025_backfills_existing_screens_with_the_mono_1bpp_packed_frame_format(
 
         config = db.session.get_one(DeviceConfig, device_id)
         assert (config.width, config.height, config.format) == (480, 800, "mono-1bpp-packed")
+
+
+# --- 0029: logins move from each screen to its owner's account ----------------------------------------------------
+
+
+def _at_0028_with_screens(conn) -> None:
+    """Insert, at 0028, two screens of one owner with a login each, one of another owner's, and one nobody owns."""
+    for device_id, owner, paired in (
+        ("old", "nikolai", "2026-10-01 12:00:00"),
+        ("new", "nikolai", "2026-10-20 12:00:00"),
+        ("other", "someone", "2026-10-05 12:00:00"),
+        ("unowned", None, None),
+    ):
+        conn.exec_driver_sql(
+            "INSERT INTO devices (device_id, owner, created_at, paired_at) VALUES (?, ?, '2026-10-01 12:00:00', ?)",
+            (device_id, owner, paired),
+        )
+        conn.exec_driver_sql("INSERT INTO device_config (device_id) VALUES (?)", (device_id,))
+    for device_id in ("old", "new", "other", "unowned"):
+        conn.exec_driver_sql(
+            "INSERT INTO spotify_tokens (device_id, refresh_token) VALUES (?, ?)", (device_id, f"refresh-{device_id}")
+        )
+        conn.exec_driver_sql("INSERT INTO parcel_keys (device_id, key_encrypted) VALUES (?, ?)", (device_id, device_id))
+    # Glowmarkt on the older screen only, and an Apple Music log on each of Nikolai's.
+    conn.exec_driver_sql(
+        "INSERT INTO glowmarkt_credentials (device_id, username, password_encrypted) VALUES ('old', 'me', 'x')"
+    )
+    for device_id in ("old", "new"):
+        conn.exec_driver_sql(
+            "INSERT INTO apple_music_tokens (device_id, token_encrypted, seen_ids) VALUES (?, ?, '[]')",
+            (device_id, device_id),
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO apple_music_plays (device_id, played_at, song_id, artist, track) "
+            "VALUES (?, '2026-10-20 12:00:00', ?, '', '{}')",
+            (device_id, f"song-{device_id}"),
+        )
+
+
+def test_0029_keys_each_login_by_owner_keeping_their_newest_screens(app):
+    with app.app_context():
+        downgrade(revision="0028")
+        with db.engine.begin() as conn:
+            _at_0028_with_screens(conn)
+        upgrade(revision="0029")
+
+        with db.engine.begin() as conn:
+            refresh = dict(conn.exec_driver_sql("SELECT user_id, refresh_token FROM spotify_tokens").all())
+            parcel = dict(conn.exec_driver_sql("SELECT user_id, key_encrypted FROM parcel_keys").all())
+            glow = conn.exec_driver_sql("SELECT user_id, username FROM glowmarkt_credentials").all()
+            apple = conn.exec_driver_sql("SELECT user_id, token_encrypted FROM apple_music_tokens").all()
+            plays = conn.exec_driver_sql("SELECT user_id, song_id FROM apple_music_plays").all()
+            energy = dict(conn.exec_driver_sql("SELECT device_id, energy_enabled FROM device_config").all())
+
+    # The newest screen's login wins; the one of a screen nobody owns goes.
+    assert refresh == {"nikolai": "refresh-new", "someone": "refresh-other"}
+    assert parcel == {"nikolai": "new", "someone": "other"}
+    # The only one there was, though it's the older screen's; and energy stays on just where it was.
+    assert [tuple(row) for row in glow] == [("nikolai", "me")]
+    assert energy == {"old": 1, "new": 0, "other": 0, "unowned": 0}
+    # Apple Music's log goes with the token kept.
+    assert [tuple(row) for row in apple] == [("nikolai", "new")]
+    assert [tuple(row) for row in plays] == [("nikolai", "song-new")]
+
+
+def test_0029_downgrade_gives_each_of_the_owners_screens_their_login(app):
+    with app.app_context():
+        downgrade(revision="0028")
+        with db.engine.begin() as conn:
+            _at_0028_with_screens(conn)
+        upgrade(revision="0029")
+        downgrade(revision="0028")
+
+        with db.engine.begin() as conn:
+            refresh = dict(conn.exec_driver_sql("SELECT device_id, refresh_token FROM spotify_tokens").all())
+            plays = conn.exec_driver_sql("SELECT device_id, song_id FROM apple_music_plays").all()
+
+    assert refresh == {"old": "refresh-new", "new": "refresh-new", "other": "refresh-other"}
+    assert [tuple(row) for row in plays] == [("new", "song-new")]

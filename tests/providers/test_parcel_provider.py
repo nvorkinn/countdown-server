@@ -422,3 +422,27 @@ def test_the_client_reads_carrier_names():
     responses.get(client.CARRIERS_URL, json={"dhl": {"name": "DHL"}, "odd": 1})
 
     assert client.carrier_names() == {"dhl": "DHL"}
+
+
+def test_screens_of_one_account_share_one_ask_each_tick(app, provider_app, store, clock, fake, keys):
+    """The key is the account's, so a second screen of the same owner reuses the first one's answer."""
+    with app.app_context():
+        db.session.add(Device(device_id="second", created_at=NOW))
+        db.session.add(DeviceConfig(device_id="second", postcode=""))
+        db.session.commit()
+    keys["second"] = KEY
+    store.sadd("v1:sub:parcel", *keys)
+    provider = ParcelProvider(provider_app, store, clock=clock, deliveries=fake, carrier_names=lambda: CARRIERS)
+
+    provider.run_cycle()
+
+    assert fake.keys == [KEY]
+    assert stored(store) is not None
+    assert stored(store, parcels_key("second")) == stored(store)
+
+    # A save asks afresh, whatever the other screen asked a moment ago.
+    clock.now += 30
+    provider.nudged = True
+    store.delete(status_key("second"), parcels_key("second"))
+    provider.run_cycle()
+    assert len(fake.keys) == 2

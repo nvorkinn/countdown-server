@@ -25,6 +25,7 @@ from sqlalchemy import select
 
 from broker.db import db
 from broker.models import AppleMusicPlay, AppleMusicToken
+from broker.services import accounts
 
 API_URL = "https://api.music.apple.com/v1"
 # How many pages of recently played tracks are read on each call: Apple hands them over ten to a page.
@@ -51,8 +52,14 @@ def configured() -> bool:
 
 
 def linked(device_id: str) -> bool:
-    """Whether the device has an Apple Music token that Apple hasn't refused."""
-    stored = db.session.get(AppleMusicToken, device_id)
+    """Whether the device's owner's account has an Apple Music token that Apple hasn't refused."""
+    user_id = accounts.owner(device_id)
+    return user_id is not None and account_linked(user_id)
+
+
+def account_linked(user_id: str) -> bool:
+    """Whether the user's account has an Apple Music token that Apple hasn't refused."""
+    stored = db.session.get(AppleMusicToken, user_id)
     return stored is not None and stored.token_encrypted is not None
 
 
@@ -132,12 +139,13 @@ def new_plays(seen: list[str], recent: list[str]) -> list[str]:
 
 
 def recent_tracks(device_id: str) -> list[dict] | None:
-    """Return the device's listener's recently played tracks, newest first, logging any new plays on the way.
+    """Return the device's owner's recently played tracks, newest first, logging any new plays on the way.
 
     None when Apple Music isn't connected, or Apple has refused the token (which is then forgotten, so the settings
-    page asks to connect again).
+    page asks to connect again). Their screens share the one log: a screen polled after another finds no new plays.
     """
-    stored = db.session.get(AppleMusicToken, device_id)
+    user_id = accounts.owner(device_id)
+    stored = db.session.get(AppleMusicToken, user_id) if user_id is not None else None
     if stored is None or (token := stored.token) is None:
         return None
     try:
@@ -162,7 +170,7 @@ def record_plays(stored: AppleMusicToken, songs: list[dict]) -> None:
         attributes = by_id[song_id].get("attributes", {})
         db.session.add(
             AppleMusicPlay(
-                device_id=stored.device_id,
+                user_id=stored.user_id,
                 played_at=now - timedelta(seconds=len(new) - offset),
                 song_id=song_id,
                 track=as_track(by_id[song_id]),
@@ -178,12 +186,13 @@ def top(device_id: str, type_: str, time_range: str, limit: int) -> dict[str, li
 
     Counted from the plays logged since the listener connected; None when Apple Music isn't connected.
     """
-    if not linked(device_id):
+    user_id = accounts.owner(device_id)
+    if user_id is None or not account_linked(user_id):
         return None
     since = datetime.now(UTC) - TIME_RANGES.get(time_range, TIME_RANGES["medium_term"])
     plays = db.session.scalars(
         select(AppleMusicPlay)
-        .where(AppleMusicPlay.device_id == device_id, AppleMusicPlay.played_at >= since)
+        .where(AppleMusicPlay.user_id == user_id, AppleMusicPlay.played_at >= since)
         .order_by(AppleMusicPlay.played_at.desc())
     ).all()
     if type_ == "artists":

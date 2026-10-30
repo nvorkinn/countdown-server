@@ -36,6 +36,7 @@ from broker.providers.developer import (
 from broker.providers.loop import SUB_CHANGED, next_tick, read_only_app
 from broker.services import render_jobs
 from broker.services.render_jobs import JOBS, SCREENS, queued_key
+from tests.conftest import account_of
 
 FIXTURE = fixtures.load("developer.json")
 FETCHED_AT = datetime.fromisoformat(FIXTURE["fetched_at"]).timestamp()
@@ -74,7 +75,7 @@ def device(app, register_device):
         with app.app_context():
             db.session.get_one(DeviceConfig, device_id).developer_enabled = enabled
             if token is not None:
-                row = GitHubToken(device_id=device_id)
+                row = GitHubToken(user_id=account_of(device_id))
                 row.token = token
                 db.session.add(row)
             db.session.commit()

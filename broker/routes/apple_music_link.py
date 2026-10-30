@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING
 
 from flask import Blueprint, current_app, g, jsonify, redirect, request, url_for
 
-from broker.auth import require_paired_user
+from broker.auth import require_paired_user, signed_in_user
 from broker.clients import apple_music
 from broker.db import db
 from broker.models import AppleMusicPlay, AppleMusicToken
-from broker.services import device_keys
+from broker.services import accounts, device_keys
 
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
@@ -30,11 +30,12 @@ def developer_token() -> ResponseReturnValue:
 @bp.post("/device/<device_id>/apple-music/connect")
 @require_paired_user
 def connect() -> ResponseReturnValue:
-    """Store the Music User Token MusicKit JS got when the listener signed in to Apple."""
+    """Store the Music User Token MusicKit JS got when the listener signed in to Apple, against their account."""
     token = request.form.get("music_user_token", "").strip()
     if not token:
         return jsonify(error="No Apple Music token was sent"), 400
-    stored = db.session.get(AppleMusicToken, g.device_id) or AppleMusicToken(device_id=g.device_id, seen_ids=[])
+    user_id = signed_in_user()
+    stored = db.session.get(AppleMusicToken, user_id) or AppleMusicToken(user_id=user_id, seen_ids=[])
     stored.token = token
     db.session.add(stored)
     db.session.commit()
@@ -45,13 +46,14 @@ def connect() -> ResponseReturnValue:
 @bp.post("/device/<device_id>/apple-music/disconnect")
 @require_paired_user
 def disconnect() -> ResponseReturnValue:
-    """Forget the screen's Apple Music token and the plays it logged."""
-    stored = db.session.get(AppleMusicToken, g.device_id)
+    """Forget the account's Apple Music token and the plays it logged, for all the user's screens."""
+    user_id = signed_in_user()
+    stored = db.session.get(AppleMusicToken, user_id)
     if stored is not None:
         db.session.delete(stored)
-    db.session.query(AppleMusicPlay).filter_by(device_id=g.device_id).delete()
+    db.session.query(AppleMusicPlay).filter_by(user_id=user_id).delete()
     db.session.commit()
     # What it last played, and the top lists counted from its plays: the music provider writes them again within a
     # minute for whatever is still linked.
-    device_keys.delete(device_keys.music(g.device_id))
+    accounts.forget_keys(user_id, device_keys.music)
     return redirect(url_for("pages.device_config", device_id=g.device_id))

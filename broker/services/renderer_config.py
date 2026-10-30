@@ -25,8 +25,8 @@ from cryptography.fernet import InvalidToken
 from flask import current_app
 
 from broker.db import db
-from broker.models import Device, DeviceConfig, GlowmarktCredentials, Style
-from broker.services import pace, pairing, stops, weather_place
+from broker.models import Device, DeviceConfig, GlowmarktCredentials, ParcelKey, Style
+from broker.services import accounts, pace, pairing, stops, weather_place
 from broker.services.postcodes import postcode_country
 
 
@@ -39,7 +39,10 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
     (None for none).
     """
     device_id = config.device_id
-    creds = db.session.get(GlowmarktCredentials, device_id)
+    # The services are linked to the owner's account; the screen's own switches say which it shows.
+    owner = accounts.owner(device_id)
+    creds = db.session.get(GlowmarktCredentials, owner) if owner is not None else None
+    parcel_key = db.session.get(ParcelKey, owner) if owner is not None else None
     country = postcode_country(config.postcode)
     stop_ids = config.tfl_stop_ids
     return ConfigResponse(
@@ -77,16 +80,17 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
             style=_departures_style(config.style),
         ),
         spotify=Spotify(enabled=config.spotify_enabled, style=config.style),
-        # Only the switch: the Glowmarkt provider signs in and fills the store, which the screen reads.
-        glowmarkt=Glowmarkt(enabled=_glowmarkt_enabled(creds)),
+        # Only the switch, on while the screen shows energy and its owner has a Glowmarkt login: the provider signs in
+        # and fills the store, which the screen reads.
+        glowmarkt=Glowmarkt(enabled=config.energy_enabled and _glowmarkt_enabled(creds)),
         # Only the switch: the GitHub token stays here, and the developer provider fills the store the screen reads.
         developer=Developer(enabled=config.developer_enabled),
         # Only the switch, like the developer panel's: the Apple token stays here, and the music provider fills the
         # store the screen reads.
         apple_music=AppleMusic(enabled=config.apple_music_enabled),
-        # Only the switch, on while a Parcel API key is saved: the key stays here, and the parcel provider fills the
-        # store the screen reads.
-        parcels=Parcels(enabled=config.parcels_enabled),
+        # Only the switch, on while the screen shows parcels and its owner has a Parcel API key saved: the key stays
+        # here, and the parcel provider fills the store the screen reads.
+        parcels=Parcels(enabled=config.parcels_enabled and parcel_key is not None),
         pairing_code=pairing_code,
     )
 
@@ -113,14 +117,14 @@ def timezone(country: str | None, stop_ids: list[str]) -> str:
 
 
 def _glowmarkt_enabled(creds: GlowmarktCredentials | None) -> bool:
-    """Return whether the device has a Glowmarkt account the provider signs in with (GlowmarktCredentials.sign_in)."""
+    """Return whether there's a Glowmarkt account the provider signs in with (GlowmarktCredentials.sign_in)."""
     if creds is None:
         return False
     try:
         return creds.sign_in() is not None
     except InvalidToken:
         # The provider skips it too, so there would be nothing in the store to show.
-        current_app.logger.warning("Can't decrypt the Glowmarkt password of device %s", creds.device_id)
+        current_app.logger.warning("Can't decrypt the Glowmarkt password of user %s", creds.user_id)
         return False
 
 
