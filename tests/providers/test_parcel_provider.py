@@ -237,9 +237,15 @@ def test_a_401_writes_invalid_key_and_stops_asking_until_a_config_is_saved(provi
     provider.run_cycle()
     assert len(fake.keys) == 1
 
-    # The config is saved again: the nudge tries the key afresh, and a good answer clears the status.
-    fake.answer = [delivery()]
+    # Someone else's config save leaves it alone: its status key is still there.
     provider.nudged = True
+    provider.run_cycle()
+    assert len(fake.keys) == 1
+
+    # The owner saves the key again, which deletes the status (and parcels) keys: the nudge tries it afresh at once,
+    # and a good answer clears the status.
+    store.delete(status_key(DEVICE), parcels_key(DEVICE))
+    fake.answer = [delivery()]
     provider.run_cycle()
     assert len(fake.keys) == 2
     assert store.get(status_key(DEVICE)) == "ok"
@@ -306,6 +312,24 @@ def test_a_nudge_skips_keys_already_asked_and_the_gap_caps_the_rate(provider, fa
     provider.run_cycle()
     provider.run_cycle()
     assert len(fake.keys) == 2
+
+
+def test_a_saved_key_is_asked_at_once_even_right_after_a_poll(provider, store, keys, fake, clock):
+    provider.run_cycle()
+
+    # Saved again unchanged: the save deleted both keys, so the screen would show nothing until a tick.
+    store.delete(status_key(DEVICE), parcels_key(DEVICE))
+    clock.now += 30
+    provider.nudged = True
+    provider.run_cycle()
+    assert len(fake.keys) == 2
+    assert stored(store) is not None
+
+    # A typo fixed a minute later is no different.
+    keys[DEVICE] = "fixed-key-0987654321"
+    clock.now += 30
+    provider.run_cycle()
+    assert fake.keys[-1] == "fixed-key-0987654321"
 
 
 def test_a_changed_key_is_asked_on_the_nudge(provider, keys, fake, clock):

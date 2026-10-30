@@ -10,8 +10,9 @@ ParcelList) and whether Parcel took the key to `v1:parcels-status:<device id>` (
 Parcel allows 20 requests an hour per key. A cycle runs every INTERVAL_S, and a device is only asked in the hours its
 screen is awake (POLL_FROM_HOUR..POLL_UNTIL_HOUR, in its time zone), so a key sees about three requests an hour by day
 and none overnight. A cycle started early by `v1:sub:changed` (some config was saved) only asks the devices whose key is
-new or changed, or that Parcel refused (a saved config is the signal to try again), and no key is asked twice within
-MIN_GAP_S whatever nudges come.
+new or changed, or whose status key is gone: the config save deletes `v1:parcels` and `v1:parcels-status` whenever a
+key is posted, so a missing status is the signal to try the key afresh (a refused one too). A tick holds every key to
+MIN_GAP_S between requests.
 
 A 401 writes `invalid_key` and stops asking that key until the next nudge; a 429 writes `rate_limited` and leaves the
 key alone until Parcel says (or BACKOFF_S). Any other failure only loses that device's poll: its parcels expire if it
@@ -259,18 +260,18 @@ class ParcelProvider(ProviderLoop):
     def _due(self, want: Wanted) -> bool:
         """Whether this cycle asks Parcel for the device.
 
-        Not while it is backed off or was asked a moment ago. A cycle a config save started asks only when the key is
-        new, changed or was refused (and at any hour); a tick asks in the device's waking hours.
+        Never while it is backed off. A cycle a config save started asks, at any hour and whatever the gap (the owner
+        just acted, and saves are few), only when the key is new or changed, or the status key is gone (the save
+        deleted it). A tick asks in the device's waking hours, unless it asked a moment ago or Parcel refused the key.
         """
         now = self.clock()
         if now < self._backoff_until.get(want.device_id, 0):
             return False
         asked = self._asked.get(want.device_id)
+        if self.nudged:
+            return asked is None or asked[0] != want.api_key or not self.store.exists(status_key(want.device_id))
         if asked and now - asked[1] < MIN_GAP_S:
             return False
-        if self.nudged:
-            # A saved config is the signal to try a refused key again, and to ask at once whatever the hour.
-            return asked is None or asked[0] != want.api_key or want.device_id in self._refused
         if self._refused.get(want.device_id) == want.api_key:
             return False
         return polling_hours(datetime.fromtimestamp(now, UTC), want.zone)
