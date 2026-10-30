@@ -22,7 +22,6 @@ says delivered) is kept as delivered for DELIVERED_KEPT_S, so the screen can sho
 read back from the store, so a restart forgets nothing.
 """
 
-import hashlib
 import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -176,11 +175,6 @@ def validated(parcels: list[dict[str, Any]], now: datetime) -> str:
     )
 
 
-def _fingerprint(api_key: str) -> str:
-    """Return a digest of a key, to tell a changed one without keeping it in memory twice (and never logged)."""
-    return hashlib.sha256(api_key.encode()).hexdigest()
-
-
 @dataclass(frozen=True)
 class Wanted:
     """A device in `v1:sub:parcel`, its key and the time zone its screen goes by."""
@@ -210,9 +204,9 @@ class ParcelProvider(ProviderLoop):
         self._interval_s = interval_s
         self._deliveries = deliveries
         self._carrier_names = carrier_names
-        # By device id: the digest of the key last asked with, and when.
+        # By device id: the key last asked with (kept in memory only, as glow keeps its passwords), and when.
         self._asked: dict[str, tuple[str, float]] = {}
-        # Devices whose key Parcel refused, by the key's digest: not asked again until a nudge.
+        # Devices whose key Parcel refused, by the key: not asked again until a nudge.
         self._refused: dict[str, str] = {}
         # Device -> when its key may be asked again, after Parcel rate-limited it.
         self._backoff_until: dict[str, float] = {}
@@ -271,14 +265,13 @@ class ParcelProvider(ProviderLoop):
         now = self.clock()
         if now < self._backoff_until.get(want.device_id, 0):
             return False
-        digest = _fingerprint(want.api_key)
         asked = self._asked.get(want.device_id)
         if asked and now - asked[1] < MIN_GAP_S:
             return False
         if self.nudged:
             # A saved config is the signal to try a refused key again, and to ask at once whatever the hour.
-            return asked is None or asked[0] != digest or want.device_id in self._refused
-        if self._refused.get(want.device_id) == digest:
+            return asked is None or asked[0] != want.api_key or want.device_id in self._refused
+        if self._refused.get(want.device_id) == want.api_key:
             return False
         return polling_hours(datetime.fromtimestamp(now, UTC), want.zone)
 
@@ -295,12 +288,11 @@ class ParcelProvider(ProviderLoop):
     def _poll_device(self, want: Wanted) -> int:
         now = self.clock()
         stamp = datetime.fromtimestamp(now, UTC)
-        digest = _fingerprint(want.api_key)
-        self._asked[want.device_id] = (digest, now)
+        self._asked[want.device_id] = (want.api_key, now)
         try:
             deliveries = self._deliveries(want.api_key)
         except parcel_client.InvalidKeyError:
-            self._refused[want.device_id] = digest
+            self._refused[want.device_id] = want.api_key
             self.logger.warning(
                 "Parcel: refused the key of device %s; not asking again until its config is saved", want.device_id
             )
