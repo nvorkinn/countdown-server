@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Account · Countdown{% endblock %}
+{% block heading %}{% endblock %}
+
+{% block hero %}
+<section class="hero">
+    <div>
+        <p class="kicker">Your account</p>
+        <h1>{{ username or 'Account' }}</h1>
+        <p class="hero-lede">Services connected here work on all your screens. Each screen's page picks which it shows.</p>
+    </div>
+</section>
+{% endblock %}
+
+{% block content %}
+{# A service's line: its name, whether it's connected, and what to do about it (the caller's block). #}
+{% macro service_row(label, linked, status=none) %}
+                <div class="service-row">
+                    <span class="service-name">{{ label }}</span>
+                    <div class="service-actions">
+                        <span class="status-pill {{ 'status-linked' if linked and not status else 'status-unlinked' }}">{{ status or ('Connected' if linked else 'Not connected') }}</span>
+                        {{ caller() }}
+                    </div>
+                </div>
+{% endmacro %}
+
+<!-- Live outside the settings form because forms can't nest; the buttons point at them. -->
+<form id="spotifyDisconnectForm" method="POST" action="{{ url_for('account.spotify_disconnect') }}"></form>
+<form id="appleMusicDisconnectForm" method="POST" action="{{ url_for('apple_music_link.disconnect') }}"></form>
+<form id="appleMusicConnectForm" method="POST" action="{{ url_for('apple_music_link.connect') }}">
+    <input type="hidden" name="music_user_token" id="music_user_token">
+</form>
+<form id="githubDisconnectForm" method="POST" action="{{ url_for('account.github_disconnect') }}"></form>
+<form id="parcelDisconnectForm" method="POST" action="{{ url_for('account.parcel_disconnect') }}"></form>
+
+<form class="settings" id="settingsForm" method="POST" action="{{ url_for('account.account') }}" autocomplete="off">
+    <div class="integration-grid">
+        <section class="section integration">
+            <header class="card-header">
+                <h2 class="card-title">Music</h2>
+            </header>
+            {% call service_row('Spotify', spotify_linked) %}
+                {% if spotify_linked %}
+                    <button type="submit" form="spotifyDisconnectForm" class="btn-action btn-delete" data-confirm="Disconnect Spotify from all your screens?">Disconnect</button>
+                {% else %}
+                    <a href="{{ url_for('spotify_oauth.login') }}" class="btn-action" style="text-decoration:none;">Connect</a>
+                {% endif %}
+            {% endcall %}
+            {% if apple_music_available %}
+                {% call service_row('Apple Music', apple_music_linked) %}
+                    {% if apple_music_linked %}
+                        <button type="submit" form="appleMusicDisconnectForm" class="btn-action btn-delete" data-confirm="Disconnect Apple Music from all your screens?">Disconnect</button>
+                    {% else %}
+                        <button type="button" id="appleMusicConnect" class="btn-action" data-token-url="{{ url_for('apple_music_link.developer_token') }}">Connect</button>
+                    {% endif %}
+                {% endcall %}
+                <p id="apple_music_error" class="form-hint" role="alert" hidden></p>
+            {% endif %}
+        </section>
+
+        <section class="section integration">
+            <header class="card-header">
+                <h2 class="card-title">GitHub</h2>
+            </header>
+            {% call service_row('GitHub', github_linked) %}
+                {% if github_linked %}
+                    <button type="submit" form="githubDisconnectForm" class="btn-action btn-delete" data-confirm="Remove the GitHub token from all your screens?">Remove</button>
+                {% endif %}
+            {% endcall %}
+            <div class="form-group">
+                <label for="github_token">{{ 'New token' if github_linked else 'Token' }}</label>
+                <input
+                    type="password"
+                    id="github_token"
+                    name="github_token"
+                    placeholder="{{ 'Leave blank to keep it' if github_linked else 'github_pat_…' }}"
+                    autocomplete="new-password"
+                >
+                <p class="form-hint">
+                    A <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>,
+                    read-only, for all your repositories: Actions, Contents, Metadata and Pull requests, plus Plan for Copilot usage.
+                </p>
+            </div>
+        </section>
+
+        <section class="section integration">
+            <header class="card-header">
+                <h2 class="card-title">Parcel</h2>
+            </header>
+            {% set parcel_problem = {
+                'invalid_key': 'Parcel refused the key: paste a new one',
+                'rate_limited': 'Rate limited: trying again later',
+                None: 'Saved, not checked yet',
+            }.get(parcel_status) if parcel_linked else none %}
+            {% call service_row('Parcel', parcel_linked, parcel_problem) %}
+                {% if parcel_linked %}
+                    <button type="submit" form="parcelDisconnectForm" class="btn-action btn-delete" data-confirm="Remove the Parcel key from all your screens?">Remove</button>
+                {% endif %}
+            {% endcall %}
+            <div class="form-group">
+                <label for="parcel_api_key">{{ 'New key' if parcel_linked else 'API key' }}</label>
+                <input
+                    type="password"
+                    id="parcel_api_key"
+                    name="parcel_api_key"
+                    placeholder="{{ 'Leave blank to keep it' if parcel_linked else '' }}"
+                    autocomplete="new-password"
+                >
+                <p class="form-hint">
+                    Get your key at <a href="https://web.parcelapp.net" target="_blank" rel="noopener">web.parcelapp.net</a>.
+                    Parcel Premium is required.
+                </p>
+            </div>
+        </section>
+
+        <section class="section integration">
+            <header class="card-header">
+                <h2 class="card-title">Energy</h2>
+            </header>
+            {% call service_row('Glowmarkt', glowmarkt.has_password) %}{% endcall %}
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="glowmarkt_username">Username</label>
+                    <input type="text" id="glowmarkt_username" name="glowmarkt_username" value="{{ glowmarkt.username }}" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="glowmarkt_password">Password</label>
+                    <input
+                        type="password"
+                        id="glowmarkt_password"
+                        name="glowmarkt_password"
+                        placeholder="{{ 'Leave blank to keep it' if glowmarkt.has_password else '' }}"
+                        autocomplete="new-password"
+                    >
+                </div>
+            </div>
+            <p class="form-hint">Your Bright app login.</p>
+        </section>
+    </div>
+
+    <div class="save-bar" id="saveBar">
+        <p class="save-status" id="saveStatus" aria-live="polite">Unsaved changes</p>
+        <button type="button" class="btn-discard" id="discardChanges" hidden>Discard</button>
+        <button type="submit" class="btn-save">Save</button>
+    </div>
+</form>
+
+<script src="{{ url_for('static', filename='settings_form.js') }}"></script>
+<script>
+    // Apple Music: sign in to Apple with MusicKit JS, then hand the token Apple gives back to the broker.
+    const appleMusicConnect = document.getElementById('appleMusicConnect');
+    if (appleMusicConnect) {
+        appleMusicConnect.addEventListener('click', async () => {
+            const error = document.getElementById('apple_music_error');
+            error.hidden = true;
+            try {
+                const config = await (await fetch(appleMusicConnect.dataset.tokenUrl)).json();
+                if (!window.MusicKit) {
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = 'https://js-cdn.music.apple.com/musickit/v3/musickit.js';
+                        script.onload = resolve;
+                        script.onerror = reject;
+                        document.head.appendChild(script);
+                    });
+                }
+                const music = await MusicKit.configure({
+                    developerToken: config.developer_token,
+                    app: { name: config.app_name, build: '1' },
+                });
+                document.getElementById('music_user_token').value = await music.authorize();
+                document.getElementById('appleMusicConnectForm').submit();
+            } catch (e) {
+                error.textContent = "Apple Music couldn't be connected. Please try again.";
+                error.hidden = false;
+            }
+        });
+    }
+</script>
+{% endblock %}

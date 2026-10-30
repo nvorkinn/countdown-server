@@ -680,6 +680,16 @@
             background: var(--chip);
             color: var(--text-muted);
         }
+
+        /* On a screen's page, a service that isn't working links to the account's, where it's fixed. */
+        a.status-pill {
+            text-decoration: none;
+        }
+
+        a.status-pill:hover {
+            color: var(--ink);
+            text-decoration: underline;
+        }
         /* --- The signed-in pages: a narrow sidebar of the user's screens beside the page ---------------------- */
         body.app {
             display: block;
@@ -728,6 +738,25 @@
             letter-spacing: .12em;
             text-transform: uppercase;
             color: var(--text-muted);
+        }
+
+        /* "Account" is a heading of its own, above "Screens", and a link: red while its page is open. */
+        .nav-account {
+            display: block;
+            margin: 0 0 26px;
+            padding: 4px 0;
+            text-decoration: none;
+        }
+
+        .nav-account:hover, .nav-account.current {
+            color: var(--ink);
+        }
+
+        .nav-account.current::before {
+            content: "● ";
+            color: var(--red);
+            font-size: 9px;
+            vertical-align: 2px;
         }
 
         /* Each screen is a line under "Screens", indented on a hairline; the one on the page is in red. */
@@ -1569,6 +1598,7 @@
     <aside class="sidebar" id="sidebar">
         <a class="sidebar-brand" href="{{ url_for('pages.index') }}"><img class="brand-logo" src="{{ url_for('static', filename='countdown-pill.svg') }}" alt="Countdown" width="172" height="34"></a>
         <nav class="sidebar-nav" aria-label="Settings">
+            <a href="{{ url_for('account.account') }}" class="nav-heading nav-account{% if on_account %} current{% endif %}"{% if on_account %} aria-current="page"{% endif %}>Account</a>
             <p class="nav-heading" id="screensHeading">Screens</p>
             <ul class="screens" aria-labelledby="screensHeading">
                 {% for screen in screens %}

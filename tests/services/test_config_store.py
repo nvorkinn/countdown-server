@@ -139,10 +139,8 @@ def test_the_stored_config_has_the_landscape_layout_picked(app, store, paired_cl
 def test_the_stored_config_carries_no_secret(app, store, paired_client, monkeypatch):
     client, device_id, _ = paired_client
     app.config.update(TFL_APP_KEY="the-tfl-key")
-    client.post(
-        "/device",
-        data={"glowmarkt_username": "me@example.com", "glowmarkt_password": "glow-password", "energy_enabled": "on"},
-    )
+    client.post("/account", data={"glowmarkt_username": "me@example.com", "glowmarkt_password": "glow-password"})
+    client.post("/device", data={"energy_enabled": "on"})
     with app.app_context():
         db.session.add(GitHubToken(user_id=account_of(device_id), token="ghp_the-github-token"))
         db.session.add(

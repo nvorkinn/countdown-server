@@ -149,7 +149,7 @@ def test_the_config_sends_the_developer_switch_but_never_the_github_token(app, c
 def test_the_config_switches_glowmarkt_off_on_a_screen_not_showing_energy(app, paired_client):
     """The login is the account's; a screen with its energy switch off doesn't show it."""
     client, device_id, _secret = paired_client
-    client.post("/device", data={"glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"})
+    client.post("/account", data={"glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"})
 
     assert _config(app, device_id).get_json()["glowmarkt"] == {"enabled": False}
 
@@ -299,10 +299,8 @@ def test_purge_keeps_a_code_up_to_its_expiry(app, register_device):
 
 def test_the_config_switches_glowmarkt_on_but_never_sends_its_credentials(app, paired_client):
     client, device_id, _secret = paired_client
-    client.post(
-        "/device",
-        data={"glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2", "energy_enabled": "on"},
-    )
+    client.post("/account", data={"glowmarkt_username": "someone@example.com", "glowmarkt_password": "hunter2"})
+    client.post("/device", data={"energy_enabled": "on"})
 
     response = _config(app, device_id)
 

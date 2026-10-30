@@ -12,13 +12,13 @@ from tests.conftest import account_of
 def test_developer_token_404s_when_not_set_up(paired_client):
     client, _device_id, _ = paired_client
 
-    assert client.get("/device/apple-music/developer-token").status_code == 404
+    assert client.get("/account/apple-music/developer-token").status_code == 404
 
 
 def test_developer_token_for_musickit_js(paired_client, musickit):
     client, _device_id, _ = paired_client
 
-    body = client.get("/device/apple-music/developer-token").get_json()
+    body = client.get("/account/apple-music/developer-token").get_json()
 
     assert body["app_name"] == "Countdown"
     assert body["developer_token"].count(".") == 2
@@ -27,14 +27,14 @@ def test_developer_token_for_musickit_js(paired_client, musickit):
 def test_connect_stores_the_token_encrypted_and_disconnect_forgets_it_and_the_plays(app, paired_client, musickit):
     client, device_id, _ = paired_client
 
-    assert client.post("/device/apple-music/connect", data={"music_user_token": " mut "}).status_code == 302
+    assert client.post("/account/apple-music/connect", data={"music_user_token": " mut "}).status_code == 302
     with app.app_context():
         stored = db.session.get_one(AppleMusicToken, account_of(device_id))
         assert stored.token_encrypted != "mut"
         assert stored.token == "mut"
     assert b"Connected" in client.get("/device").data
 
-    client.post("/device/apple-music/disconnect")
+    client.post("/account/apple-music/disconnect")
     with app.app_context():
         assert db.session.get(AppleMusicToken, account_of(device_id)) is None
 
@@ -42,7 +42,7 @@ def test_connect_stores_the_token_encrypted_and_disconnect_forgets_it_and_the_pl
 def test_connect_needs_a_token(paired_client):
     client, _device_id, _ = paired_client
 
-    assert client.post("/device/apple-music/connect", data={}).status_code == 400
+    assert client.post("/account/apple-music/connect", data={}).status_code == 400
 
 
 def test_another_users_device_404s(client, register_device):

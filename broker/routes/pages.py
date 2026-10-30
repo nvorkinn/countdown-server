@@ -5,7 +5,6 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 from countdown_api import keys as store_keys
-from cryptography.fernet import InvalidToken
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
 from redis import Redis, RedisError
 
@@ -36,10 +35,8 @@ from broker.models import (
     layout_choices,
 )
 from broker.services import (
-    accounts,
     assignments,
     config_store,
-    device_keys,
     frame_image,
     frame_record,
     geoip,
@@ -53,7 +50,7 @@ from broker.services import (
 from broker.services.postcodes import normalize_postcode
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Mapping
     from datetime import datetime
 
     from flask.typing import ResponseReturnValue
@@ -125,16 +122,21 @@ def _write_subscriptions_to_redis() -> None:
 
 @bp.app_context_processor
 def screens() -> dict[str, list[dict[str, str | bool]] | bool]:
-    """List the signed-in user's screens, for the sidebar on every page: [{id, label, current}], and if adding one."""
+    """List the signed-in user's screens, for the sidebar on every page: [{id, label, current}], and what's open.
+
+    That's a screen's page, the one adding a screen (adding_screen) or the account's (on_account).
+    """
     devices = user_devices()
     if not devices:
         return {"screens": []}
-    # On the page adding a screen, that's what the sidebar marks rather than a screen.
+    # On the page adding a screen, or the account's, that's what the sidebar marks rather than a screen.
     adding = request.endpoint == "pages.pair"
-    current = None if adding else g.get("device_id") or devices[0].device_id
+    on_account = request.blueprint == "account"
+    current = None if adding or on_account else g.get("device_id") or devices[0].device_id
     return {
         "screens": [{"id": d.device_id, "label": screen_label(d), "current": d.device_id == current} for d in devices],
         "adding_screen": adding,
+        "on_account": on_account,
     }
 
 
@@ -302,20 +304,12 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     config.layout = layout
     if "screen_name" in request.form:
         db.session.get_one(Device, device_id).device_name = screen_name
-    user_id = signed_in_user()
-    changed = _stage_logins(user_id)
-
     db.session.commit()
-    # What the store has from an account that's gone or been replaced, before the providers are told to write the new
-    # one's, so no screen shows the old account's data.
-    for keys_of in changed:
-        accounts.forget_keys(user_id, keys_of)
     _write_subscriptions_to_redis()
     # Every screen's, not just this one's: it costs little, and puts back any copy the store lost.
     config_store.publish_all()
-    # A render of this screen, if the render pool draws it, even if its copy didn't change; of all the user's when one
-    # of their logins changed.
-    render_jobs.enqueue(current_app.extensions["redis"], accounts.screens(user_id) if changed else [device_id])
+    # A render of this screen, if the render pool draws it, even if its copy didn't change.
+    render_jobs.enqueue(current_app.extensions["redis"], [device_id])
     return redirect(url_for("pages.device_config", device_id=device_id))
 
 
@@ -339,84 +333,6 @@ def _weather_place(config: DeviceConfig) -> tuple[dict[str, Any] | None, list[st
         ]
     except weather.GeocodingUnavailableError:
         return None, ["We couldn't check the weather location just now. Please try again in a minute."]
-
-
-def _stage_logins(user_id: str) -> list[Callable[[str], list[str]]]:
-    """Stage the logins posted, which are the user's account's (services/accounts.py), not the screen's.
-
-    Return, for each one that changed, what lists the keys the providers made from it (device_keys'): a key posted
-    counts as changed even if it's the same, so the parcel provider tries afresh one Parcel refused.
-    """
-    changed: list[Callable[[str], list[str]]] = []
-    if _save_glowmarkt_credentials(user_id):
-        changed.append(device_keys.energy)
-    if _save_github_token(user_id):
-        changed.append(device_keys.developer)
-    if _save_parcel_key(user_id):
-        changed.append(device_keys.parcels)
-    return changed
-
-
-def _save_glowmarkt_credentials(user_id: str) -> bool:
-    """Stage the posted Glowmarkt username, and password unless its field was left blank, for the user's account.
-
-    Return whether that changes the account the glow-provider signs in with, or leaves it none.
-    """
-    glowmarkt_password = request.form.get("glowmarkt_password", "")
-    stored = db.session.get(GlowmarktCredentials, user_id)
-    before = _glowmarkt_account(stored) if stored is not None else None
-    creds = stored or GlowmarktCredentials(user_id=user_id)
-    creds.username = request.form.get("glowmarkt_username", "").strip()
-    if glowmarkt_password:
-        creds.password = glowmarkt_password
-    db.session.add(creds)
-    return _glowmarkt_account(creds) != before
-
-
-def _glowmarkt_account(creds: GlowmarktCredentials) -> tuple[str, str] | str | None:
-    """Return the account the provider signs in with (GlowmarktCredentials.sign_in); None for none.
-
-    "undecryptable" for a password that won't decrypt, which the provider can't sign in with either.
-    """
-    try:
-        return creds.sign_in()
-    except InvalidToken:
-        return "undecryptable"
-
-
-def _save_github_token(user_id: str) -> bool:
-    """Stage the posted GitHub token for the user's account, unless its field was left blank (keeping the stored one).
-
-    Return whether that replaces the token the developer provider uses.
-    """
-    token = request.form.get("github_token", "").strip()
-    if not token:
-        return False
-    stored = db.session.get(GitHubToken, user_id)
-    try:
-        unchanged = stored is not None and stored.token == token
-    except InvalidToken:
-        unchanged = False
-    if unchanged:
-        return False
-    stored = stored or GitHubToken(user_id=user_id)
-    stored.token = token
-    db.session.add(stored)
-    return True
-
-
-def _save_parcel_key(user_id: str) -> bool:
-    """Stage the posted Parcel API key for the user's account, unless its field was left blank (keeping the stored one).
-
-    Return whether a key was posted, so what the provider made from the last one is cleared. The key is never logged.
-    """
-    key = request.form.get("parcel_api_key", "").strip()
-    if not key:
-        return False
-    stored = db.session.get(ParcelKey, user_id) or ParcelKey(user_id=user_id)
-    stored.key = key
-    db.session.add(stored)
-    return True
 
 
 @bp.route("/device/name", methods=["GET", "POST"], defaults={"device_id": None})
@@ -513,16 +429,17 @@ def _seen_ago(seen: datetime | None, now: datetime) -> str | None:
     return f"{minutes // (24 * 60)} days ago"
 
 
+# What's wrong with the account's Parcel key, by what Parcel last said of it for this screen, on the screen's page
+# (the account's page says what to do about it).
+PARCEL_PROBLEMS = {"invalid_key": "Key refused", "rate_limited": "Rate limited"}
+
+
 def _render_device_config(device_id: str, errors: list[str] | None = None) -> str:
     """Render a screen's settings page, with any errors from saving it."""
     config = db.session.get_one(DeviceConfig, device_id)
     # The services are linked to the signed-in user's account, which every screen of theirs shows from.
     user_id = signed_in_user()
     creds = db.session.get(GlowmarktCredentials, user_id)
-    glowmarkt = {
-        "username": creds.username if creds else "",
-        "has_password": bool(creds and creds.password_encrypted),
-    }
 
     device = db.session.get_one(Device, device_id)
     layouts = layout_choices(config)
@@ -563,60 +480,12 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         spotify_linked=db.session.get(SpotifyToken, user_id) is not None,
         apple_music_available=apple_music.configured(),
         apple_music_linked=apple_music.linked(device_id),
-        glowmarkt=glowmarkt,
+        glowmarkt_linked=bool(creds and creds.password_encrypted),
         github_linked=db.session.get(GitHubToken, user_id) is not None,
         parcel_linked=parcel_key.has_key(db, user_id),
-        parcel_status=parcel_key.link_status(current_app.extensions["redis"], device_id),
+        parcel_problem=PARCEL_PROBLEMS.get(parcel_key.link_status(current_app.extensions["redis"], device_id)),
         errors=errors or [],
     )
-
-
-@bp.post("/device/spotify/disconnect", defaults={"device_id": None})
-@bp.post("/device/<device_id>/spotify/disconnect")
-@require_paired_user
-def spotify_disconnect() -> ResponseReturnValue:
-    """Forget the account's Spotify tokens, unlinking Spotify from all the user's screens."""
-    user_id = signed_in_user()
-    token = db.session.get(SpotifyToken, user_id)
-    if token is not None:
-        db.session.delete(token)
-        db.session.commit()
-        # What it was playing, and its top lists: the music provider writes them again within a minute for whatever is
-        # still linked.
-        accounts.forget_keys(user_id, device_keys.music)
-    return redirect(url_for("pages.device_config", device_id=g.device_id))
-
-
-@bp.post("/device/github/disconnect", defaults={"device_id": None})
-@bp.post("/device/<device_id>/github/disconnect")
-@require_paired_user
-def github_disconnect() -> ResponseReturnValue:
-    """Forget the account's GitHub token, for all the user's screens."""
-    user_id = signed_in_user()
-    token = db.session.get(GitHubToken, user_id)
-    if token is not None:
-        db.session.delete(token)
-        db.session.commit()
-        # The developer provider rewrites the panel without the GitHub summary within a cycle.
-        accounts.forget_keys(user_id, device_keys.developer)
-    return redirect(url_for("pages.device_config", device_id=g.device_id))
-
-
-@bp.post("/device/parcel/disconnect", defaults={"device_id": None})
-@bp.post("/device/<device_id>/parcel/disconnect")
-@require_paired_user
-def parcel_disconnect() -> ResponseReturnValue:
-    """Forget the account's Parcel API key, which takes the parcels panel off all the user's screens."""
-    user_id = signed_in_user()
-    key = db.session.get(ParcelKey, user_id)
-    if key is not None:
-        db.session.delete(key)
-        db.session.commit()
-        # The provider stops polling it once the key is gone; what it wrote would otherwise show until its TTL.
-        accounts.forget_keys(user_id, device_keys.parcels)
-        _write_subscriptions_to_redis()
-        config_store.publish_all()
-    return redirect(url_for("pages.device_config", device_id=g.device_id))
 
 
 @bp.post("/device/display/unlink", defaults={"device_id": None})
