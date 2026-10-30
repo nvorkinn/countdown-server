@@ -27,12 +27,13 @@ Everything runs from `docker-compose.yml` on one host, in `/opt/auth-broker/` (t
 | `glow-provider` | Fetches each screen's electricity readings from Glowmarkt every 15 minutes into `v1:energy:<device id>`. |
 | `spotify-provider` | Fetches what each screen's Spotify and Apple Music are playing (every minute), their top lists (every 30 minutes) and the playing tracks' covers. |
 | `developer-provider` | Polls each screen's GitHub and AI plans for the developer panel (every 2 minutes, every 20 seconds while a release runs). |
+| `parcel-provider` | Reads each screen's active deliveries from the owner's Parcel account (every 20 minutes by day, not overnight) into `v1:parcels:<device id>`, and whether Parcel took the key into `v1:parcels-status:<device id>`. |
 | `caddy` | TLS and routing for `auth.`, `sso.`, `logs.` and `metrics.nikolaivorkinn.com`, and the authentik sign-in gate. |
 | `authentik-server`, `-worker`, `-postgresql` | Sign-in, sign-up, passkeys and Google login, at `sso.nikolaivorkinn.com`. |
 | `redis` | The store shared with countdown. A cache only: nothing on disk. |
 | `fluent-bit`, `victoria-logs`, `victoria-metrics` | Logs and metrics from every container, the render pool and the screens. |
 
-The three providers run the broker's own image with another command and the broker's secrets. The glow and developer
+The four providers run the broker's own image with another command and the broker's secrets. The glow, developer and parcel
 providers open the database read-only; the music provider writes refreshed Spotify tokens back. Each wakes at once when
 a config is saved (`v1:sub:changed`).
 
@@ -236,7 +237,7 @@ The app runs pending migrations on startup, so deploying is all a migration need
 
 **Code layout:** `broker/routes/` (Flask blueprints), `broker/services/` (the broker's own logic), `broker/clients/`
 (outside APIs), `broker/models.py` and `broker/migrations/` (the schema), `broker/cli.py` (admin commands), and the
-providers in `broker/providers/glow.py`, `broker/providers/music.py` and `broker/providers/developer.py`, which all
+providers in `broker/providers/glow.py`, `broker/providers/music.py`, `broker/providers/developer.py` and `broker/providers/parcel.py`, which all
 run on the loop in `broker/providers/loop.py`. `tests/` mirrors it.
 
 ## Admin commands

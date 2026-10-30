@@ -42,7 +42,7 @@ case "$service" in
     var="${var//-/_}_VERSION"
     # The providers run the broker's image (and so its COUNTDOWN_SERVER_VERSION), so they're recreated with it.
     if [ "$service" = countdown-server ]; then
-      services=(countdown-server glow-provider spotify-provider developer-provider)
+      services=(countdown-server glow-provider spotify-provider developer-provider parcel-provider)
     fi
     ;;
   authentik) services=(authentik-postgresql authentik-server authentik-worker) ;;

@@ -56,7 +56,7 @@ def _read_only_apps() -> dict[str, dict]:
 
 def test_the_services_that_start_an_app_are_found():
     assert {"spotify-provider"} <= set(_broker_apps())
-    assert {"glow-provider", "developer-provider"} <= set(_read_only_apps())
+    assert {"glow-provider", "developer-provider", "parcel-provider"} <= set(_read_only_apps())
     assert not set(_broker_apps()) & set(_read_only_apps())
 
 
