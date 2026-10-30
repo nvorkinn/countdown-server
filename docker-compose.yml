@@ -106,6 +106,24 @@ services:
       - redis.env
     stop_grace_period: 30s
 
+  # The parcel provider (broker/providers/parcel.py): each screen's active Parcel deliveries into Redis, every 20 minutes
+  # by day. It opens the database read-only (loop.read_only_app), so ./data is mounted :ro.
+  parcel-provider:
+    <<: *release-image
+    image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
+    container_name: parcel-provider
+    logging: *logging
+    # Host networking, to reach Redis on 127.0.0.1:6379.
+    network_mode: host
+    command: ["python", "-m", "broker.providers.parcel"]
+    volumes:
+      - ./data:/app/data:ro
+    # broker.env for the key that decrypts the Parcel API keys.
+    env_file:
+      - broker.env
+      - redis.env
+    stop_grace_period: 30s
+
   caddy:
     <<: *release-image
     image: ghcr.io/nvorkinn/countdown-server-caddy:${CADDY_VERSION:-latest}

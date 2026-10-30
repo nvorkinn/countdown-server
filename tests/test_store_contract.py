@@ -16,7 +16,7 @@ from countdown_api import keys as store_keys
 from broker import album_art
 from broker.db import db
 from broker.models import Device, DeviceConfig, GlowmarktCredentials
-from broker.providers import developer, glow, loop, music
+from broker.providers import developer, glow, loop, music, parcel
 from broker.routes import pages
 from broker.services import config_store, device_keys, frame_record, pace, pairing, pairing_key, render_jobs
 
@@ -38,6 +38,8 @@ def test_the_keys_are_the_contracts():
     assert music.top_key(device_id) == store_keys.spotify_top(device_id)
     assert developer.stored_key(device_id) == store_keys.developer(device_id)
     assert developer.pace_key(device_id) == pace.key("developer", device_id) == store_keys.pace("developer", device_id)
+    assert parcel.parcels_key(device_id) == store_keys.parcels(device_id)
+    assert parcel.status_key(device_id) == store_keys.parcels_status(device_id)
     url = "https://i.scdn.co/image/ab01300"
     assert album_art.art_key(url) == store_keys.album_art(url)
     assert device_keys.music(device_id) == [store_keys.spotify(device_id), store_keys.spotify_top(device_id)]
@@ -54,6 +56,8 @@ def test_the_ttls_are_the_contracts():
     assert album_art.ART_TTL_S == store_keys.ALBUM_ART_TTL_S == 5 * 60
     assert developer.TTL_S == store_keys.DEVELOPER_TTL_S == 15 * 60
     assert developer.PACE_TTL_S == store_keys.PACE_TTL_S == 60
+    assert parcel.TTL_S == store_keys.PARCELS_TTL_S == 12 * 60 * 60
+    assert parcel.STATUS_TTL_S == store_keys.PARCELS_STATUS_TTL_S == 24 * 60 * 60
 
 
 def _add_example_devices(app) -> None:
