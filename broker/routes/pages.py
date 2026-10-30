@@ -52,6 +52,7 @@ from broker.services.postcodes import normalize_postcode
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
     from flask.typing import ResponseReturnValue
 
@@ -112,14 +113,17 @@ def _write_subscriptions_to_redis() -> None:
 
 
 @bp.app_context_processor
-def screens() -> dict[str, list[dict[str, str | bool]]]:
-    """List the signed-in user's screens, for the switcher at the top of every page: [{id, label, current}]."""
+def screens() -> dict[str, list[dict[str, str | bool]] | bool]:
+    """List the signed-in user's screens, for the sidebar on every page: [{id, label, current}], and if adding one."""
     devices = user_devices()
     if not devices:
         return {"screens": []}
-    current = g.get("device_id") or devices[0].device_id
+    # On the page adding a screen, that's what the sidebar marks rather than a screen.
+    adding = request.endpoint == "pages.pair"
+    current = None if adding else g.get("device_id") or devices[0].device_id
     return {
-        "screens": [{"id": d.device_id, "label": screen_label(d), "current": d.device_id == current} for d in devices]
+        "screens": [{"id": d.device_id, "label": screen_label(d), "current": d.device_id == current} for d in devices],
+        "adding_screen": adding,
     }
 
 
@@ -469,6 +473,20 @@ def _shown_layout(config: DeviceConfig, layouts: Mapping[Layout, object] | None)
     return config.layout if config.layout in layouts else next(iter(layouts))
 
 
+def _seen_ago(seen: datetime | None, now: datetime) -> str | None:
+    """Return when the screen last asked for its picture, as the page's header says it ("5 min ago"); None if never."""
+    if seen is None:
+        return None
+    minutes = int((now - seen).total_seconds() // 60)
+    if minutes < 1:
+        return "just now"
+    if minutes < 60:  # noqa: PLR2004 -- an hour
+        return f"{minutes} min ago"
+    if minutes < 48 * 60:
+        return f"{minutes // 60} h ago"
+    return f"{minutes // (24 * 60)} days ago"
+
+
 def _render_device_config(device_id: str, errors: list[str] | None = None) -> str:
     """Render a screen's settings page, with any errors from saving it."""
     config = db.session.get_one(DeviceConfig, device_id)
@@ -489,6 +507,7 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         "device.html",
         device_id=device_id,
         display_attached=device.display_secret_hash is not None,
+        display_seen=_seen_ago(device.display_last_seen_at, pace.clock()),
         screen_label=screen_label(device),
         has_frame=frame_record.head(device_id) is not None,
         frame_width=frame_width,
@@ -501,7 +520,7 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         weather_suggestion=weather_suggestion,
         clock_formats=CLOCK_FORMATS,
         languages=LANGUAGES,
-        orientations=ORIENTATIONS,
+        orientation_labels={orientation: orientation.capitalize() for orientation in ORIENTATIONS},
         styles=STYLES,
         # The weather design is only an HD screen's to pick: elsewhere the weather has one way to fit its panel.
         weather_designs=WEATHER_DESIGNS,

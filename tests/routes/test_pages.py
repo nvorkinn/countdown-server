@@ -199,7 +199,7 @@ def test_device_config_has_the_guided_tour(paired_client):
     assert client.get("/static/display/tour.png").status_code == 200
     # Each section is named for the tour, in the order the page shows them.
     sections = re.findall(
-        r'<div class="card" data-tour="([a-z_]+)">\s*<div class="card-header">\s*<h2 class="card-title">([^<]+)', html
+        r'<section class="[a-z -]+" data-tour="([a-z_]+)">\s*<header class="card-header">\s*<h2 class="card-title">([^<]+)', html
     )
     assert [name for name, _ in sections] == [
         "general",
@@ -308,8 +308,9 @@ def test_device_config_shows_both_clock_formats_and_defaults_to_24_hour(paired_c
     assert re.findall(r'name="clock_format" value="([^"]+)"', html) == ["24h", "12h"]
     assert re.search(r'id="clock_format_24h"[^>]*checked', html)
     assert not re.search(r'id="clock_format_12h"[^>]*checked', html)
-    assert "24-hour (13:00)" in html
-    assert "12-hour (1:00 PM)" in html
+    # Each with its example set smaller beside it.
+    assert "24-hour <small>13:00</small>" in html
+    assert "12-hour <small>1:00 PM</small>" in html
 
 
 @pytest.mark.parametrize("clock_format", ["12h", "24h"])
