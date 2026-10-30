@@ -81,6 +81,7 @@ makes it safe for the broker to trust them. The broker has no user table: the ui
 | **Spotify tokens** | Spotify OAuth, `/auth/spotify/callback` | `spotify_tokens`, plaintext | Refreshed by the music provider. |
 | **Apple Music user token** | MusicKit JS on the settings page | `apple_music_tokens`, encrypted | Lasts about six months, can't be refreshed: cleared when Apple refuses it. |
 | **Glowmarkt password** | the owner, on the settings page | `glowmarkt_credentials`, encrypted | Never leaves the broker's image: the glow provider signs in with it. |
+| **Parcel API key** | the owner, on the settings page | `parcel_keys`, encrypted | From the owner's own Parcel Premium account (web.parcelapp.net). Read through `services/parcel_key.get_parcel_api_key`; never sent to the browser or logged. |
 | **GitHub token** | the owner, on the settings page | `github_tokens`, encrypted | A read-only fine-grained PAT, used only by the developer provider. |
 | **`CREDENTIAL_ENCRYPTION_KEY`** | operator | `secrets/<environment>/broker.env` | The Fernet key for the encrypted columns. Changing it makes them unreadable. |
 | **App keys** | operator | `secrets/<environment>/broker.env` | Spotify client id and secret, the MusicKit key (signs Apple developer tokens), `TFL_APP_KEY` (only for the settings page's stop search). |

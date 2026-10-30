@@ -8,7 +8,7 @@ from countdown_api.models import ConfigResponse
 from sqlalchemy import func, select, update
 
 from broker.db import db
-from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, PairingCode
+from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, PairingCode, ParcelKey
 from broker.services import pairing, renderer_config
 
 
@@ -103,6 +103,7 @@ def test_the_config_returns_defaults(app, register_device):
         "spotify": {"enabled": False, "style": "airy"},
         "glowmarkt": {"enabled": False},
         "developer": {"enabled": False},
+        "parcels": {"enabled": False},
         "apple_music": {"enabled": False},
         "pairing_code": None,
     }
@@ -142,6 +143,22 @@ def test_the_config_sends_the_developer_switch_but_never_the_github_token(app, c
 
     assert response.get_json()["developer"] == {"enabled": True}
     assert b"github_pat_secret" not in response.data
+
+
+def test_the_config_sends_the_parcels_switch_but_never_the_parcel_key(app, client, register_device):
+    device_id, _secret = register_device()
+    assert _config(app, device_id).get_json()["parcels"] == {"enabled": False}
+    _set_config(app, device_id, parcels_enabled=True)
+    with app.app_context():
+        key = ParcelKey(device_id=device_id)
+        key.key = "parcel-secret"
+        db.session.add(key)
+        db.session.commit()
+
+    response = _config(app, device_id)
+
+    assert response.get_json()["parcels"] == {"enabled": True}
+    assert b"parcel-secret" not in response.data
 
 
 def test_the_config_sends_the_key_the_weather_is_subscribed_under(app, client, register_device):
