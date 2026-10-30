@@ -8,9 +8,10 @@ from unittest.mock import patch
 
 import fakeredis
 import pytest
+from countdown_api import keys as store_keys
 
 from broker.db import db
-from broker.models import Device, GitHubToken, GlowmarktCredentials, SpotifyToken
+from broker.models import Device, GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
 from broker.providers import music
 from broker.providers.developer import pace_key, stored_key
 from broker.providers.glow import energy_key
@@ -36,6 +37,8 @@ def _keys(device_id: str) -> dict[str, str]:
         "top": music.top_key(device_id),
         "developer": stored_key(device_id),
         "pace": pace_key(device_id),
+        "parcels": store_keys.parcels(device_id),
+        "parcels-status": store_keys.parcels_status(device_id),
     }
 
 
@@ -50,13 +53,14 @@ def _left(store, device_id: str) -> set[str]:
     return {name for name, key in _keys(device_id).items() if store.exists(key)}
 
 
-EVERYTHING = {"energy", "player", "top", "developer", "pace"}
+EVERYTHING = {"energy", "player", "top", "developer", "pace", "parcels", "parcels-status"}
 
 
 def test_the_keys_are_the_ones_the_providers_write():
     assert device_keys.energy("d") == [energy_key("d")]
     assert device_keys.music("d") == [music.player_key("d"), music.top_key("d")]
     assert device_keys.developer("d") == [stored_key("d"), pace_key("d")]
+    assert device_keys.parcels("d") == [store_keys.parcels("d"), store_keys.parcels_status("d")]
 
 
 # --- Changing hands: unpaired, re-paired, given an owner, forgotten -------------------------------------------------
@@ -194,6 +198,29 @@ def test_another_github_token_deletes_the_developer_panel_but_the_same_one_keeps
 
     client.post("/device", data={"interval": "15", "github_token": "github_pat_two"})
     assert _left(store, device_id) == EVERYTHING - {"developer", "pace"}
+
+
+def test_posting_a_parcel_key_clears_the_parcel_providers_keys_but_a_blank_one_does_not(store, paired_client):
+    client, device_id, _ = paired_client
+    _provide(store, device_id)
+
+    client.post("/device", data={"interval": "15"})
+    assert _left(store, device_id) == EVERYTHING
+
+    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-one"})
+    assert _left(store, device_id) == EVERYTHING - {"parcels", "parcels-status"}
+
+
+def test_removing_the_parcel_key_deletes_the_parcel_providers_keys_only(app, store, paired_client):
+    client, device_id, _ = paired_client
+    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-one"})
+    _provide(store, device_id)
+
+    assert client.post("/device/parcel/disconnect").status_code == 302
+
+    assert _left(store, device_id) == EVERYTHING - {"parcels", "parcels-status"}
+    with app.app_context():
+        assert db.session.get(ParcelKey, device_id) is None
 
 
 def test_disconnecting_github_deletes_the_developer_panel_only(app, store, paired_client):

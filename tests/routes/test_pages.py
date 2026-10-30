@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -7,7 +8,7 @@ import redis
 
 from broker.clients import weather
 from broker.db import db
-from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, SpotifyToken
+from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
 from broker.services import pairing, weather_place
 from broker.services.postcodes import normalize_postcode, postcode_country
 
@@ -208,6 +209,7 @@ def test_device_config_has_the_guided_tour(paired_client):
         "departures",
         "music",
         "developer",
+        "parcels",
         "energy",
         "screen",
     ]
@@ -1497,3 +1499,80 @@ def test_device_config_shows_a_location_saved_before_places_with_no_id(app, pair
 
     assert 'name="weather_location" value="Leeds"' in html
     assert 'name="weather_place_id" value=""' in html
+
+
+# --- The Parcel API key ---------------------------------------------------------------------------------------------
+
+
+def test_device_config_post_stores_the_parcel_key_encrypted_and_subscribes_the_device(app, paired_client, fake_redis):
+    client, device_id, _ = paired_client
+
+    client.post("/device", data={"interval": "15", "parcel_api_key": " parcel-key-abc "})
+
+    with app.app_context():
+        row = db.session.get_one(ParcelKey, device_id)
+        assert row.key_encrypted != "parcel-key-abc"
+        assert row.key == "parcel-key-abc"
+    assert _subscriptions(fake_redis) == {"parcel": {device_id}}
+
+
+def test_device_config_post_blank_parcel_key_keeps_the_saved_one(app, paired_client, fake_redis):
+    client, device_id, _ = paired_client
+    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+
+    client.post("/device", data={"interval": "15"})
+
+    with app.app_context():
+        assert db.session.get_one(ParcelKey, device_id).key == "parcel-key-abc"
+    assert _subscriptions(fake_redis) == {"parcel": {device_id}}
+
+
+def test_removing_the_parcel_key_unsubscribes_the_device_and_switches_the_panel_off(app, paired_client, fake_redis):
+    client, device_id, _ = paired_client
+    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+    assert json.loads(fake_redis.strings[f"v1:config:{device_id}"])["parcels"] == {"enabled": True}
+
+    assert client.post("/device/parcel/disconnect").status_code == 302
+
+    with app.app_context():
+        assert db.session.get(ParcelKey, device_id) is None
+    assert _subscriptions(fake_redis) == {}
+    assert json.loads(fake_redis.strings[f"v1:config:{device_id}"])["parcels"] == {"enabled": False}
+
+
+def test_device_config_get_never_shows_the_parcel_key(paired_client):
+    client, _device_id, _ = paired_client
+    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+
+    response = client.get("/device")
+
+    assert b"parcel-key-abc" not in response.data
+    assert b"Key saved" in response.data
+
+
+@pytest.mark.parametrize(
+    ("status", "shown"),
+    [
+        (None, b"not checked yet"),
+        ("ok", b"Parcel connected"),
+        ("invalid_key", b"rejected the key"),
+        ("rate_limited", b"rate limiting"),
+    ],
+)
+def test_device_config_shows_the_link_status_the_provider_wrote(paired_client, fake_redis, status, shown):
+    client, device_id, _ = paired_client
+    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+    if status:
+        fake_redis.strings[f"v1:parcels-status:{device_id}"] = status
+
+    assert shown in client.get("/device").data
+
+
+def test_the_parcel_key_does_not_appear_in_the_logs(paired_client, caplog):
+    client, _device_id, _ = paired_client
+    caplog.set_level("DEBUG")
+
+    client.post("/device", data={"interval": "15", "parcel_api_key": "parcel-key-abc"})
+    client.get("/device")
+
+    assert "parcel-key-abc" not in caplog.text

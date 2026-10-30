@@ -29,6 +29,7 @@ from broker.models import (
     DeviceConfig,
     GitHubToken,
     GlowmarktCredentials,
+    ParcelKey,
     SpotifyToken,
     is_hd_screen,
     layout_choices,
@@ -42,6 +43,7 @@ from broker.services import (
     geoip,
     pace,
     pairing,
+    parcel_key,
     render_jobs,
     stops,
     weather_place,
@@ -69,6 +71,7 @@ def _write_subscriptions_to_redis() -> None:
         "glow": set(),
         "spotify": set(),
         "developer": set(),
+        "parcel": set(),
         # The notice board's place, for the notice providers: each postcode in canonical form ("SW1A 1AA", "0150").
         "postcode": set(),
     }
@@ -79,10 +82,13 @@ def _write_subscriptions_to_redis() -> None:
         # By the place picked, not the text typed, so screens that picked the same place share its forecast.
         if weather_key := weather_place.weather_key(config):
             subs["weather"].add(weather_key)
-        if config.spotify_enabled:
-            subs["spotify"].add(config.device_id)
-        if config.developer_enabled:
-            subs["developer"].add(config.device_id)
+        for source, on in (
+            ("spotify", config.spotify_enabled),
+            ("developer", config.developer_enabled),
+            ("parcel", config.parcels_enabled),
+        ):
+            if on:
+                subs[source].add(config.device_id)
         if config.postcode:
             subs["postcode"].add(config.postcode)
     subs["glow"] = set(
@@ -279,12 +285,15 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
         db.session.get_one(Device, device_id).device_name = screen_name
     glowmarkt_changed = _save_glowmarkt_credentials(device_id)
     github_changed = _save_github_token(device_id)
+    parcel_key_saved = _save_parcel_key(device_id)
 
     db.session.commit()
     # What the store has from an account that's gone or been replaced, before the providers are told to write the new
     # one's, so the screen never shows the old account's data.
     stale = device_keys.energy(device_id) if glowmarkt_changed else []
     stale += device_keys.developer(device_id) if github_changed else []
+    # A key posted is tried afresh: the provider stops polling one Parcel refused (invalid_key) until this save.
+    stale += device_keys.parcels(device_id) if parcel_key_saved else []
     if stale:
         device_keys.delete(stale)
     _write_subscriptions_to_redis()
@@ -362,6 +371,21 @@ def _save_github_token(device_id: str) -> bool:
     stored = stored or GitHubToken(device_id=device_id)
     stored.token = token
     db.session.add(stored)
+    return True
+
+
+def _save_parcel_key(device_id: str) -> bool:
+    """Stage the posted Parcel API key, unless its field was left blank (which keeps the stored one).
+
+    Return whether a key was posted, so what the provider made from the last one is cleared. The key is never logged.
+    """
+    key = request.form.get("parcel_api_key", "").strip()
+    if not key:
+        return False
+    stored = db.session.get(ParcelKey, device_id) or ParcelKey(device_id=device_id)
+    stored.key = key
+    db.session.add(stored)
+    db.session.get_one(DeviceConfig, device_id).parcels_enabled = True
     return True
 
 
@@ -494,6 +518,8 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         apple_music_linked=apple_music.linked(device_id),
         glowmarkt=glowmarkt,
         github_linked=db.session.get(GitHubToken, device_id) is not None,
+        parcel_linked=parcel_key.has_key(db, device_id),
+        parcel_status=parcel_key.link_status(current_app.extensions["redis"], device_id),
         errors=errors or [],
     )
 
@@ -524,6 +550,23 @@ def github_disconnect() -> ResponseReturnValue:
         db.session.commit()
         # The developer provider rewrites the panel without the GitHub summary within a cycle.
         device_keys.delete(device_keys.developer(g.device_id))
+    return redirect(url_for("pages.device_config", device_id=g.device_id))
+
+
+@bp.post("/device/parcel/disconnect", defaults={"device_id": None})
+@bp.post("/device/<device_id>/parcel/disconnect")
+@require_paired_user
+def parcel_disconnect() -> ResponseReturnValue:
+    """Forget the screen's Parcel API key, which switches its parcels panel off."""
+    key = db.session.get(ParcelKey, g.device_id)
+    if key is not None:
+        db.session.delete(key)
+        db.session.get_one(DeviceConfig, g.device_id).parcels_enabled = False
+        db.session.commit()
+        # The provider stops polling it once the subscription goes; what it wrote would otherwise show until its TTL.
+        device_keys.delete(device_keys.parcels(g.device_id))
+        _write_subscriptions_to_redis()
+        config_store.publish(g.device_id)
     return redirect(url_for("pages.device_config", device_id=g.device_id))
 
 

@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from broker.clients import weather
 from broker.db import db
-from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, SpotifyToken
+from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
 from broker.services import pairing, renderer_config, weather_place
 
 
@@ -97,6 +97,7 @@ def test_unpair_with_config_also_resets_settings_and_linked_accounts(app, client
         db.session.add(SpotifyToken(device_id=device_id, refresh_token="r"))
         db.session.add(GlowmarktCredentials(device_id=device_id, username="me"))
         db.session.add(GitHubToken(device_id=device_id, token_encrypted="x"))
+        db.session.add(ParcelKey(device_id=device_id, key_encrypted="x"))
         db.session.commit()
 
     assert cli("unpair", device_id, "--config").exit_code == 0
@@ -110,6 +111,7 @@ def test_unpair_with_config_also_resets_settings_and_linked_accounts(app, client
     with app.app_context():
         assert db.session.scalar(select(func.count()).select_from(SpotifyToken)) == 0
         assert db.session.scalar(select(func.count()).select_from(GitHubToken)) == 0
+        assert db.session.scalar(select(func.count()).select_from(ParcelKey)) == 0
 
 
 def test_forget_deletes_the_device_so_it_must_register_again(app, client, register_device, cli):
@@ -322,6 +324,7 @@ def test_redis_subs_counts_each_source(app):
         "glow: 1",
         "spotify: 0",
         "developer: 0",
+        "parcel: 0",
         "postcode: 0",
     ]
 

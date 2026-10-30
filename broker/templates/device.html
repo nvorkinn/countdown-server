@@ -80,6 +80,7 @@
     <input type="hidden" name="music_user_token" id="music_user_token">
 </form>
 <form id="githubDisconnectForm" method="POST" action="{{ url_for('pages.github_disconnect', device_id=device_id) }}"></form>
+<form id="parcelDisconnectForm" method="POST" action="{{ url_for('pages.parcel_disconnect', device_id=device_id) }}"></form>
 <form id="displayUnlinkForm" method="POST" action="{{ url_for('pages.display_unlink', device_id=device_id) }}"></form>
 
 <form class="settings" method="POST" action="{{ url_for('pages.device_config', device_id=device_id) }}">
@@ -318,6 +319,42 @@
                     <span class="card-subtitle" style="display: block; margin-top: 6px;">
                         A <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>,
                         read-only, for all your repositories: Actions, Contents, Metadata and Pull requests, plus Plan for Copilot usage.
+                    </span>
+                </div>
+            </div>
+
+            <div class="card" data-tour="parcels">
+                <div class="card-header">
+                    <h2 class="card-title">Parcels</h2>
+                </div>
+                <div class="status-row">
+                    {% if parcel_linked %}
+                        {% if parcel_status == 'ok' %}
+                            <span class="status-pill status-linked">Parcel connected</span>
+                        {% elif parcel_status == 'invalid_key' %}
+                            <span class="status-pill status-unlinked">Parcel rejected the key: paste a new one</span>
+                        {% elif parcel_status == 'rate_limited' %}
+                            <span class="status-pill status-unlinked">Parcel is rate limiting this key: trying again later</span>
+                        {% else %}
+                            <span class="status-pill status-unlinked">Key saved — not checked yet</span>
+                        {% endif %}
+                        <button type="submit" form="parcelDisconnectForm" class="btn-action btn-delete">Remove key</button>
+                    {% else %}
+                        <span class="status-pill status-unlinked">Parcel not connected</span>
+                    {% endif %}
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label for="parcel_api_key">Parcel API key</label>
+                    <input
+                        type="password"
+                        id="parcel_api_key"
+                        name="parcel_api_key"
+                        placeholder="{{ 'Saved — leave blank to keep it' if parcel_linked else '' }}"
+                        autocomplete="new-password"
+                    >
+                    <span class="card-subtitle" style="display: block; margin-top: 6px;">
+                        Get your key at <a href="https://web.parcelapp.net" target="_blank" rel="noopener">web.parcelapp.net</a>.
+                        Parcel Premium is required.
                     </span>
                 </div>
             </div>

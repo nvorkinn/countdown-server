@@ -82,6 +82,15 @@
             picture: false,
         },
         {
+            section: "parcels",
+            title: "Parcels",
+            text:
+                "With a Parcel API key (Parcel Premium) the screen can show your deliveries, and tell you when " +
+                "one is out for delivery or arriving today.",
+            regions: [],
+            picture: false,
+        },
+        {
             section: "energy",
             title: "Energy",
             text:

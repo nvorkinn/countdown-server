@@ -42,6 +42,7 @@ class Device(Model):
     spotify_token: Mapped[SpotifyToken | None] = relationship(cascade="all, delete-orphan")
     glowmarkt_credentials: Mapped[GlowmarktCredentials | None] = relationship(cascade="all, delete-orphan")
     github_token: Mapped[GitHubToken | None] = relationship(cascade="all, delete-orphan")
+    parcel_key: Mapped[ParcelKey | None] = relationship(cascade="all, delete-orphan")
     apple_music_token: Mapped[AppleMusicToken | None] = relationship(cascade="all, delete-orphan")
     apple_music_plays: Mapped[list[AppleMusicPlay]] = relationship(cascade="all, delete-orphan")
     assignment: Mapped[RendererAssignment | None] = relationship(back_populates="device", cascade="all, delete-orphan")
@@ -205,6 +206,8 @@ class DeviceConfig(Model):
     apple_music_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # The developer panel: GitHub pull requests and builds, and AI plans (see broker/providers/developer.py).
     developer_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    # The parcels panel: on while a Parcel API key is saved (ParcelKey), set and cleared with it.
+    parcels_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # Every departure stop, in the owner's order: despite the name, TfL NaPTAN ids and Entur ids (NSR:...) mixed; the
     # id says which (services/stops.py).
     tfl_stop_ids: Mapped[list[str]] = mapped_column(JSON, default=list, server_default=text("'[]'"))
@@ -298,6 +301,28 @@ class GitHubToken(Model):
     @token.setter
     def token(self, plaintext: str) -> None:
         self.token_encrypted = encrypt(plaintext)
+
+
+class ParcelKey(Model):
+    """The Parcel API key the owner gave for a device's parcels panel, encrypted at rest.
+
+    Issued from the owner's own Parcel Premium account (web.parcelapp.net); only the parcel provider uses it, to read
+    their active deliveries. Having one is what switches the panel on (`parcels.enabled`).
+    """
+
+    __tablename__ = "parcel_keys"
+
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"), primary_key=True)
+    key_encrypted: Mapped[str] = mapped_column(String)
+
+    @property
+    def key(self) -> str:
+        """The API key, decrypted."""
+        return decrypt(self.key_encrypted)
+
+    @key.setter
+    def key(self, plaintext: str) -> None:
+        self.key_encrypted = encrypt(plaintext)
 
 
 class GitHubAppToken(Model):

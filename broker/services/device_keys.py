@@ -7,6 +7,8 @@ The providers write each device's data under keys of its own (the store contract
     v1:spotify-top:<device id>    and its top lists (2 h)
     v1:developer:<device id>      the developer provider's GitHub summary and AI plans (15 min)
     v1:pace:developer:<device id> its faster-refresh hint, while a release runs (1 min)
+    v1:parcels:<device id>        the parcel provider's deliveries (12 h)
+    v1:parcels-status:<device id> and whether Parcel takes the device's key (a day)
 
 Three other keys are the device's, and are looked after where they're written:
 
@@ -54,6 +56,11 @@ def developer(device_id: str) -> list[str]:
     return [store_keys.developer(device_id), store_keys.pace(store_keys.DEVELOPER, device_id)]
 
 
+def parcels(device_id: str) -> list[str]:
+    """Return the keys made from the device's Parcel API key (the parcel provider's): its deliveries and link status."""
+    return [store_keys.parcels(device_id), store_keys.parcels_status(device_id)]
+
+
 def delete(keys: list[str]) -> None:
     """Delete `keys` from the store. Needs an app context; a Redis that can't be asked is logged, not raised."""
     redis: Redis = current_app.extensions["redis"]
@@ -68,4 +75,12 @@ def delete(keys: list[str]) -> None:
 
 def forget(device_id: str) -> None:
     """Delete the providers' keys for the device, and its pairing code's: for one unpaired, handed on or gone."""
-    delete([*energy(device_id), *music(device_id), *developer(device_id), pairing_key.key(device_id)])
+    delete(
+        [
+            *energy(device_id),
+            *music(device_id),
+            *developer(device_id),
+            *parcels(device_id),
+            pairing_key.key(device_id),
+        ]
+    )
