@@ -19,8 +19,10 @@ key alone until Parcel says (or BACKOFF_S). Any other failure only loses that de
 keeps failing. When a device's parcels change, its screen is queued for a render (services/render_jobs.py).
 
 Parcel's answer has no "delivered" list in the active view, so a parcel that was there last time and now isn't (or now
-says delivered) is kept as delivered for DELIVERED_KEPT_S, so the screen can show that it arrived. The previous list is
-read back from the store, so a restart forgets nothing.
+says delivered) is kept as delivered for the screen's parcels_kept_hours, so the screen can show that it arrived. The
+previous list is read back from the store, so a restart forgets nothing. A screen with a parcels_days_ahead only gets
+the parcels expected within that many days of today (see in_window); a nudge after either setting changed redraws the
+list from the last answer, without asking Parcel again.
 """
 
 import time
@@ -61,8 +63,11 @@ MIN_GAP_S = 5 * 60
 BACKOFF_S = 60 * 60
 # The longest a key is left alone, whatever Parcel asks for.
 MAX_BACKOFF_S = 6 * 60 * 60
-# How long a parcel seen delivered stays in the list.
+# How long a parcel seen delivered stays in the list, for a screen without parcels_kept_hours (one saved before it was
+# added has the same 4).
 DELIVERED_KEPT_S = 4 * 60 * 60
+# Shown whatever day they're expected: the parcel is on its way today, or needs the owner.
+ALWAYS_SHOWN = frozenset({"out_for_delivery", "exception"})
 # How long Parcel's carrier names are kept: the list changes daily.
 CARRIERS_TTL_S = 24 * 60 * 60
 TTL_S = store_keys.PARCELS_TTL_S
@@ -118,17 +123,20 @@ def identity(parcel: dict[str, Any]) -> tuple[str, str]:
     return parcel["carrier"], parcel["tracking_number"]
 
 
-def parcels_from(
+def parcels_from(  # noqa: PLR0913 -- the screen's retention is one more input of the same merge
     deliveries: list[dict[str, Any]],
     carriers: dict[str, str],
     previous: list[dict[str, Any]],
     now: datetime,
     zone: str,
+    *,
+    kept_s: int = DELIVERED_KEPT_S,
 ) -> list[dict[str, Any]]:
     """Return the stored parcels (ParcelList's) from Parcel's active `deliveries` and the `previous` stored ones.
 
     A parcel's `updated_at` is when this provider last saw it change status (Parcel's own event dates have no stated
-    format): kept from `previous` while its status is the same, else `now`. Ordered by expected date, undated last.
+    format): kept from `previous` while its status is the same, else `now`. A delivered one stays for `kept_s`. Ordered
+    by expected date, undated last.
     """
     tz = ZoneInfo(zone)
     before = {identity(p): p for p in previous}
@@ -163,10 +171,27 @@ def parcels_from(
     kept = [
         p
         for p in found.values()
-        if p["status"] != "delivered"
-        or now - datetime.fromisoformat(p["updated_at"]) < timedelta(seconds=DELIVERED_KEPT_S)
+        if p["status"] != "delivered" or now - datetime.fromisoformat(p["updated_at"]) < timedelta(seconds=kept_s)
     ]
     return sorted(kept, key=lambda p: (p["expected_date"] is None, p["expected_date"] or ""))
+
+
+def in_window(parcels: list[dict[str, Any]], now: datetime, zone: str, days_ahead: int | None) -> list[dict[str, Any]]:
+    """Return the `parcels` a screen showing `days_ahead` days past today (None: any day) shows.
+
+    Those expected by then (late ones too), delivered ones (parcels_from keeps them as long as the screen asks), and
+    ALWAYS_SHOWN ones. An undated parcel isn't known to come in time, so only a screen showing any day gets it.
+    """
+    if days_ahead is None:
+        return parcels
+    last = (now.astimezone(ZoneInfo(zone)).date() + timedelta(days=days_ahead)).isoformat()
+    return [
+        p
+        for p in parcels
+        if p["status"] == "delivered"
+        or p["status"] in ALWAYS_SHOWN
+        or (p["expected_date"] is not None and p["expected_date"] <= last)
+    ]
 
 
 def validated(parcels: list[dict[str, Any]], now: datetime) -> str:
@@ -178,11 +203,18 @@ def validated(parcels: list[dict[str, Any]], now: datetime) -> str:
 
 @dataclass(frozen=True)
 class Wanted:
-    """A device in `v1:sub:parcel`, its key and the time zone its screen goes by."""
+    """A device in `v1:sub:parcel`, its key, the time zone its screen goes by and which parcels it shows."""
 
     device_id: str
     api_key: str
     zone: str
+    days_ahead: int | None = None
+    kept_s: int = DELIVERED_KEPT_S
+
+    @property
+    def window(self) -> tuple[int | None, int]:
+        """Return the settings that pick the screen's parcels: a change to them redraws its list."""
+        return self.days_ahead, self.kept_s
 
 
 class ParcelProvider(ProviderLoop):
@@ -205,8 +237,9 @@ class ParcelProvider(ProviderLoop):
         self._interval_s = interval_s
         self._deliveries = deliveries
         self._carrier_names = carrier_names
-        # By device id: the key last asked with (kept in memory only, as glow keeps its passwords), and when.
-        self._asked: dict[str, tuple[str, float]] = {}
+        # By device id: the key last asked with (kept in memory only, as glow keeps its passwords), when, and the
+        # screen's window then.
+        self._asked: dict[str, tuple[str, float, tuple[int | None, int]]] = {}
         # Devices whose key Parcel refused, by the key: not asked again until a nudge.
         self._refused: dict[str, str] = {}
         # Device -> when its key may be asked again, after Parcel rate-limited it.
@@ -256,28 +289,38 @@ class ParcelProvider(ProviderLoop):
             if not api_key:
                 continue
             config = db.session.get(DeviceConfig, device_id)
-            zone = timezone(postcode_country(config.postcode), config.tfl_stop_ids) if config else DEFAULT_ZONE
-            wanted.append(Wanted(device_id, api_key, zone))
+            if config is None:
+                wanted.append(Wanted(device_id, api_key, DEFAULT_ZONE))
+                continue
+            zone = timezone(postcode_country(config.postcode), config.tfl_stop_ids)
+            wanted.append(
+                Wanted(device_id, api_key, zone, config.parcels_days_ahead, config.parcels_kept_hours * 60 * 60)
+            )
         return wanted
 
     def _due(self, want: Wanted) -> bool:
         """Whether this cycle asks Parcel for the device.
 
         Never while it is backed off. A cycle a config save started asks, at any hour and whatever the gap (the owner
-        just acted, and saves are few), only when the key is new or changed, or the status key is gone (the save
-        deleted it). A tick asks in the device's waking hours, unless it asked a moment ago or Parcel refused the key.
+        just acted, and saves are few), only when the key is new or changed, the status key is gone (the save deleted
+        it), or the screen's window changed (redrawn from the last answer, see _poll_device). A tick asks in the
+        device's waking hours, unless it asked a moment ago or Parcel refused the key.
         """
         now = self.clock()
         if now < self._backoff_until.get(want.device_id, 0):
             return False
         asked = self._asked.get(want.device_id)
         if self.nudged:
-            return asked is None or asked[0] != want.api_key or not self.store.exists(status_key(want.device_id))
+            return asked is None or self._key_is_new(want, asked) or asked[2] != want.window
         if asked and now - asked[1] < MIN_GAP_S:
             return False
         if self._refused.get(want.device_id) == want.api_key:
             return False
         return polling_hours(datetime.fromtimestamp(now, UTC), want.zone)
+
+    def _key_is_new(self, want: Wanted, asked: tuple[str, float, tuple[int | None, int]] | None) -> bool:
+        """Whether Parcel hasn't been asked with the device's key, or the config save deleted its status since."""
+        return asked is None or asked[0] != want.api_key or not self.store.exists(status_key(want.device_id))
 
     def _carrier_names_now(self, now: float) -> dict[str, str]:
         """Return Parcel's carrier names, asked for again once a day; the last ones (or none) if it can't be asked."""
@@ -292,9 +335,11 @@ class ParcelProvider(ProviderLoop):
     def _poll_device(self, want: Wanted) -> int:
         now = self.clock()
         stamp = datetime.fromtimestamp(now, UTC)
-        self._asked[want.device_id] = (want.api_key, now)
+        # A nudge for a changed window only redraws, from the last answer while it's recent.
+        fresh = self.nudged and self._key_is_new(want, self._asked.get(want.device_id))
+        self._asked[want.device_id] = (want.api_key, now, want.window)
         try:
-            deliveries = self._deliveries_for(want.api_key, now, fresh=self.nudged)
+            deliveries = self._deliveries_for(want.api_key, now, fresh=fresh)
         except parcel_client.InvalidKeyError:
             self._refused[want.device_id] = want.api_key
             self.logger.warning(
@@ -313,7 +358,12 @@ class ParcelProvider(ProviderLoop):
         self._refused.pop(want.device_id, None)
         previous = self._previous(want.device_id)
         old = None if previous is None else previous["parcels"]
-        parcels = parcels_from(deliveries, self._carrier_names_now(now), old or [], stamp, want.zone)
+        parcels = in_window(
+            parcels_from(deliveries, self._carrier_names_now(now), old or [], stamp, want.zone, kept_s=want.kept_s),
+            stamp,
+            want.zone,
+            want.days_ahead,
+        )
         with self.store.pipeline(transaction=False) as pipe:
             pipe.set(parcels_key(want.device_id), validated(parcels, stamp), ex=TTL_S)
             pipe.set(status_key(want.device_id), "ok", ex=STATUS_TTL_S)

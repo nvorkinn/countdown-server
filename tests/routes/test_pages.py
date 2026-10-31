@@ -1598,3 +1598,39 @@ def test_the_parcel_key_does_not_appear_in_the_logs(paired_client, caplog):
     client.get("/device")
 
     assert "parcel-key-abc" not in caplog.text
+
+
+def test_the_screen_saves_which_parcels_it_shows_and_keeps_them_when_not_posted(app, paired_client):
+    client, device_id, _ = paired_client
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.parcels_days_ahead, config.parcels_kept_hours) == (None, 4)
+
+    client.post("/device", data={"parcels_days_ahead": "1", "parcels_kept_hours": "0"})
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.parcels_days_ahead, config.parcels_kept_hours) == (1, 0)
+
+    client.post("/device", data={"postcode": ""})
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.parcels_days_ahead, config.parcels_kept_hours) == (1, 0)
+
+    client.post("/device", data={"parcels_days_ahead": ""})
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).parcels_days_ahead is None
+    page = client.get("/device").data.decode()
+    assert 'id="parcels_days_ahead_" name="parcels_days_ahead" value="" checked' in page
+    assert 'id="parcels_kept_hours_0" name="parcels_kept_hours" value="0" checked' in page
+
+
+@pytest.mark.parametrize("field", ["parcels_days_ahead", "parcels_kept_hours"])
+def test_an_unknown_parcel_window_is_refused(app, paired_client, field):
+    client, device_id, _ = paired_client
+
+    response = client.post("/device", data={field: "9"})
+
+    assert response.status_code == 400
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.parcels_days_ahead, config.parcels_kept_hours) == (None, 4)

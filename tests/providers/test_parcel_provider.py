@@ -446,3 +446,80 @@ def test_screens_of_one_account_share_one_ask_each_tick(app, provider_app, store
     store.delete(status_key("second"), parcels_key("second"))
     provider.run_cycle()
     assert len(fake.keys) == 2
+
+
+def _window(app, days_ahead, kept_hours=4):
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, DEVICE)
+        config.parcels_days_ahead = days_ahead
+        config.parcels_kept_hours = kept_hours
+        db.session.commit()
+
+
+def test_a_window_shows_only_the_parcels_expected_by_then(app, provider, store, fake):
+    # NOW is the 17th; London.
+    fake.answer = [
+        delivery("LATE", date_expected="2026-10-16"),
+        delivery("TODAY", date_expected="2026-10-17"),
+        delivery("TOMORROW", date_expected="2026-10-18"),
+        delivery("LATER", date_expected="2026-10-20"),
+        delivery("UNDATED"),
+        delivery("OUT", status_code=4, date_expected="2026-10-25"),
+        delivery("HELD", status_code=3),
+    ]
+    _window(app, 1)
+
+    provider.run_cycle()
+
+    shown = {p["tracking_number"] for p in stored(store)["parcels"]}
+    assert shown == {"LATE", "TODAY", "TOMORROW", "OUT", "HELD"}
+
+
+def test_any_day_shows_every_parcel(app, provider, store, fake):
+    fake.answer = [delivery("LATER", date_expected="2026-11-20"), delivery("UNDATED")]
+    _window(app, None)
+
+    provider.run_cycle()
+
+    assert len(stored(store)["parcels"]) == 2
+
+
+def test_the_window_goes_by_the_screens_day(app, provider, store, fake, clock):
+    # 23:30 UTC on the 17th is 00:30 on the 18th in London: tomorrow's parcel is today's. (A nudge asks overnight.)
+    clock.now = datetime(2026, 10, 17, 23, 30, tzinfo=UTC).timestamp()
+    fake.answer = [delivery("D", date_expected="2026-10-18")]
+    _window(app, 0)
+
+    provider.nudged = True
+    provider.run_cycle()
+
+    assert [p["tracking_number"] for p in stored(store)["parcels"]] == ["D"]
+
+
+@pytest.mark.parametrize("kept_hours", [0, 1, 24])
+def test_a_delivered_parcel_stays_as_long_as_the_screen_says(app, provider, store, fake, clock, kept_hours):
+    _window(app, None, kept_hours)
+    provider.run_cycle()
+    fake.answer = []
+
+    clock.now += parcel.INTERVAL_S
+    provider.run_cycle()
+    assert len(stored(store)["parcels"]) == (1 if kept_hours else 0)
+
+    clock.now += kept_hours * 60 * 60
+    provider.run_cycle()
+    assert stored(store)["parcels"] == []
+
+
+def test_a_changed_window_is_redrawn_on_the_nudge_from_the_last_answer(app, provider, store, fake, clock):
+    fake.answer = [delivery("TODAY", date_expected="2026-10-17"), delivery("LATER", date_expected="2026-10-20")]
+    provider.run_cycle()
+    assert len(stored(store)["parcels"]) == 2
+
+    _window(app, 0)
+    clock.now += 30
+    provider.nudged = True
+    provider.run_cycle()
+
+    assert [p["tracking_number"] for p in stored(store)["parcels"]] == ["TODAY"]
+    assert len(fake.keys) == 1

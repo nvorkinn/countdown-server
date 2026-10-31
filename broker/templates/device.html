@@ -312,6 +312,15 @@
                     <h2 class="card-title">Parcels</h2>
                 </header>
                 {{ service_row('parcels_enabled', 'Parcel', config.parcels_enabled, parcel_linked, parcel_problem) }}
+                <div class="form-group">
+                    <p class="field-caption">Arriving by</p>
+                    {{ segmented("parcels_days_ahead", parcel_days_ahead, form_value(config.parcels_days_ahead)) }}
+                    <p class="form-hint">Undated parcels only show with Any day. Out for delivery and held ones always show.</p>
+                </div>
+                <div class="form-group">
+                    <p class="field-caption">Delivered ones stay</p>
+                    {{ segmented("parcels_kept_hours", parcel_kept_hours, form_value(config.parcels_kept_hours)) }}
+                </div>
             </section>
 
             <section class="section integration" data-tour="energy">
