@@ -21,6 +21,7 @@
                 <li class="chip-status">Unlinked</li>
             {% endif %}
             <li>{{ styles[config.style][0] }}</li>
+            <li>{{ orientation_labels[config.orientation if hd_screen else page_orientation] }}</li>
             <li>{{ languages[config.language] }}</li>
             <li>{{ stops | length }} {{ 'stop' if stops | length == 1 else 'stops' }}</li>
             {# "24-hour (13:00)" without its example. #}
@@ -56,19 +57,31 @@
         <fieldset class="showcase" aria-describedby="{{ field }}_hint">
             <legend class="visually-hidden">Style</legend>
             <div class="showcase-stage">
-                <img class="showcase-picture" id="{{ field }}_picture" src="{{ url_for('static', filename=folder ~ '/' ~ picked ~ '.png') }}" alt="" width="{{ width }}" height="{{ height }}">
+                <img class="showcase-picture" id="{{ field }}_picture" src="{{ url_for('static', filename=folder ~ '/' ~ picked ~ '.png') }}" alt="{{ styles[picked][0] }} style preview" width="{{ width }}" height="{{ height }}">
             </div>
             <div class="showcase-info">
-                <p class="showcase-kicker">Selected</p>
-                <p class="showcase-name" id="{{ field }}_name">{{ styles[picked][0] }}</p>
-                <p class="showcase-description" id="{{ field }}_description">{{ styles[picked][1] }}.</p>
+                <p class="showcase-kicker">Selected style</p>
+                <div aria-live="polite" aria-atomic="true">
+                    <p class="showcase-name" id="{{ field }}_name">{{ styles[picked][0] }}</p>
+                    <p class="showcase-description" id="{{ field }}_description">{{ styles[picked][1] }}.</p>
+                </div>
                 <p id="{{ field }}_hint" class="form-hint">{{ hint }}</p>
-                <div class="showcase-options">
+            </div>
+            <div class="showcase-browse">
+                <div class="gallery-head">
+                    <p class="field-caption">Choose a style</p>
+                    <div class="gallery-nav" hidden>
+                        <button type="button" class="gallery-step" data-step="-1" aria-label="Previous styles" aria-controls="{{ field }}_options">‹</button>
+                        <button type="button" class="gallery-step" data-step="1" aria-label="Next styles" aria-controls="{{ field }}_options">›</button>
+                    </div>
+                </div>
+                <div class="showcase-options" id="{{ field }}_options">
                     {% for style, (name, description) in styles.items() %}
                         <label class="showcase-option">
                             <input type="radio" id="{{ field }}_{{ style }}" name="{{ field }}" value="{{ style }}" {% if chosen == style %}checked{% endif %} data-name="{{ name }}" data-description="{{ description }}." data-picture="{{ url_for('static', filename=folder ~ '/' ~ style ~ '.png') }}">
                             <img src="{{ url_for('static', filename=folder ~ '/' ~ style ~ '.png') }}" alt="" width="{{ width }}" height="{{ height }}" loading="lazy">
                             <span class="showcase-option-name">{{ name }}</span>
+                            <span class="showcase-picked" aria-hidden="true">Selected</span>
                         </label>
                     {% endfor %}
                 </div>
@@ -362,43 +375,9 @@
 <script src="{{ url_for('static', filename='vendor/driver.js/driver.js.iife.js') }}"></script>
 <script src="{{ url_for('static', filename='config_tour.js') }}" data-picture="{{ url_for('static', filename='display/tour.png') }}"></script>
 <script src="{{ url_for('static', filename='settings_form.js') }}"></script>
+<script src="{{ url_for('static', filename='settings_choices.js') }}"></script>
 <script>
     const settingsForm = document.getElementById('settingsForm');
-
-    // The style's showcase: the big picture, name and description follow the style picked.
-    document.querySelectorAll('.showcase').forEach(showcase => {
-        const picture = showcase.querySelector('.showcase-picture');
-        const name = showcase.querySelector('.showcase-name');
-        const description = showcase.querySelector('.showcase-description');
-        showcase.addEventListener('change', e => {
-            picture.src = e.target.dataset.picture;
-            name.textContent = e.target.dataset.name;
-            description.textContent = e.target.dataset.description;
-        });
-    });
-
-    // The galleries (weather design, layout): picking is the radios' own; the arrows, shown only when the
-    // pictures don't all fit, scroll the strip by one picture, and the picked one starts in view.
-    document.querySelectorAll('.gallery').forEach(gallery => {
-        const track = gallery.querySelector('.gallery-track');
-        const nav = gallery.querySelector('.gallery-nav');
-        const [back, on] = nav.querySelectorAll('.gallery-step');
-        const step = () => track.querySelector('.style-option').offsetWidth + parseFloat(getComputedStyle(track).columnGap || 0);
-        const update = () => {
-            const overflowing = track.scrollWidth > track.clientWidth + 2;
-            nav.hidden = !overflowing;
-            back.disabled = track.scrollLeft <= 2;
-            on.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - 2;
-        };
-        [back, on].forEach(button => button.addEventListener('click', () => {
-            track.scrollBy({ left: Number(button.dataset.step) * step(), behavior: 'smooth' });
-        }));
-        track.addEventListener('scroll', update, { passive: true });
-        window.addEventListener('resize', update);
-        const picked = track.querySelector('input:checked');
-        if (picked) track.scrollLeft = picked.closest('.style-option').offsetLeft - track.offsetLeft - 6;
-        update();
-    });
 
     // The weather place picker: search Open-Meteo's towns and cities as the user types, and keep the one picked.
     const placeInput = document.getElementById('weather_location');
