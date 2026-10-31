@@ -80,6 +80,10 @@ type Layout = Literal[
 ]
 
 ORIENTATIONS = ("horizontal", "vertical")
+# Which parcels a screen shows, by the form's value: those expected within that many days of today, or any day ("").
+PARCEL_DAYS_AHEAD = {"0": "Today", "1": "Tomorrow", "2": "Day after", "": "Any day"}
+# How many hours a delivered parcel stays on the screen, by the form's value.
+PARCEL_KEPT_HOURS = {"0": "Not kept", "1": "1 hour", "4": "4 hours", "24": "A day"}
 # What a screen may report at registration, not a setting the config page shows.
 FRAME_FORMATS: tuple[FrameFormat, ...] = ("mono-1bpp-packed", "png")
 CLOCK_FORMATS = {"24h": "24-hour (13:00)", "12h": "12-hour (1:00 PM)"}
@@ -206,6 +210,10 @@ class DeviceConfig(Model):
     developer_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # The parcels panel, shown while the owner's account has a Parcel API key (ParcelKey).
     parcels_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    # The parcels it shows: those expected within this many days of today (0: today's only), or any day while None.
+    parcels_days_ahead: Mapped[int | None] = mapped_column(Integer)
+    # How many hours a delivered parcel stays on the screen (0: gone once delivered).
+    parcels_kept_hours: Mapped[int] = mapped_column(Integer, default=4, server_default=text("4"))
     # The energy panel, shown while the owner's account has a usable Glowmarkt login (GlowmarktCredentials.sign_in).
     energy_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # Every departure stop, in the owner's order: despite the name, TfL NaPTAN ids and Entur ids (NSR:...) mixed; the

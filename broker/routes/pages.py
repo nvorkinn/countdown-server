@@ -23,6 +23,8 @@ from broker.models import (
     LANGUAGES,
     LAYOUTS,
     ORIENTATIONS,
+    PARCEL_DAYS_AHEAD,
+    PARCEL_KEPT_HOURS,
     STYLES,
     WEATHER_DESIGNS,
     Device,
@@ -272,6 +274,9 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     # as its default. Empty is the screen's default (None).
     raw_layout = request.form.get("layout", config.layout or "")
     layout = next((known for known in LAYOUTS if known == raw_layout), None)
+    # Each kept as stored when it isn't posted, like the choices.
+    days_ahead = request.form.get("parcels_days_ahead", _form_value(config.parcels_days_ahead))
+    kept_hours = request.form.get("parcels_kept_hours", _form_value(config.parcels_kept_hours))
 
     place, errors = _weather_place(config)
     if postcode is None:
@@ -287,6 +292,10 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     ]
     if raw_layout and layout is None:
         errors.append(f"The layout must be one of {', '.join(LAYOUTS)}.")
+    if days_ahead not in PARCEL_DAYS_AHEAD:
+        errors.append(f"The parcels shown must be one of {', '.join(PARCEL_DAYS_AHEAD.values())}.")
+    if kept_hours not in PARCEL_KEPT_HOURS:
+        errors.append(f"How long delivered parcels stay must be one of {', '.join(PARCEL_KEPT_HOURS.values())}.")
     # postcode is never None here (that is an error above), but saying so lets type checkers see it.
     if errors or postcode is None:
         return _render_device_config(device_id, errors=[*errors, "Nothing was saved."]), 400
@@ -298,6 +307,8 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     config.apple_music_enabled = apple_music_enabled
     config.parcels_enabled = parcels_enabled
     config.energy_enabled = energy_enabled
+    config.parcels_days_ahead = int(days_ahead) if days_ahead else None
+    config.parcels_kept_hours = int(kept_hours)
     config.tfl_stop_ids = stop_ids
     for field, value in choices.items():
         setattr(config, field, value)
@@ -311,6 +322,11 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     # A render of this screen, if the render pool draws it, even if its copy didn't change.
     render_jobs.enqueue(current_app.extensions["redis"], [device_id])
     return redirect(url_for("pages.device_config", device_id=device_id))
+
+
+def _form_value(number: int | None) -> str:
+    """Return a stored number setting as its form value: None (any) is ""."""
+    return "" if number is None else str(number)
 
 
 def _weather_place(config: DeviceConfig) -> tuple[dict[str, Any] | None, list[str]]:
@@ -486,6 +502,9 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         glowmarkt_linked=bool(creds and creds.password_encrypted),
         github_linked=db.session.get(GitHubToken, user_id) is not None,
         parcel_linked=parcel_key.has_key(db, user_id),
+        parcel_days_ahead=PARCEL_DAYS_AHEAD,
+        parcel_kept_hours=PARCEL_KEPT_HOURS,
+        form_value=_form_value,
         parcel_problem=PARCEL_PROBLEMS.get(parcel_key.link_status(current_app.extensions["redis"], device_id)),
         errors=errors or [],
     )
