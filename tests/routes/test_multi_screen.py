@@ -177,14 +177,14 @@ def test_the_switcher_lists_every_screen_and_marks_the_current_one(client, two_s
 
     page = client.get(f"/device/{first}").data.decode()
 
-    assert f'<a href="/device/{first}" class="current" aria-current="page">' in page
-    assert f'<a href="/device/{second}">' in page
-    assert 'href="/pair" class="add">+ Add a screen' in page
+    assert f'<a href="/device/{first}" class="nav-item current" aria-current="page">' in page
+    assert f'<a href="/device/{second}" class="nav-item">' in page
+    assert '<a href="/pair" class="nav-add">+ Add a screen</a>' in page
 
 
 def test_plain_device_marks_the_most_recent_screen_as_current(client, two_screens):
     _, second = two_screens
-    assert f'<a href="/device/{second}" class="current"' in client.get("/device").data.decode()
+    assert f'<a href="/device/{second}" class="nav-item current"' in client.get("/device").data.decode()
 
 
 def test_the_switcher_uses_the_screens_name(app, client, two_screens):
@@ -300,10 +300,10 @@ def test_the_account_page_is_marked_in_the_sidebar_rather_than_a_screen(client, 
 
     page = client.get("/account").data.decode()
 
-    assert '<a href="/account" class="nav-heading nav-account current" aria-current="page">Account</a>' in page
-    assert 'class="current"' not in page
+    assert '<a href="/account" class="nav-item nav-account current" aria-current="page">' in page
+    assert page.count('aria-current="page"') == 1
     on_a_screen = client.get(f"/device/{first}").data.decode()
-    assert '<a href="/account" class="nav-heading nav-account">Account</a>' in on_a_screen
+    assert '<a href="/account" class="nav-item nav-account">' in on_a_screen
 
 
 def test_a_login_change_draws_all_the_users_screens_again_and_no_change_none(client, fake_redis, two_screens):

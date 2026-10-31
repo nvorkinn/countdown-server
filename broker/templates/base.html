@@ -740,67 +740,86 @@
             color: var(--text-muted);
         }
 
-        /* "Account" is a heading of its own, above "Screens", and a link: red while its page is open. */
-        .nav-account {
-            display: block;
-            margin: 0 0 26px;
-            padding: 4px 0;
-            text-decoration: none;
-        }
-
-        .nav-account:hover, .nav-account.current {
-            color: var(--ink);
-        }
-
-        .nav-account.current::before {
-            content: "● ";
-            color: var(--red);
-            font-size: 9px;
-            vertical-align: 2px;
-        }
-
-        /* Each screen is a line under "Screens", indented on a hairline; the one on the page is in red. */
-        .screens {
+        /* Account and each screen are boxed rows, each with its icon; the open one is filled red. "Add a screen"
+           stays apart, under the list, as a plain dashed row. */
+        .nav-list {
             list-style: none;
-            margin-left: 2px;
-            border-left: 1px solid var(--border);
+            display: grid;
+            gap: 6px;
         }
 
-        .screens a {
-            display: block;
-            margin-left: -1px;
-            padding: 8px 10px 7px 14px;
-            border-left: 2px solid transparent;
-            color: var(--text-muted);
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 42px;
+            padding: 9px 12px 8px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            background: var(--bg-card);
+            color: var(--ink);
             font-family: var(--display);
             font-size: 16px;
             font-weight: 600;
+            line-height: 1.15;
             text-decoration: none;
             overflow-wrap: anywhere;
         }
 
-        .screens a:hover {
-            color: var(--ink);
+        .nav-item svg {
+            flex: none;
+            width: 18px;
+            height: 18px;
+            margin-top: -2px;
+            color: var(--text-muted);
         }
 
-        .screens a.current {
-            border-left-color: var(--red);
-            color: var(--ink);
+        .nav-item:hover {
+            border-color: var(--ink);
         }
 
-        .screens a.current:not(.add)::before {
-            content: "● ";
-            color: var(--red);
-            font-size: 9px;
-            vertical-align: 3px;
+        .nav-item:focus-visible {
+            outline: 2px solid var(--ink);
+            outline-offset: 2px;
         }
 
-        .screens a.add {
-            margin-top: 6px;
+        .nav-item.current {
+            border-color: var(--red);
+            background: var(--red);
+            color: #fff;
+        }
+
+        .nav-item.current svg {
+            color: #fff;
+        }
+
+        .nav-account {
+            margin-bottom: 26px;
+        }
+
+        .nav-add {
+            display: block;
+            margin-top: 10px;
+            padding: 9px 12px;
+            border: 1px dashed var(--field-border);
+            border-radius: 7px;
+            color: var(--text-muted);
             font-family: var(--mono);
             font-size: 13px;
-            font-weight: 400;
             letter-spacing: .04em;
+            text-decoration: none;
+        }
+
+        .nav-add:hover {
+            border-color: var(--ink);
+            color: var(--ink);
+        }
+
+        .nav-add.current {
+            border-style: solid;
+            border-color: var(--red);
+            background: var(--red);
+            color: #fff;
         }
 
         .sidebar-foot {
@@ -884,8 +903,9 @@
                 z-index: 19;
             }
 
-            .screens a {
-                padding-block: 12px 11px;
+            .nav-item, .nav-add {
+                min-height: 48px;
+                padding-block: 13px 12px;
             }
         }
 
@@ -1598,14 +1618,15 @@
     <aside class="sidebar" id="sidebar">
         <a class="sidebar-brand" href="{{ url_for('pages.index') }}"><img class="brand-logo" src="{{ url_for('static', filename='countdown-pill.svg') }}" alt="Countdown" width="172" height="34"></a>
         <nav class="sidebar-nav" aria-label="Settings">
-            <a href="{{ url_for('account.account') }}" class="nav-heading nav-account{% if on_account %} current{% endif %}"{% if on_account %} aria-current="page"{% endif %}>Account</a>
+            {# Icons: a person for the account, a screen for each screen (stroke-only, in the row's colour). #}
+            <a href="{{ url_for('account.account') }}" class="nav-item nav-account{% if on_account %} current{% endif %}"{% if on_account %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Account</a>
             <p class="nav-heading" id="screensHeading">Screens</p>
-            <ul class="screens" aria-labelledby="screensHeading">
+            <ul class="nav-list" aria-labelledby="screensHeading">
                 {% for screen in screens %}
-                    <li><a href="{{ url_for('pages.device_config', device_id=screen.id) }}"{% if screen.current %} class="current" aria-current="page"{% endif %}>{{ screen.label }}</a></li>
+                    <li><a href="{{ url_for('pages.device_config', device_id=screen.id) }}" class="nav-item{% if screen.current %} current" aria-current="page{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M9 21h6M12 17v4"/></svg>{{ screen.label }}</a></li>
                 {% endfor %}
-                <li><a href="{{ url_for('pages.pair') }}" class="add{% if adding_screen %} current{% endif %}"{% if adding_screen %} aria-current="page"{% endif %}>+ Add a screen</a></li>
             </ul>
+            <a href="{{ url_for('pages.pair') }}" class="nav-add{% if adding_screen %} current" aria-current="page{% endif %}">+ Add a screen</a>
         </nav>
         {% if username %}<div class="sidebar-foot"><div class="whoami" title="Signed in as {{ username }}">{{ username }}</div></div>{% endif %}
     </aside>
