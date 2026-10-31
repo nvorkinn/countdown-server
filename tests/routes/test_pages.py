@@ -207,6 +207,7 @@ def test_device_config_has_the_guided_tour(paired_client):
     assert [name for name, _ in sections] == [
         "general",
         "style",
+        "layout",
         "weather",
         "notice_board",
         "departures",
@@ -232,8 +233,8 @@ def test_device_config_groups_fields_into_sections(paired_client):
     client, _, _ = paired_client
     html = client.get("/device").get_data(as_text=True)
     titles = re.findall(r'<h2 class="card-title">([^<]+)</h2>', html)
-    assert titles[:4] == ["General", "Style", "Weather", "Notice board"]
-    general, style, weather, notice_board = re.split(r'<h2 class="card-title">', html)[1:5]
+    assert titles[:5] == ["General", "Style", "Layout", "Weather", "Notice board"]
+    general, style, _layout, weather, notice_board = re.split(r'<h2 class="card-title">', html)[1:6]
     assert 'id="interval"' not in html
     assert 'name="style"' in style
     assert 'name="orientation"' in general
@@ -807,6 +808,10 @@ def test_device_config_shows_one_style_picker_with_the_stored_style_selected(app
         db.session.commit()
     html = client.get("/device").get_data(as_text=True)
     assert re.findall(r'name="style" value="(\w+)" checked', html) == ["card"]
+    # The showcase shows the one picked, big, with its name and description.
+    assert 'class="showcase-picture" id="style_picture" src="/static/styles/card.png"' in html
+    assert '<p class="showcase-name" id="style_name">Card</p>' in html
+    assert '<p class="showcase-description" id="style_description">Each panel in a rounded card.</p>' in html
 
 
 def test_device_config_shows_a_picture_of_every_style(app, paired_client):
@@ -957,8 +962,11 @@ def test_device_config_shows_the_layout_picker_for_a_small_screen(paired_client)
     for name in ("Masthead", "Route board", "Sidebar"):
         assert f'<span class="style-name">{name}</span>' not in html
     assert "The weather in brief over one stop, big: every departure on a row of its own" in html
-    style = re.split(r'<h2 class="card-title">', html)[2]
-    assert 'name="layout"' in style
+    # Its own section, after the style's.
+    layout = re.split(r'<h2 class="card-title">', html)[3]
+    assert layout.startswith("Layout</h2>")
+    assert 'name="layout"' in layout
+    assert 'name="style"' not in layout
     pictures = re.findall(r'<img src="(/static/layouts/[\w-]+\.png)" alt="" width="240" height="400"', html)
     assert pictures == [f"/static/layouts/small-{layout}.png" for layout in SMALL_LAYOUTS]
     for picture in pictures:
@@ -1026,8 +1034,11 @@ def test_device_config_shows_the_layout_picker_for_an_hd_portrait_screen(app, pa
     names = ("Classic", "Masthead", "Column", "Lock screen", "Timeline", "Route board", "Two pages", *KERBSIDE_NAMES)
     for name in names:
         assert f'<span class="style-name">{name}</span>' in html
-    style = re.split(r'<h2 class="card-title">', html)[2]
-    assert 'name="layout"' in style
+    # Its own section, after the style's.
+    layout = re.split(r'<h2 class="card-title">', html)[3]
+    assert layout.startswith("Layout</h2>")
+    assert 'name="layout"' in layout
+    assert 'name="style"' not in layout
     pictures = re.findall(r'<img src="(/static/layouts/\w+\.png)" alt="" width="351" height="468"', html)
     assert pictures == [f"/static/layouts/{layout}.png" for layout in LAYOUTS]
     for picture in pictures:
