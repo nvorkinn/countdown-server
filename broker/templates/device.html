@@ -163,7 +163,7 @@
                  is looked up when saved. -->
             <div class="form-group">
                 <label for="weather_location">Town or city</label>
-                <div class="search-container" style="margin-bottom: 0; max-width: 440px;">
+                <div class="search-container" style="margin-bottom: 0;">
                     <input type="text" id="weather_location" name="weather_location" value="{{ config.weather_place_label or config.weather_location or weather_suggestion or '' }}" placeholder="Search for a town or city" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="placeResults" aria-describedby="weather_location_hint">
                     <span id="placeSpinner" class="search-spinner">Searching…</span>
                     <div id="placeResults" class="search-results" role="listbox" aria-label="Towns and cities"></div>
