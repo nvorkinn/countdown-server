@@ -1,5 +1,6 @@
 import struct
 import zlib
+from datetime import UTC, datetime, timedelta
 
 import fakeredis
 
@@ -168,6 +169,13 @@ def test_settings_page_header_shows_the_screens_picture(paired_client, draw):
     picture = f'<img class="frame-picture" src="/device/{device_id}/screen/frame.png" alt="" width="480" height="800">'
     assert picture in html
     assert "No picture yet" not in html
+
+
+def test_settings_page_header_says_when_the_picture_was_drawn(paired_client, draw):
+    client, device_id, _ = paired_client
+    draw(device_id, bytes(FRAME_BYTES), at=datetime.now(UTC) - timedelta(minutes=7))
+
+    assert "<figcaption>Drawn 7 min ago</figcaption>" in client.get(f"/device/{device_id}").get_data(as_text=True)
 
 
 def test_settings_page_header_before_the_first_frame_says_so(paired_client):

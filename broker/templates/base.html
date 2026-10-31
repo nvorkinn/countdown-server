@@ -922,13 +922,46 @@
             margin: 6px 0 8px;
         }
 
+        /* The screen's picture beside its name: big enough to read, its caption saying how fresh it is. */
+        .preview {
+            margin: 0;
+            display: grid;
+            justify-items: center;
+            gap: 14px;
+        }
+
+        .preview figcaption {
+            max-width: 220px;
+            font-family: var(--mono);
+            font-size: 12px;
+            letter-spacing: .04em;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
         .app .bezel {
-            width: min(300px, 100%);
-            padding: 10px;
+            width: min(420px, 100%);
+            padding: 12px;
         }
 
         .app .bezel.portrait {
+            width: 230px;
+        }
+
+        /* Until the screen's first picture, a smaller blank bezel holds its place. */
+        .preview.empty .bezel {
+            width: min(260px, 100%);
+        }
+
+        .preview.empty .bezel.portrait {
             width: 150px;
+        }
+
+        .app .bezel-empty {
+            background: #f7f6f1;
+            color: var(--text-muted);
+            font-family: var(--mono);
+            font-size: 12px;
         }
 
         .hero-links {
@@ -1555,20 +1588,23 @@
                 font-size: 14px;
             }
 
-            .app .bezel, .app .bezel.portrait {
-                width: 92px;
-                padding: 5px;
-                border-radius: 5px;
-                justify-self: end;
+            /* On a phone the picture goes under the name, as large as fits. */
+            .app .hero {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .preview {
+                justify-self: center;
+            }
+
+            .app .bezel.portrait {
+                width: 170px;
+                padding: 8px;
             }
 
             .app .bezel:not(.portrait) {
-                width: 140px;
-            }
-
-            .app .bezel-empty {
-                font-size: 10px;
-                padding: 4px;
+                width: 100%;
+                padding: 8px;
             }
 
             .section-feature {

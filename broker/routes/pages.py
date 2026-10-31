@@ -448,13 +448,16 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
     # An empty weather location is prefilled with a guess from the visitor's IP, shown as one; it's
     # only stored if they save it.
     weather_suggestion = None if config.weather_location else geoip.suggest_weather_location(request.remote_addr)
+    drawn = frame_record.head(device_id)
+    now = pace.clock()
     return render_template(
         "device.html",
         device_id=device_id,
         display_attached=device.display_secret_hash is not None,
-        display_seen=_seen_ago(device.display_last_seen_at, pace.clock()),
+        display_seen=_seen_ago(device.display_last_seen_at, now),
         screen_label=screen_label(device),
-        has_frame=frame_record.head(device_id) is not None,
+        has_frame=drawn is not None,
+        frame_drawn=_seen_ago(drawn.rendered_at, now) if drawn else None,
         frame_width=frame_width,
         frame_height=frame_height,
         frame_portrait=_frame_portrait(config),
