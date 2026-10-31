@@ -46,9 +46,35 @@
 {% block content %}
 {# A gallery of pictures to pick one from: the style, an HD screen's weather design, the layout. option_min is the
    narrowest a picture gets before the gallery scrolls instead. #}
-{% macro style_picker(field, hint, styles, chosen, folder, width, height, legend="Style", prefix="", option_min=220) %}
+{# The style's showcase: the one picked, big, with its name and what it's like; the others beside it, small, to pick
+   instead. The big picture follows the pick (the script below); without the script it shows the saved one. #}
+{% macro showcase(field, hint, styles, chosen, folder, width, height) %}
+        {% set picked = chosen if chosen in styles else (styles | list | first) %}
+        <fieldset class="showcase" aria-describedby="{{ field }}_hint">
+            <legend class="visually-hidden">Style</legend>
+            <div class="showcase-stage">
+                <img class="showcase-picture" id="{{ field }}_picture" src="{{ url_for('static', filename=folder ~ '/' ~ picked ~ '.png') }}" alt="" width="{{ width }}" height="{{ height }}">
+            </div>
+            <div class="showcase-info">
+                <p class="showcase-kicker">Selected</p>
+                <p class="showcase-name" id="{{ field }}_name">{{ styles[picked][0] }}</p>
+                <p class="showcase-description" id="{{ field }}_description">{{ styles[picked][1] }}.</p>
+                <p id="{{ field }}_hint" class="form-hint">{{ hint }}</p>
+                <div class="showcase-options">
+                    {% for style, (name, description) in styles.items() %}
+                        <label class="showcase-option">
+                            <input type="radio" id="{{ field }}_{{ style }}" name="{{ field }}" value="{{ style }}" {% if chosen == style %}checked{% endif %} data-name="{{ name }}" data-description="{{ description }}." data-picture="{{ url_for('static', filename=folder ~ '/' ~ style ~ '.png') }}">
+                            <img src="{{ url_for('static', filename=folder ~ '/' ~ style ~ '.png') }}" alt="" width="{{ width }}" height="{{ height }}" loading="lazy">
+                            <span class="showcase-option-name">{{ name }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+        </fieldset>
+{% endmacro %}
+{% macro style_picker(field, hint, styles, chosen, folder, width, height, legend="Style", prefix="", option_min=220, legend_shown=true) %}
         <fieldset class="form-group gallery" aria-describedby="{{ field }}_hint">
-            <legend>{{ legend }}</legend>
+            <legend{% if not legend_shown %} class="visually-hidden"{% endif %}>{{ legend }}</legend>
             <div class="gallery-head">
                 <p id="{{ field }}_hint" class="form-hint">{{ hint }}</p>
                 <div class="gallery-nav" hidden>
@@ -135,24 +161,30 @@
         </div>
     </section>
 
-    <section class="section section-feature" data-tour="style">
+    <section class="section section-showcase" data-tour="style">
         <header class="card-header">
             <h2 class="card-title">Style</h2>
         </header>
-        {{ style_picker("style", "How your screen draws its departures, Spotify and notice board.", styles, config.style, "styles", 360, 396, option_min=240) }}
+        {{ showcase("style", "How your screen draws its departures, Spotify and notice board.", styles, config.style, "styles", 480, 528) }}
         {% if hd_screen %}
             {{ style_picker("weather_design", "How your HD screen draws the weather, which spans its whole width.", weather_designs, config.weather_design, "weather", 468, 230, legend="Weather", option_min=300) }}
         {% endif %}
-        {% if layouts %}
-            {% if landscape %}
-                {{ style_picker("layout", "How your HD screen arranges its panels, hung landscape.", layouts, layout, "layouts", 468, 351, legend="Layout", prefix="landscape-", option_min=300) }}
-            {% elif hd_screen %}
-                {{ style_picker("layout", "How your HD screen arranges its panels, hung portrait.", layouts, layout, "layouts", 351, 468, legend="Layout", option_min=210) }}
-            {% else %}
-                {{ style_picker("layout", "How your screen arranges its panels.", layouts, layout, "layouts", 240, 400, legend="Layout", prefix="small-", option_min=190) }}
-            {% endif %}
-        {% endif %}
     </section>
+
+    {% if layouts %}
+        <section class="section" data-tour="layout">
+            <header class="card-header">
+                <h2 class="card-title">Layout</h2>
+            </header>
+            {% if landscape %}
+                {{ style_picker("layout", "How your HD screen arranges its panels, hung landscape.", layouts, layout, "layouts", 468, 351, legend="Layout", prefix="landscape-", option_min=300, legend_shown=false) }}
+            {% elif hd_screen %}
+                {{ style_picker("layout", "How your HD screen arranges its panels, hung portrait.", layouts, layout, "layouts", 351, 468, legend="Layout", option_min=210, legend_shown=false) }}
+            {% else %}
+                {{ style_picker("layout", "How your screen arranges its panels.", layouts, layout, "layouts", 240, 400, legend="Layout", prefix="small-", option_min=190, legend_shown=false) }}
+            {% endif %}
+        </section>
+    {% endif %}
 
     <div class="section-pair">
         <section class="section" data-tour="weather">
@@ -321,7 +353,19 @@
 <script>
     const settingsForm = document.getElementById('settingsForm');
 
-    // The galleries (style, weather design, layout): picking is the radios' own; the arrows, shown only when the
+    // The style's showcase: the big picture, name and description follow the style picked.
+    document.querySelectorAll('.showcase').forEach(showcase => {
+        const picture = showcase.querySelector('.showcase-picture');
+        const name = showcase.querySelector('.showcase-name');
+        const description = showcase.querySelector('.showcase-description');
+        showcase.addEventListener('change', e => {
+            picture.src = e.target.dataset.picture;
+            name.textContent = e.target.dataset.name;
+            description.textContent = e.target.dataset.description;
+        });
+    });
+
+    // The galleries (weather design, layout): picking is the radios' own; the arrows, shown only when the
     // pictures don't all fit, scroll the strip by one picture, and the picked one starts in view.
     document.querySelectorAll('.gallery').forEach(gallery => {
         const track = gallery.querySelector('.gallery-track');

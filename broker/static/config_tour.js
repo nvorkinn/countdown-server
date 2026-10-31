@@ -43,6 +43,15 @@
             regions: ["departures", "notices"],
         },
         {
+            section: "layout",
+            title: "Layout",
+            text:
+                "The layout is where each panel goes: the weather on top or in brief, and how the departures are " +
+                "laid out. Each picture shows one.",
+            regions: [],
+            picture: false,
+        },
+        {
             section: "weather",
             title: "Weather",
             text: "The forecast in the top right is for this town or city: now, tonight, tomorrow and the weekend.",
@@ -167,7 +176,9 @@
 
     function start(options) {
         const driver = window.driver.js.driver;
-        const steps = STEPS.map((step, index) => ({
+        // A screen without a choice of layout has no Layout section, so the tour skips it.
+        const shown = STEPS.filter(step => document.querySelector(`[data-tour="${step.section}"]`));
+        const steps = shown.map((step, index) => ({
             element: `[data-tour="${step.section}"]`,
             popover: {
                 title: step.title,

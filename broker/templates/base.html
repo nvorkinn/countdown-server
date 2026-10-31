@@ -1082,18 +1082,158 @@
             color: var(--text-muted);
         }
 
-        /* Style: the one section in a card, as it's the look of the screen itself, with big pictures. */
-        .section-feature {
-            padding: 32px 32px 26px;
+        /* Style: a showcase on a pale band, as it's the look of the screen itself. The style picked is big, with
+           its name and description beside it; the others are small pictures under those, to pick instead. */
+        .section-showcase {
+            padding: 30px 32px 30px;
             margin: 10px 0 30px;
-            border: 1.5px solid var(--ink);
             border-radius: 12px;
-            background: var(--bg-card);
+            background: #e9e8e1;
         }
 
-        .section-feature + .section, .section-feature + .section-pair > .section {
+        .section-showcase + .section, .section-showcase + .section-pair > .section {
             border-top: none;
             padding-top: 0;
+        }
+
+        .section-showcase .gallery {
+            margin-top: 30px;
+            padding-top: 26px;
+            border-top: 1px solid #d6d5cd;
+        }
+
+        .section-showcase .style-stage {
+            background: #f3f2ed;
+        }
+
+        .showcase {
+            display: grid;
+            grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
+            gap: 40px;
+            align-items: center;
+            min-width: 0;
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
+
+        .showcase-stage {
+            display: flex;
+            justify-content: center;
+        }
+
+        .showcase-picture {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 12px solid var(--bezel);
+            border-radius: 8px;
+            box-shadow: 0 24px 40px -24px rgba(0, 0, 0, .45);
+            image-rendering: pixelated;
+            background: #fff;
+        }
+
+        .showcase-kicker {
+            display: inline-block;
+            padding: 3px 7px 2px;
+            border-radius: 4px;
+            background: var(--red);
+            color: #fff;
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+        }
+
+        .showcase-name {
+            margin: 10px 0 4px;
+            font-family: var(--display);
+            font-size: 40px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .showcase-description {
+            margin-bottom: 6px;
+            font-size: 17px;
+        }
+
+        .showcase-info .form-hint {
+            margin: 0 0 22px;
+        }
+
+        /* The styles to pick from: a row of small pictures, which scrolls if there are ever too many to fit. */
+        .showcase-options {
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: 112px;
+            gap: 16px;
+            overflow-x: auto;
+            padding: 6px;
+            margin: -6px;
+            scrollbar-width: thin;
+        }
+
+        .showcase-option {
+            position: relative;
+            display: grid;
+            justify-items: center;
+            gap: 8px;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .showcase-option input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .showcase-option img {
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 5px solid var(--bezel);
+            border-radius: 5px;
+            outline: 3px solid transparent;
+            outline-offset: 3px;
+            image-rendering: pixelated;
+            background: #fff;
+            transition: transform .15s, outline-color .15s;
+        }
+
+        .showcase-option:hover img {
+            transform: translateY(-2px);
+        }
+
+        .showcase-option-name {
+            font-family: var(--display);
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        /* The one picked: a red ring, and a tick before its name, so it isn't told by colour alone. */
+        .showcase-option:has(input:checked) img {
+            outline-color: var(--red);
+        }
+
+        .showcase-option:has(input:checked) .showcase-option-name::before {
+            content: "✓ ";
+            color: var(--red);
+        }
+
+        .showcase-option:has(input:focus-visible) img {
+            outline: 3px dashed var(--ink);
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+            white-space: nowrap;
         }
 
         /* A gallery of pictures to pick from (the style, layout, weather design): every option in view on a wide
@@ -1551,11 +1691,27 @@
                 padding: 4px;
             }
 
-            .section-feature {
+            .section-showcase {
                 margin-inline: -16px;
-                padding: 26px 16px 22px;
-                border-inline: none;
+                padding: 26px 16px 24px;
                 border-radius: 0;
+            }
+
+            .showcase {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 22px;
+            }
+
+            .showcase-stage {
+                padding-inline: 12%;
+            }
+
+            .showcase-name {
+                font-size: 32px;
+            }
+
+            .showcase-options {
+                grid-auto-columns: 96px;
             }
 
             .gallery-track {
