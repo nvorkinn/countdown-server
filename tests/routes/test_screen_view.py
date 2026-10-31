@@ -104,6 +104,7 @@ def test_a_landscape_png_screen_shows_its_picture_as_it_is(app, paired_client, d
 
     assert 'class="frame" style="--frame-w: 1872; --frame-h: 1404"' in html
     assert 'class="frame frame-portrait"' not in html
+    assert "<li>Horizontal</li>" in client.get(f"/device/{device_id}").get_data(as_text=True)
 
 
 def test_a_mono_screen_is_never_turned_on_the_page(paired_client, draw):
@@ -196,7 +197,7 @@ def test_settings_page_header_lists_the_saved_settings(app, paired_client):
 
     html = client.get(f"/device/{device_id}").get_data(as_text=True)
 
-    for chip in ("Card", "Norsk", "0 stops", "12-hour"):
+    for chip in ("Card", "Vertical", "Norsk", "0 stops", "12-hour"):
         assert f"<li>{chip}</li>" in html
 
 

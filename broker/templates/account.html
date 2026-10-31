@@ -126,7 +126,7 @@
                     <input type="text" id="glowmarkt_username" name="glowmarkt_username" value="{{ glowmarkt.username }}" autocomplete="off">
                 </div>
                 <div class="form-group">
-                    <label for="glowmarkt_password">Password</label>
+                    <label for="glowmarkt_password">{{ 'New password' if glowmarkt.has_password else 'Password' }}</label>
                     <input
                         type="password"
                         id="glowmarkt_password"

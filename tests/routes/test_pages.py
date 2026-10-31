@@ -812,6 +812,11 @@ def test_device_config_shows_one_style_picker_with_the_stored_style_selected(app
     assert 'class="showcase-picture" id="style_picture" src="/static/styles/card.png"' in html
     assert '<p class="showcase-name" id="style_name">Card</p>' in html
     assert '<p class="showcase-description" id="style_description">Each panel in a rounded card.</p>' in html
+    assert 'alt="Card style preview"' in html
+    assert 'aria-live="polite" aria-atomic="true"' in html
+    assert 'aria-label="Next styles" aria-controls="style_options"' in html
+    assert 'class="showcase-options" id="style_options"' in html
+    assert 'src="/static/settings_choices.js"' in html
 
 
 def test_device_config_shows_a_picture_of_every_style(app, paired_client):

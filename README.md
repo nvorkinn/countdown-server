@@ -83,9 +83,15 @@ Pairing gives the screen its internal name (its slug, which is its device id), p
 queues its first render. Its owner can give it a friendly name on its settings page.
 
 Each screen's settings are at `/device/<id>` (and `/device` for the most recently paired one): departure stops (TfL and
-Entur), the weather place (an Open-Meteo search), a postcode for the notice board, Glowmarkt, Spotify and Apple Music,
-a GitHub token for the developer panel, language, style, clock format and name, and on an HD screen (1872x1404) how
-the weather is drawn. `/device/<id>/screen` shows the screen's current frame. "Unlink screen" revokes the screen's
+Entur), the weather place (an Open-Meteo search), a postcode for the notice board, per-screen integration visibility,
+language, style, clock format and name, and on an HD screen (1872x1404) how the weather is drawn. Connections and
+credentials for music, GitHub, Parcel and Energy live at `/account`, shared across screens; blank replacement
+secret fields keep the saved credentials.
+
+Style has a large selected preview and a browsable strip of alternatives; Layout separately chooses the panel
+arrangement. Both use native radio choices (arrow keys to select), with scroll buttons when previews do not fit.
+The header thumbnail uses the screen's latest real frame, or an empty state before its first render.
+`/device/<id>/screen` shows the screen's current frame. "Unlink screen" revokes the screen's
 secret; a replacement screen can't yet join an existing device, so it registers as a new one.
 
 Until a weather place is picked, the page suggests the biggest town near the visitor's IP, looked up locally in DB-IP's
