@@ -1227,13 +1227,16 @@
             outline: 3px dashed var(--ink);
         }
 
+        /* Read out but not shown. Important, as a legend's own rules (the galleries') would otherwise win. */
         .visually-hidden {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            overflow: hidden;
-            clip-path: inset(50%);
-            white-space: nowrap;
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            clip-path: inset(50%) !important;
+            white-space: nowrap !important;
+            float: none !important;
         }
 
         /* A gallery of pictures to pick from (the style, layout, weather design): every option in view on a wide
