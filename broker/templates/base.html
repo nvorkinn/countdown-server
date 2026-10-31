@@ -1005,7 +1005,7 @@
 
         .section {
             counter-increment: section;
-            padding: 30px 0;
+            padding: 26px 0 28px;
             border-top: 1px solid var(--border);
             min-width: 0;
         }
@@ -1042,10 +1042,17 @@
             color: var(--text-muted);
         }
 
-        /* The open sections' fields keep to a readable width rather than the page's. */
+        /* The open sections' fields keep to a readable width rather than the page's; in a half-width column
+           (Weather beside Notice board, the services) they take the column, so the fields line up. */
         .section .form-group input[type="text"],
         .section .form-group input[type="password"] {
             max-width: 440px;
+        }
+
+        .section-pair .section .form-group input[type="text"],
+        .integration .form-group input[type="text"],
+        .integration .form-group input[type="password"] {
+            max-width: none;
         }
 
         .field-row {
@@ -1484,10 +1491,16 @@
             gap: 22px;
         }
 
+        /* On a wide page the search feeds the list beside it, a hairline between them. */
         @container main (min-width: 760px) {
             .departures-grid {
                 grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
-                gap: 36px;
+                gap: 32px;
+            }
+
+            .departures-grid > :last-child {
+                padding-left: 32px;
+                border-left: 1px solid var(--border);
             }
         }
 
@@ -1502,7 +1515,7 @@
 
         /* The services the screen shows: compact rows, two abreast on a wide page. */
         .integrations {
-            padding-top: 30px;
+            padding-top: 26px;
             border-top: 1px solid var(--border);
         }
 
@@ -1527,7 +1540,7 @@
         }
 
         .integration {
-            padding: 22px 0 26px;
+            padding: 16px 0 18px;
         }
 
         .integration-grid > .integration:first-child {
@@ -1541,11 +1554,11 @@
         }
 
         .integration .card-header {
-            margin-bottom: 12px;
+            margin-bottom: 6px;
         }
 
         .integration .card-title {
-            font-size: 22px;
+            font-size: 20px;
         }
 
         .service-row {
@@ -1580,7 +1593,8 @@
         }
 
         .integration .form-group {
-            margin-top: 12px;
+            margin-top: 10px;
+            margin-bottom: 0;
         }
 
         .integration .form-grid {
