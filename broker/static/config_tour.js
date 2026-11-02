@@ -94,8 +94,8 @@
             section: "parcels",
             title: "Parcels",
             text:
-                "With a Parcel API key (Parcel Premium) the screen can show your deliveries, and tell you when " +
-                "one is out for delivery or arriving today.",
+                "With a Parcel API key (Parcel Premium) the notice board shows your deliveries. Choose how far ahead " +
+                "to show them, and how long delivered ones stay.",
             regions: [],
             picture: false,
         },

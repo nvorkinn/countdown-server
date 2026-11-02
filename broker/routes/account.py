@@ -187,7 +187,7 @@ def github_disconnect() -> ResponseReturnValue:
 @bp.post("/parcel/disconnect")
 @require_paired_user
 def parcel_disconnect() -> ResponseReturnValue:
-    """Forget the account's Parcel API key, which takes the parcels panel off all the user's screens."""
+    """Forget the account's Parcel API key, which takes the parcel notices off all the user's screens."""
     user_id = signed_in_user()
     key = db.session.get(ParcelKey, user_id)
     if key is not None:

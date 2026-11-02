@@ -208,7 +208,7 @@ class DeviceConfig(Model):
     apple_music_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # The developer panel: GitHub pull requests and builds, and AI plans (see broker/providers/developer.py).
     developer_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
-    # The parcels panel, shown while the owner's account has a Parcel API key (ParcelKey).
+    # The parcel notices, shown while the owner's account has a Parcel API key (ParcelKey).
     parcels_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # The parcels it shows: those expected within this many days of today (0: today's only), or any day while None.
     parcels_days_ahead: Mapped[int | None] = mapped_column(Integer)
@@ -313,10 +313,10 @@ class GitHubToken(Model):
 
 
 class ParcelKey(Model):
-    """The Parcel API key a user gave for their screens' parcels panel, encrypted at rest.
+    """The Parcel API key a user gave for their screens' parcel notices, encrypted at rest.
 
     Issued from their own Parcel Premium account (web.parcelapp.net); only the parcel provider uses it, to read their
-    active deliveries. A screen shows the panel while it has one and its parcels_enabled is on (`parcels.enabled`).
+    active deliveries. A screen shows the notices while it has one and its parcels_enabled is on (`parcels.enabled`).
     """
 
     __tablename__ = "parcel_keys"
