@@ -14,7 +14,7 @@ erDiagram
     devices }o..o{ apple_music_plays : "owner's play log"
     devices }o..o| glowmarkt_credentials : "owner's energy"
     devices }o..o| github_tokens : "owner's developer panel"
-    devices }o..o| parcel_keys : "owner's parcels panel"
+    devices }o..o| parcel_keys : "owner's parcel notices"
 
     devices {
         string device_id PK "token_hex(6)"
@@ -108,7 +108,7 @@ erDiagram
 | `apple_music_plays` | play seen | Apple Music has no top lists, so the music provider logs plays and counts them. |
 | `glowmarkt_credentials` | linked Glowmarkt account | The password is encrypted. |
 | `github_tokens` | developer panel token | Encrypted. |
-| `parcel_keys` | parcels panel Parcel API key | Encrypted. |
+| `parcel_keys` | parcel notices Parcel API key | Encrypted. |
 
 - **Accounts.** The five login tables are keyed by the user id `devices.owner` holds, not by screen: a login serves all
   of a user's screens, and each screen's own `*_enabled` column in `device_config` says whether it shows that service

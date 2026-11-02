@@ -2,7 +2,7 @@
 
 The config page saves it against their account (broker/routes/pages.py) and the parcel provider reads it for each
 screen, through its owner, with get_parcel_api_key. It is kept encrypted (models.ParcelKey), never sent to the browser,
-and never logged. A screen shows the panel while its owner has one and its DeviceConfig.parcels_enabled is on: that's
+and never logged. A screen shows the notices while its owner has one and its DeviceConfig.parcels_enabled is on: that's
 `parcels.enabled` in its config (services/renderer_config.py).
 
 Whether Parcel takes the key is the provider's to say, in `v1:parcels-status:<device id>`; link_status reads it.
