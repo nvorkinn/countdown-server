@@ -1014,10 +1014,13 @@ def test_device_config_shows_the_layout_picker_for_an_hd_landscape_screen(app, p
 
 @pytest.mark.parametrize(
     ("prefix", "size", "layouts"),
-    [("", (351, 468), LAYOUTS), ("landscape-", (468, 351), LANDSCAPE_LAYOUTS), ("small-", (240, 400), SMALL_LAYOUTS)],
+    [("", (702, 936), LAYOUTS), ("landscape-", (936, 702), LANDSCAPE_LAYOUTS), ("small-", (480, 800), SMALL_LAYOUTS)],
 )
 def test_the_layout_pictures_are_the_screen_scaled_down(prefix, size, layouts):
-    """Each is the screen the way it hangs, a quarter of 1872x1404 or half of 480x800, in grey, as its <img> says."""
+    """Each is the screen the way it hangs, half of 1872x1404 or all of 480x800, in grey: twice its <img> size.
+
+    So it's sharp on a retina screen (scripts/build_picker_pictures.py makes them).
+    """
     folder = Path(__file__).parents[2] / "broker" / "static" / "layouts"
     for layout in layouts:
         header = (folder / f"{prefix}{layout}.png").read_bytes()[:26]

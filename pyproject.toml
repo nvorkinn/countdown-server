@@ -67,6 +67,8 @@ timeout = 120
 extend_exclude = ["vendor"]
 
 [tool.deptry.per_rule_ignores]
+# Pillow: only scripts/build_picker_pictures.py, a dev tool run with `uv run --with pillow`.
+DEP001 = ["PIL"]
 # tzdata is never imported: zoneinfo reads it from site-packages on images without a system tz database
 # (python:3.14-slim has none), so it has to stay a runtime dependency.
 DEP002 = ["tzdata"]
