@@ -17,7 +17,7 @@ hence `--with pillow`.
 import sys
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image  # ty: ignore[unresolved-import] -- run with `uv run --with pillow`; the broker has no Pillow
 
 STATIC = Path(__file__).resolve().parent.parent / "broker" / "static"
 
