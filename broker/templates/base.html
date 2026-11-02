@@ -1252,6 +1252,8 @@
             overflow-x: auto;
             padding: 6px;
             margin: -6px;
+            /* Snap to the padding's inner edge, not the outer one, so the 6px gutter for the red ring stays in view. */
+            scroll-padding-inline: 6px;
             scrollbar-width: thin;
             scroll-snap-type: x proximity;
         }
@@ -1412,6 +1414,8 @@
             scrollbar-width: none;
             padding: 6px 6px 4px;
             margin: -6px -6px 0;
+            /* Snap to the padding's inner edge, not the outer one, so the 6px gutter for the red outline stays in view. */
+            scroll-padding-inline: 6px;
         }
 
         .gallery-track::-webkit-scrollbar {
