@@ -1422,12 +1422,13 @@
             display: none;
         }
 
-        .style-option {
+        /* label.style-option, to outrank .form-group label's display: block, which dropped the gap below the picture. */
+        label.style-option {
             position: relative;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 16px;
+            gap: 14px;
             margin: 0;
             scroll-snap-align: start;
             cursor: pointer;
