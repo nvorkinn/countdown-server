@@ -1251,6 +1251,8 @@
             overflow-x: auto;
             padding: 6px;
             margin: -6px;
+            /* Snap to the padding's inner edge, not the outer one, so the 6px gutter for the red ring stays in view. */
+            scroll-padding-inline: 6px;
             scrollbar-width: thin;
             scroll-snap-type: x proximity;
         }
@@ -1410,18 +1412,21 @@
             scrollbar-width: none;
             padding: 6px 6px 4px;
             margin: -6px -6px 0;
+            /* Snap to the padding's inner edge, not the outer one, so the 6px gutter for the red outline stays in view. */
+            scroll-padding-inline: 6px;
         }
 
         .gallery-track::-webkit-scrollbar {
             display: none;
         }
 
-        .style-option {
+        /* label.style-option, to outrank .form-group label's display: block, which dropped the gap below the picture. */
+        label.style-option {
             position: relative;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
             margin: 0;
             scroll-snap-align: start;
             cursor: pointer;
@@ -1439,7 +1444,7 @@
             align-items: center;
             justify-content: center;
             width: 100%;
-            padding: 18px;
+            padding: 12px;
             border-radius: 10px;
             background: var(--bg-page);
             outline: 2px solid transparent;
