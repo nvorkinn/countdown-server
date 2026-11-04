@@ -143,6 +143,14 @@ services:
       # certificate, and Let's Encrypt rate-limits repeated issuance.
       - caddy_data:/data
       - caddy_config:/config
+    # Up means taking connections on 443, which is what everything behind Caddy (Terraform's calls to authentik
+    # included) needs. deploy.sh's `--wait` holds the deploy job until then.
+    healthcheck:
+      test: ["CMD", "nc", "-z", "-w", "3", "127.0.0.1", "443"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # Fluent Bit, with fluent-bit/ baked in: container and OTLP logs to VictoriaLogs, host and OTLP metrics to
   # VictoriaMetrics.
