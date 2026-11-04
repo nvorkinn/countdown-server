@@ -2,7 +2,7 @@ name: Terraform
 
 # Checks and plans terraform/ on pull requests that change it. The plan reads the live Authentik, so it needs the
 # secrets below and is skipped without them (fork and Dependabot pull requests). Applies run only from a release tag:
-# the Release workflow calls this with apply on, after the authentik deploy. The "Run workflow" button (Actions >
+# the Release workflow calls this with apply on, after the deploys. The "Run workflow" button (Actions >
 # Terraform) plans any ref, which shows drift; with "apply" ticked it also applies, on the latest release tag only,
 # which is how a failed apply is retried. See terraform/README.md.
 on:
@@ -194,8 +194,8 @@ jobs:
           [ "$APPLY" != true ] || { echo "::error::No AUTHENTIK_TOKEN or state credentials, so nothing can be planned or applied"; exit 1; }
           echo "::notice::No AUTHENTIK_TOKEN or state credentials here (a fork or Dependabot pull request, or not set up yet), so there is no plan."
 
-      # A release redeploys caddy and authentik beside this job, so the first requests can find caddy down or authentik
-      # still starting (connection refused, read timeouts). Wait until authentik answers through caddy before planning.
+      # A release plans after its deploys, but authentik can still be starting, and a plan on a pull request or from the
+      # button can meet a release's deploy. Wait until authentik answers through caddy before planning.
       - name: Wait for authentik to answer
         if: env.HAVE_SECRETS == 'true'
         run: |

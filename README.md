@@ -292,8 +292,9 @@ That decrypts the secrets, installs the compose file, backs up the database (`da
 kept) when deploying the broker, pins the service's `<SERVICE>_VERSION` in `/opt/auth-broker/.env` and recreates it.
 Redis and authentik are only recreated if their service changed. Then it removes the service's older images, keeping
 the running one and one other to roll back to, so the host's disk doesn't fill up with a set of images per release.
-After authentik is deployed, the `terraform` job applies this tag's authentik configuration, asking for approval
-only when the plan changes something (see [terraform/README.md](terraform/README.md)).
+After authentik and the services are deployed, the `terraform` job applies this tag's authentik configuration, asking
+for approval only when the plan changes something (see [terraform/README.md](terraform/README.md)). It waits for the
+services because it reaches authentik through Caddy, which is recreated on each release.
 
 ### Promoting to production
 

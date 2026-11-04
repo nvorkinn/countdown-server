@@ -219,14 +219,29 @@ jobs:
   deploy-authentik-dev:
     name: authentik (dev-qa)
     needs: [tag, package]
-    # The terraform job it calls comments on pull requests, so its token asks for this even here.
-    permissions:
-      contents: read
-      pull-requests: write
     uses: ./.github/workflows/deploy-authentik.yml
     with:
       environment: dev-qa
       target: dev
       tag: ${{ needs.tag.outputs.value }}
       bundle_sha256: ${{ fromJSON(needs.package.outputs.sha256).dev }}
+    secrets: inherit
+
+  # authentik's configuration, from this tag's terraform/: a plan, applied after approval only if it changes anything
+  # (see terraform.yml). Terraform reaches authentik through Caddy, so it waits for the services deploy as well as
+  # authentik's: planned beside them, it lost Caddy halfway when Caddy was recreated (connection refused). It still runs
+  # when a service other than authentik failed to deploy, and not when authentik did.
+  terraform-dev:
+    name: terraform (dev-qa)
+    needs: [tag, deploy-authentik-dev, deploy-services-dev]
+    if: ${{ !cancelled() && needs.deploy-authentik-dev.result == 'success' }}
+    permissions:
+      contents: read
+      # The plan job comments on pull requests, so its token asks for this even here.
+      pull-requests: write
+    uses: ./.github/workflows/terraform.yml
+    with:
+      apply: true
+      target: dev
+      tag: ${{ needs.tag.outputs.value }}
     secrets: inherit

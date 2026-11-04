@@ -144,8 +144,8 @@ terraform providers lock -platform=linux_amd64 -platform=darwin_arm64
 
 ## Applying
 
-Terraform is applied only from release tags, as part of the release. After the authentik deploy has brought
-Authentik up on the release's version, the Release workflow's `terraform` job plans that tag's `terraform/` (the
+Terraform is applied only from release tags, as part of the release. After the deploys have brought
+Authentik up on the release's version (and Caddy, which Terraform goes through), the Release workflow's `terraform` job plans that tag's `terraform/` (the
 plan is in the run's summary). If the plan has no changes it stops there, with no approval to give. Otherwise it
 waits for approval in the `terraform` environment, and approving applies exactly that plan; if anything changed the
 state in between, Terraform rejects it as stale and nothing is applied. So a merged Terraform change goes live with
