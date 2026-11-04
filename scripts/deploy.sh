@@ -172,7 +172,27 @@ if [ "$service" = countdown-server ]; then
   # new one couldn't start beside it.
   docker rm --force auth-broker >/dev/null 2>&1 && echo "Removed the old auth-broker container" || true
 fi
-if [ -n "$var" ]; then
+# Whether every one of the services runs the image just pulled with the settings it would get now, the tag aside: an
+# infra image that didn't change since the last release is that release's image under the new tag (release.yml), and
+# recreating Caddy for it would cut every site off for a few seconds. Compose's config hash covers the image name, so the
+# hash is worked out with the version pin set back to the running container's tag, and compared with the one compose
+# labelled the container with. Changed secrets or settings change the hash, so those still recreate.
+unchanged() {
+  local s cid running_ref new_ref hash
+  for s in "${services[@]}"; do
+    cid="$(docker compose ps -q "$s")"
+    [ -n "$cid" ] || return 1
+    running_ref="$(docker inspect -f '{{.Config.Image}}' "$cid")"
+    new_ref="$(docker compose config --images "$s")"
+    [ "$(docker inspect -f '{{.Image}}' "$cid")" = "$(docker image inspect -f '{{.Id}}' "$new_ref")" ] || return 1
+    hash="$(env "$var=${running_ref##*:}" docker compose config --hash "$s" | awk '{print $2}')"
+    [ "$hash" = "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$cid")" ] || return 1
+  done
+}
+
+if [ -n "$var" ] && unchanged; then
+  echo "${services[*]} already run$([ "${#services[@]}" -gt 1 ] || echo s) this image and settings, so left running"
+elif [ -n "$var" ]; then
   retry_lost_lease docker compose up -d --no-deps --force-recreate "${services[@]}"
 else
   # Recreates only what changed. Jobs for these can run at once, so

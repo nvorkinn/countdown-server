@@ -58,7 +58,11 @@ jobs:
 
   # One build per image, side by side. Each is tagged with the release tag and
   # latest, for arm64 only: the host is ARM, and Tests builds its own images.
-  # On an ARM runner, so nothing is emulated.
+  # On an ARM runner, so nothing is emulated. An infra image whose folder (and this
+  # workflow) hasn't changed since the previous release isn't rebuilt: that
+  # release's image gets this tag too, so its digest stays the same and the
+  # deploy leaves the running container alone (deploy.sh). The broker's image is
+  # always built, as it bakes in the code.
   images:
     name: image ${{ matrix.image }}
     needs: tag
@@ -85,11 +89,15 @@ jobs:
             context: victoria-metrics
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+      TAG: ${{ needs.tag.outputs.value }}
+      CONTEXT: ${{ matrix.context }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The broker image bakes in vendor/countdown-api; the infra images don't use it.
           submodules: ${{ matrix.context == '.' }}
+          # The infra images compare their folder with the previous release's tag, so they need the history and tags.
+          fetch-depth: ${{ matrix.context == '.' && 1 || 0 }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
@@ -100,15 +108,37 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
+      # The previous release is the newest vX.Y.Z tag on this commit's history other than this one. Its image is reused
+      # when neither the image's folder nor this workflow changed since, and it is in GHCR. Copying the tags keeps the
+      # same index (attestations included), so its provenance still applies. Otherwise, the build below runs.
+      - name: Reuse the previous release's image if nothing changed
+        id: reuse
+        if: matrix.context != '.'
+        run: |
+          previous="$(git tag --merged HEAD --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | { grep -vxF "$TAG" || true; } | head -1)"
+          if [ -z "$previous" ]; then
+            echo "No earlier release to reuse; building."
+          elif ! git diff --quiet "$previous" HEAD -- "$CONTEXT" .github/workflows/release.yml; then
+            echo "$CONTEXT/ or release.yml changed since $previous; building."
+          elif ! docker buildx imagetools inspect "$IMAGE:$previous" > /dev/null 2>&1; then
+            echo "No $IMAGE:$previous in the registry; building."
+          else
+            docker buildx imagetools create --tag "$IMAGE:$TAG" --tag "$IMAGE:latest" "$IMAGE:$previous"
+            echo "::notice::$CONTEXT/ is unchanged since $previous, so $IMAGE:$TAG is that release's image."
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
         id: build
+        if: steps.reuse.outputs.reused != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ${{ matrix.context }}
           push: true
           platforms: linux/arm64
           tags: |
-            ${{ env.IMAGE }}:${{ needs.tag.outputs.value }}
+            ${{ env.IMAGE }}:${{ env.TAG }}
             ${{ env.IMAGE }}:latest
           # BuildKit's own attestations, pushed beside the image as extra
           # (unknown/unknown platform) manifests in the tag's OCI index. A pull
@@ -120,6 +150,7 @@ jobs:
       # with the image in GHCR and in GitHub's attestation store. Verify with
       # `gh attestation verify oci://<image>:<tag> --repo nvorkinn/countdown-server`.
       - name: Attest build provenance
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
