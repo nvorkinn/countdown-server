@@ -150,15 +150,28 @@ jobs:
   deploy-authentik:
     name: authentik (production)
     needs: [check, approve]
-    # The terraform job it calls comments on pull requests, so its token asks for this even here.
-    permissions:
-      contents: read
-      pull-requests: write
     uses: ./.github/workflows/deploy-authentik.yml
     with:
       environment: production
       target: prod
       tag: ${{ inputs.tag }}
       bundle_sha256: ${{ needs.check.outputs.sha256 }}
+    secrets: inherit
+
+  # Production's authentik configuration, after both deploys, as in release.yml (Terraform goes through Caddy). It asks
+  # for its own approval in terraform-production when the plan has changes, and may apply an older tag (a rollback).
+  terraform:
+    name: terraform (production)
+    needs: [deploy-authentik, deploy-services]
+    if: ${{ !cancelled() && needs.deploy-authentik.result == 'success' }}
+    permissions:
+      contents: read
+      # The plan job comments on pull requests, so its token asks for this even here.
+      pull-requests: write
+    uses: ./.github/workflows/terraform.yml
+    with:
+      apply: true
+      target: prod
+      tag: ${{ inputs.tag }}
       allow_older_tag: true
     secrets: inherit
