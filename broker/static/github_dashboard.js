@@ -354,9 +354,30 @@ function fileDiff(file, key) {
 
 const MATRIX_EXPANDED_MAX = 6;
 
-// Small matrices are drawn a card per job, unless every job was skipped; the toggle overrides either way.
+// A node's jobs as the cards it opens into: skipped jobs fold into one card, as they say nothing apart.
+function jobCards(node) {
+    const skipped = node.jobs.filter(job => job.state === "skipped");
+    const cards = node.jobs.filter(job => job.state !== "skipped");
+    if (skipped.length === 1) cards.push(skipped[0]);
+    if (skipped.length > 1) {
+        cards.push({
+            name: node.name,
+            title: skipped.map(job => job.name).join("\n"),
+            detail: `${skipped.length} jobs`,
+            state: "skipped",
+        });
+    }
+    return cards;
+}
+
+// Small matrices are drawn a card per job, skipped jobs folded into one; the toggle overrides the size limit. A node
+// that would open into one card (every job skipped) stays as it is.
+function matrixExpandable(node) {
+    return !!node.jobs && jobCards(node).length > 1;
+}
+
 function matrixExpanded(node, mode) {
-    return !!node.jobs && (mode ? mode === "expanded" : node.total <= MATRIX_EXPANDED_MAX && node.state !== "skipped");
+    return matrixExpandable(node) && (mode ? mode === "expanded" : jobCards(node).length <= MATRIX_EXPANDED_MAX);
 }
 
 function explode(nodes, mode) {
@@ -365,9 +386,11 @@ function explode(nodes, mode) {
             .filter(node => matrixExpanded(node, mode))
             .map(node => [
                 node.key,
-                node.jobs.map((job, index) => ({
+                jobCards(node).map((job, index) => ({
                     key: `${node.key}#${index}`,
                     name: job.name,
+                    title: job.title,
+                    detail: job.detail,
                     state: job.state,
                     needs: node.needs,
                     done: null,
@@ -429,10 +452,13 @@ function renderGraph(allNodes, mode) {
         const card = element("div", undefined, `node ${node.state}`);
         card.style.left = `${pos.x}px`;
         card.style.top = `${pos.y}px`;
-        card.title = node.name;
+        card.title = node.title || node.name;
         card.append(
             element("strong", node.name),
-            element("span", `${stateLabel(node.state)}${node.total ? ` · ${node.done}/${node.total}` : ""}`),
+            element(
+                "span",
+                `${stateLabel(node.state)}${node.detail ? ` · ${node.detail}` : node.total ? ` · ${node.done}/${node.total}` : ""}`,
+            ),
         );
         graph.append(card);
     }
@@ -512,7 +538,7 @@ function renderWorkflow(run, project) {
         }
     }
     const mode = project.matrixMode.get(run.id);
-    const matrices = run.nodes.filter(node => node.jobs);
+    const matrices = run.nodes.filter(matrixExpandable);
     if (matrices.length) {
         const expanded = matrices.every(node => matrixExpanded(node, mode));
         const toggle = element("button", expanded ? "Collapse matrix jobs" : "Expand matrix jobs", "matrix-toggle");
