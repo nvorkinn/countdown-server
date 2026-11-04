@@ -1049,20 +1049,43 @@ test("the PR order can be picked, and is remembered", async () => {
     assert.equal(unknown.ids.get("pull-order").value, "newest");
 });
 
-test("a small matrix whose jobs were all skipped stays one card until expanded", async () => {
-    const run = matrixRun(3);
-    run.nodes[0] = {
-        ...run.nodes[0],
-        state: "skipped",
-        done: 3,
-        jobs: run.nodes[0].jobs.map(job => ({ ...job, state: "skipped" })),
-    };
+function skip(run, ...indexes) {
+    for (const index of indexes) run.nodes[0].jobs[index].state = "skipped";
+    return run;
+}
+
+test("a matrix whose jobs were all skipped stays one card, with nothing to expand", async () => {
+    const run = skip(matrixRun(3), 0, 1, 2);
+    run.nodes[0] = { ...run.nodes[0], state: "skipped", done: 3 };
     const app = await harness({ ...idle, workflows: [run] });
     assert.equal(cards(app).length, 2);
     assert.match(text(cards(app)[0]), /Skipped · 3\/3/);
-    assert.equal(toggle(app).textContent, "Expand matrix jobs");
-    toggle(app).listeners.click();
-    assert.equal(cards(app).length, 4);
+    assert.equal(toggle(app), undefined);
+});
+
+test("a matrix's skipped jobs fold into one card listing them, which feeds what needs the matrix", async () => {
+    const app = await harness({ ...idle, active: true, workflows: [skip(matrixRun(4), 1, 3)] });
+    assert.deepEqual(
+        cards(app).map(card => card.title),
+        ["test (0)", "test (2)", "test (1)\ntest (3)", "deploy"],
+    );
+    assert.match(text(cards(app)[2]), /^ test Skipped · 2 jobs$/);
+    assert.equal(app.ids.get("workflows").querySelectorAll("path").length, 3);
+    assert.equal(toggle(app).textContent, "Collapse matrix jobs");
+});
+
+test("a lone skipped job keeps its own card", async () => {
+    const app = await harness({ ...idle, active: true, workflows: [skip(matrixRun(3), 2)] });
+    assert.deepEqual(
+        cards(app).map(card => card.title),
+        ["test (0)", "test (1)", "test (2)", "deploy"],
+    );
+});
+
+test("skipped jobs count as one card against the size limit", async () => {
+    const app = await harness({ ...idle, active: true, workflows: [skip(matrixRun(9), 4, 5, 6, 7, 8)] });
+    assert.equal(cards(app).length, 6);
+    assert.equal(toggle(app).textContent, "Collapse matrix jobs");
 });
 
 test("with the webhook, the page re-reads only what changed and reads everything every five minutes", async () => {
