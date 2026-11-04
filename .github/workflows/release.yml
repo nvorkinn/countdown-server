@@ -149,15 +149,29 @@ jobs:
       # GitHub's signed provenance for the digest just pushed (the index's), stored
       # with the image in GHCR and in GitHub's attestation store. Verify with
       # `gh attestation verify oci://<image>:<tag> --repo nvorkinn/countdown-server`.
+      # Sigstore's transparency log now and then answers 404 for the entry it has just made ("error fetching tlog
+      # entry"), which failed a whole release, so a failure gets one more try 30 seconds later. A second failure is
+      # real and fails the job.
       - name: Attest build provenance
         if: steps.reuse.outputs.reused != 'true'
+        id: attest
+        continue-on-error: true
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
+        with: &attest
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
           # Storage records need an organization-owned repository (and the artifact-metadata permission).
           create-storage-record: false
+
+      - name: Wait before attesting again
+        if: steps.attest.outcome == 'failure'
+        run: sleep 30
+
+      - name: Attest build provenance (second try)
+        if: steps.attest.outcome == 'failure'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with: *attest
 
   # The deploy bundles are what the hosts deploy from: this release's
   # docker-compose.yml, deploy.sh, Authentik's brand assets, that target's
