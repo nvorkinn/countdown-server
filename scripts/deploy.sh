@@ -173,7 +173,9 @@ if [ "$service" = countdown-server ]; then
   docker rm --force auth-broker >/dev/null 2>&1 && echo "Removed the old auth-broker container" || true
 fi
 if [ -n "$var" ]; then
-  retry_lost_lease docker compose up -d --no-deps --force-recreate "${services[@]}"
+  # --wait: the job ends once the containers are running, and healthy where they have a healthcheck (Caddy listening
+  # on 443), so whatever runs after the deploy finds them serving, and a container that won't start fails the job.
+  retry_lost_lease docker compose up -d --no-deps --force-recreate --wait --wait-timeout 300 "${services[@]}"
 else
   # Recreates only what changed. Jobs for these can run at once, so
   # they take turns.
