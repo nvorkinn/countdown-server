@@ -11,10 +11,18 @@ SCRIPT = ROOT / "scripts/wait-for-main-ci.sh"
 RELEASE = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)  # noqa: S506
 
 
+PATHS = {
+    "Tests": ".github/workflows/tests.yml",
+    "Lint": ".github/workflows/lint.yml",
+    "CodeQL": "dynamic/github-code-scanning/codeql",
+}
+
+
 def _run(name, status="completed", conclusion="success", event="push", run_id=1):
     return {
         "id": run_id,
-        "name": name,
+        "name": "Push on main" if name == "CodeQL" else name,
+        "path": PATHS[name],
         "status": status,
         "conclusion": conclusion,
         "event": event,
@@ -64,7 +72,7 @@ def test_a_skipped_workflow_counts_as_passed(tmp_path):
 def test_fails_at_once_when_a_workflow_failed_even_if_others_still_run(tmp_path):
     result = _wait(tmp_path, [_run("Tests", conclusion="failure"), _run("Lint", "in_progress", None)], timeout_s=60)
     assert result.returncode == 1
-    assert "Tests: failure https://github.test/Tests/1" in result.stdout
+    assert ".github/workflows/tests.yml: failure https://github.test/Tests/1" in result.stdout
 
 
 def test_waits_for_a_running_workflow_then_passes(tmp_path):
@@ -72,10 +80,21 @@ def test_waits_for_a_running_workflow_then_passes(tmp_path):
     assert _wait(tmp_path, running, running, PASSED, timeout_s=60).returncode == 0
 
 
-def test_waits_for_a_workflow_that_has_not_started_then_times_out(tmp_path):
-    result = _wait(tmp_path, PASSED[:2])
+def test_fails_at_once_when_a_workflow_has_no_run_on_the_commit(tmp_path):
+    result = _wait(tmp_path, PASSED[:2], timeout_s=60)
     assert result.returncode == 1
-    assert "CodeQL (missing)" in result.stdout
+    assert "dynamic/github-code-scanning/codeql: no run on this commit" in result.stdout
+
+
+def test_a_run_whose_path_ends_in_a_ref_counts(tmp_path):
+    tests = {**_run("Tests"), "path": ".github/workflows/tests.yml@refs/heads/main"}
+    assert _wait(tmp_path, [tests, *PASSED[1:]]).returncode == 0
+
+
+def test_times_out_when_a_workflow_keeps_running(tmp_path):
+    result = _wait(tmp_path, [*PASSED[:2], _run("CodeQL", "in_progress", None, event="dynamic")])
+    assert result.returncode == 1
+    assert "did not finish" in result.stdout
 
 
 def test_a_pull_request_run_does_not_count(tmp_path):
@@ -96,6 +115,6 @@ def test_release_waits_for_ci_before_tagging_anything():
     assert {name for name, job in jobs.items() if "needs" not in job} == {"ci"}
 
 
-@pytest.mark.parametrize("name", ["Tests", "Lint", "CodeQL"])
-def test_release_requires_the_workflow(name):
-    assert name in RELEASE["jobs"]["ci"]["steps"][1]["env"]["REQUIRED"].split()
+@pytest.mark.parametrize("path", PATHS.values())
+def test_release_requires_the_workflow(path):
+    assert path in RELEASE["jobs"]["ci"]["steps"][1]["env"]["REQUIRED"].split()
