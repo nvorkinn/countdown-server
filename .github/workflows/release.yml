@@ -18,7 +18,36 @@ permissions:
   contents: read
 
 jobs:
+  # A release ships only a commit whose CI passed on main. The tag push (the dashboard's Release button) and the "Run
+  # workflow" button usually come right after the merge, while Tests, Lint and CodeQL are still running on main, so this
+  # waits for them instead of making anyone watch: it passes once they have, and fails (so nothing is tagged or
+  # deployed) if one fails or they don't finish in time. Keep the names in step with those workflows.
+  ci:
+    name: main CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      # To read the commit's workflow runs.
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Wait for CI on this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          REQUIRED: |
+            Tests
+            Lint
+            CodeQL
+        run: scripts/wait-for-main-ci.sh
+
   tag:
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       # To create the tag on a button release.
