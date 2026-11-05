@@ -72,7 +72,7 @@ def test_a_skipped_workflow_counts_as_passed(tmp_path):
 def test_fails_at_once_when_a_workflow_failed_even_if_others_still_run(tmp_path):
     result = _wait(tmp_path, [_run("Tests", conclusion="failure"), _run("Lint", "in_progress", None)], timeout_s=60)
     assert result.returncode == 1
-    assert "Tests: failure https://github.test/Tests/1" in result.stdout
+    assert ".github/workflows/tests.yml: failure https://github.test/Tests/1" in result.stdout
 
 
 def test_waits_for_a_running_workflow_then_passes(tmp_path):
