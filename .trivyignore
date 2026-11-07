@@ -35,3 +35,7 @@ CVE-2026-97689 exp:2026-11-24
 # broker (python:3.14-slim): msgpack 1.1.2 in the same pip (memory leak deserializing maps), fixed in 1.2.3. Same reasoning
 # as above: pip never runs in the container.
 CVE-2026-114613 exp:2026-11-24
+
+# caddy and victoria-metrics: golang.org/x/net/html DoS via crafted HTML input (HIGH), fixed in x/net 0.62.0. Vendored in
+# the upstream binaries (caddy has v0.59.0, victoria-metrics v0.60.0); waiting on an upstream release that bumps it.
+CVE-2026-78661 exp:2026-11-24
