@@ -129,4 +129,4 @@ def test_an_odd_delivery_is_logged_not_raised(ctx, caplog):
     sent = responses.post(SEND, json={"ok": True})
     github_notify.notify("delivery-1", "pull_request", {"action": "closed", "repository": REPO})
     assert not sent.calls
-    assert "Couldn't read a pull_request delivery" in caplog.text
+    assert "unexpected shape for a notification" in caplog.text

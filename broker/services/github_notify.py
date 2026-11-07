@@ -109,7 +109,7 @@ def notify(delivery: str, event: str, payload: dict) -> None:
     try:
         found = message(event, payload)
     except KeyError, TypeError, AttributeError:
-        logger.warning("Couldn't read a %s delivery for a notification", event)
+        logger.warning("A GitHub webhook delivery had an unexpected shape for a notification")
         return
     if found is None:
         return
