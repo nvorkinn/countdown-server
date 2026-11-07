@@ -1,3 +1,5 @@
+import json
+
 import fakeredis
 import pytest
 import responses
@@ -79,8 +81,10 @@ def test_a_message_goes_to_the_chat(ctx):
     github_notify.notify("delivery-1", "pull_request", MERGED)
     assert len(sent.calls) == 1
     body = sent.calls[0].request.body
-    assert b'"chat_id": "42"' in body
-    assert b"Merged nvorkinn/countdown#7" in body
+    assert isinstance(body, bytes)
+    sent_json = json.loads(body)
+    assert sent_json["chat_id"] == "42"
+    assert sent_json["text"].startswith("Merged nvorkinn/countdown#7")
 
 
 @responses.activate
