@@ -45,6 +45,14 @@ def test_only_the_signed_github_webhook_skips_the_login(app):
     ]
 
 
+def test_only_telegrams_webhook_skips_the_login(app):
+    """Telegram can't sign in to Authentik either, so its webhook checks the secret token it sends."""
+    assert "/api/telegram/webhook" in _paths_without_login()
+    assert [rule.rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("telegram_webhook.")] == [
+        "/api/telegram/webhook"
+    ]
+
+
 def test_frame_answers_close_the_connection():
     """A 304 through Caddy has no Content-Length, and the ESP32 then reads until the connection closes.
 

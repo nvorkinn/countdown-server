@@ -49,6 +49,9 @@ def load(app: Flask) -> None:
     # (services/github_notify.py). Unset (the default) sends nothing.
     app.config["TELEGRAM_BOT_TOKEN"] = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     app.config["TELEGRAM_CHAT_ID"] = os.environ.get("TELEGRAM_CHAT_ID", "")
+    # The secret token Telegram sends to /api/telegram/webhook, which turns it on and gives a release waiting for
+    # approval an Approve button. Unset (the default) leaves both off.
+    app.config["TELEGRAM_WEBHOOK_SECRET"] = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
     # Which deployment this is (config/<environment>.env sets it). Anything but prod is named in a banner on every page
     # and before each page's title, so the dev site can't be mistaken for the real one.
