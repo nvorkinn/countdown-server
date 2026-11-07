@@ -163,6 +163,16 @@ doesn't call GitHub: it notes what changed in Redis (`v1:github:changes`), the p
 seconds and re-reads only them, and reads everything every 5 minutes in case a delivery was lost. Without
 `GITHUB_APP_WEBHOOK_SECRET` the page reads everything every minute instead.
 
+**Telegram messages** come from the webhook while the page is closed: a release finishing or waiting for approval, a
+PR's checks failing, changes requested on a PR, and a PR merging. The page's change-feed reads only happen while its
+tab is visible, so each one holds messages back for 30 seconds. Turn them on with a bot from @BotFather and your chat
+with it, in the same `broker.env`:
+
+```dotenv
+TELEGRAM_BOT_TOKEN=<the bot's token>
+TELEGRAM_CHAT_ID=<your chat ID, from the bot's getUpdates after you message it>
+```
+
 **Auto-merge** needs *Allow auto-merge* turned on in each repository's settings. GitHub only waits when the base
 branch's protection requires checks; where nothing is required, the button merges at once if the PR's checks have all
 passed, and refuses while any are still running or failed.
