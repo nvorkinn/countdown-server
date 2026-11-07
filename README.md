@@ -173,6 +173,19 @@ TELEGRAM_BOT_TOKEN=<the bot's token>
 TELEGRAM_CHAT_ID=<your chat ID, from the bot's getUpdates after you message it>
 ```
 
+A release waiting for approval also gets an **Approve** button once Telegram's webhook is set up. A tap from your chat
+approves every environment of that run you may approve, with the same checks as the dashboard's button, and other
+chats are refused. Add a random `TELEGRAM_WEBHOOK_SECRET` (letters, digits, `_` and `-`) to `broker.env`, release, then
+point the bot at the site once:
+
+```sh
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -d url=https://auth.dev.nikolaivorkinn.com/api/telegram/webhook \
+  -d secret_token="$TELEGRAM_WEBHOOK_SECRET" -d allowed_updates='["callback_query"]'
+```
+
+Like GitHub's, the webhook is outside the authentik login, so the secret token Telegram sends is its only check.
+
 **Auto-merge** needs *Allow auto-merge* turned on in each repository's settings. GitHub only waits when the base
 branch's protection requires checks; where nothing is required, the button merges at once if the PR's checks have all
 passed, and refuses while any are still running or failed.

@@ -49,10 +49,10 @@
 	header /api/frame Connection close
 
 	# Everything but the screens' API (Bearer secrets), the status endpoint (its own token), GitHub's
-	# webhook (signed with its secret) and the public /about page with its pictures needs an authentik
-	# login. /api/stops and /api/places are browser calls.
+	# webhook (signed with its secret), Telegram's webhook (its secret token) and the public /about page
+	# with its pictures needs an authentik login. /api/stops and /api/places are browser calls.
 	@browser {
-		not path /api/frame /api/frame/* /api/devices/* /api/status/* /api/github/webhook /about /static/display/*
+		not path /api/frame /api/frame/* /api/devices/* /api/status/* /api/github/webhook /api/telegram/webhook /about /static/display/*
 	}
 	handle @browser {
 		reverse_proxy /outpost.goauthentik.io/* 127.0.0.1:9000
