@@ -13,7 +13,7 @@ from flask import Blueprint, Response, current_app, jsonify, redirect, render_te
 
 from broker.auth import View, require_user_id
 from broker.clients import github
-from broker.services import github_app
+from broker.services import github_app, github_notify
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -140,7 +140,11 @@ def callback(user_id: str) -> ResponseReturnValue:
 @bp.get("/changes")
 @dashboard_view
 def changes() -> ResponseReturnValue:
-    """Return what the webhook saw change since the feed entry `after`, read from Redis without calling GitHub."""
+    """Return what the webhook saw change since the feed entry `after`, read from Redis without calling GitHub.
+
+    The page only reads the feed while its tab is visible, so each read also holds Telegram messages back.
+    """
+    github_notify.mark_seen()
     after = request.args.get("after")
     if after is not None and not STREAM_ID.fullmatch(after):
         return jsonify(error="Invalid change ID."), 400

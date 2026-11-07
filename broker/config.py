@@ -45,6 +45,10 @@ def load(app: Flask) -> None:
     app.config["GITHUB_APP_CLIENT_ID"] = os.environ.get("GITHUB_APP_CLIENT_ID", "")
     app.config["GITHUB_APP_CLIENT_SECRET"] = os.environ.get("GITHUB_APP_CLIENT_SECRET", "")
     app.config["GITHUB_APP_WEBHOOK_SECRET"] = os.environ.get("GITHUB_APP_WEBHOOK_SECRET", "")
+    # The Telegram bot that messages about the webhook's deliveries while the dashboard is closed
+    # (services/github_notify.py). Unset (the default) sends nothing.
+    app.config["TELEGRAM_BOT_TOKEN"] = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    app.config["TELEGRAM_CHAT_ID"] = os.environ.get("TELEGRAM_CHAT_ID", "")
 
     # Which deployment this is (config/<environment>.env sets it). Anything but prod is named in a banner on every page
     # and before each page's title, so the dev site can't be mistaken for the real one.

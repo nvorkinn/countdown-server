@@ -6,7 +6,7 @@ from unittest.mock import patch
 import fakeredis
 import pytest
 
-from broker.services import github_app
+from broker.services import github_app, github_notify
 
 
 @pytest.fixture
@@ -38,6 +38,18 @@ def test_a_signed_delivery_is_recorded_without_a_login(app_setup, anonymous_clie
     assert response.status_code == 204
     feed = client.get("/github/changes", query_string={"after": "0-0"}).json
     assert feed["changes"] == [{"repo": "alice/p", "kind": "pull", "id": "4"}]
+
+
+def test_a_signed_delivery_is_passed_on_for_a_notification(app_setup, anonymous_client):
+    payload = {"repository": {"full_name": "alice/p"}, "pull_request": {"number": 4}}
+    with patch("broker.routes.github_webhook.github_notify.notify") as notify:
+        deliver(anonymous_client, "pull_request", payload)
+    notify.assert_called_once_with("", "pull_request", payload)
+
+
+def test_reading_the_feed_holds_notifications_back(app_setup, client):
+    client.get("/github/changes")
+    assert app_setup.extensions["redis"].exists(github_notify.SEEN)
 
 
 def test_an_unsigned_or_wrongly_signed_delivery_is_refused(app_setup, anonymous_client):
