@@ -1,5 +1,5 @@
 # Pinned, so Dependabot's bump is what changes it: an unchanged caddy/ reuses the previous release's image (release.yml).
-FROM caddy:2.11.7-alpine
+FROM caddy:2.11.9-alpine
 
 COPY Caddyfile /etc/caddy/Caddyfile
 
