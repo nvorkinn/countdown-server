@@ -374,9 +374,9 @@ re-tagged each release) running. Nothing is installed on the host but Docker.
 
 ### Secrets
 
-Every secret is a login item in [Vaultwarden](https://vault.nikolaivorkinn.com), named
-`countdown-server/<target>/<VARIABLE>` with the value as its password, in the collection `countdown-server/dev` or
-`countdown-server/prod`. `secrets-map.json` says which item fills which variable of which `.env` file (`broker.env`,
+Every secret is a login item in [Vaultwarden](https://vault.nikolaivorkinn.com), named by its bare variable (`REDIS_PASSWORD`)
+with the value as its password, in the collection `countdown-server/dev` or `countdown-server/prod`. The same name in the
+two collections is two items, one per environment; an item that several projects share is put in each one's collection. `secrets-map.json` says which item fills which variable of which `.env` file (`broker.env`,
 `caddy.env` (the log ingest token), `redis.env` and, where this repo runs the edge, `tinyauth.env` and `pocket-id.env`);
 `.env.example` lists the broker's for local development. Settings that aren't secret are in `config/<environment>.env`
 and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with

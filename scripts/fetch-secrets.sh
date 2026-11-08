@@ -42,11 +42,18 @@ list_items() { bw list items > "$items"; }
 list_items
 lap "list items ($(jq length "$items") readable)"
 
-# The value of the one item with exactly this name; fails (with the reason) if there are none or several.
+# Items are named by the bare variable, so several projects can share one item by putting it in each one's collection,
+# and the same name can be a different item per target; the target's collection (countdown-server/<target>) tells them apart.
+# The vault's collections are all under its "Default collection", so the name is matched by its end.
+collection="countdown-server/$target"
+collection_id="$(bw list collections | jq -er --arg c "$collection" '[.[] | select(.name == $c or (.name | endswith("/" + $c)))] | if length == 1 then .[0].id else error("no single collection named \($c)") end')"
+
+# The value of the one item with exactly this name in the target's collection; fails (with the reason) if there are
+# none or several.
 lookup() {
-  jq -r --arg n "$1" '[.[] | select(.name == $n)] as $m
+  jq -r --arg n "$1" --arg c "$collection_id" '[.[] | select(.name == $n and ((.collectionIds // []) | index($c)))] as $m
     | if ($m | length) == 1 then ($m[0].login.password // "")
-      else error("\($m | length) items are named \($n)") end' "$items" 2>&1 | sed 's/^jq: error (at [^)]*): //'
+      else error("\($m | length) items are named \($n) in \($c)") end' "$items" 2>&1 | sed 's/^jq: error (at [^)]*): //'
 }
 
 # Reads every entry of the target into $out, or returns 1 with $problem set.
@@ -77,7 +84,7 @@ if ! read_all; then
     {
       echo "Can't read $problem"
       echo "This user sees $(bw list organizations | jq length) organizations, collections [$(bw list collections | jq -r '[.[].name] | join(", ")')]"
-      echo "and $(jq length "$items") items, of which those like ${problem%%:*}: [$(jq -r --arg n "${problem%%:*}" '[.[] | select(.name | endswith($n | split("/") | last)) | .name] | join(", ")' "$items")]"
+      echo "and $(jq length "$items") items, of which those named ${problem%%:*}: [$(jq -r --arg n "${problem%%:*}" '[.[] | select(.name == $n) | "\(.name) in \(.collectionIds | length) collections"] | join(", ")' "$items")]"
     } >&2
     exit 1
   fi
