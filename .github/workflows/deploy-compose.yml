@@ -1,43 +1,71 @@
 name: Deploy compose
 
-# Deploys a release to dev/QA through the host's Docker daemon (DOCKER_HOST=ssh://...): the secrets are fetched from
-# Vaultwarden onto the runner and stay there with the compose file and the settings, and scripts/deploy-context.sh drives
-# the daemon over SSH, so nothing is installed or run on the host. One job deploys every service (no matrix, so no locks
-# and no max-parallel). Called by release.yml, and run by hand to deploy or re-deploy a tag. Dev/QA only: production's
-# edge, Caddy and Pocket ID backup are still deploy.sh's (promote.yml with deploy-services.yml and deploy-edge.yml).
+# Deploys a release to a host through its Docker daemon (DOCKER_HOST=ssh://...): the secrets are fetched from Vaultwarden
+# onto the runner and stay there with the compose file and the settings, and scripts/deploy-context.sh drives the daemon
+# over SSH, so nothing is installed or run on the host. One job deploys every service (no matrix, so no locks and no
+# max-parallel). Called by release.yml (dev-qa), and run by hand to deploy or re-deploy a tag to dev-qa. By hand, production
+# can only be dry-run: it pulls the images and prints what a deploy would do, changing no container. Production's real
+# deploys are promote.yml's, behind its approval.
 on:
   workflow_call:
     inputs:
-      tag:
-        description: The release to deploy to dev/QA, e.g. v1.2.3
+      environment:
+        description: The GitHub environment holding the host's DEPLOY_* and BW_* secrets, dev-qa or production.
         type: string
         required: true
+      tag:
+        description: The release to deploy, e.g. v1.2.3
+        type: string
+        required: true
+      dry_run:
+        description: Pull the images and print what a deploy would do, without changing a container.
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
+      environment:
+        description: dev-qa (deploys) or production (dry run only)
+        type: choice
+        options: [dev-qa, production]
+        default: dev-qa
       tag:
-        description: The release to deploy to dev/QA, e.g. v1.2.3
+        description: The release to deploy, e.g. v1.2.3
         type: string
         required: true
+      dry_run:
+        description: Pull the images and print what a deploy would do, without changing a container (always on for production)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   deploy:
-    name: deploy (dev-qa, docker context)
+    name: ${{ inputs.dry_run && 'plan' || 'deploy' }} (${{ inputs.environment }}, docker context)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: dev-qa
+    # The target's secrets, with no reviewers of its own: promote.yml asks for its one approval before calling this.
+    environment: ${{ inputs.environment }}
     concurrency:
-      group: deploy-compose-dev-qa
+      group: deploy-compose-${{ inputs.environment }}
       cancel-in-progress: false
     env:
       TAG: ${{ inputs.tag }}
-      TARGET: dev
+      ENVIRONMENT: ${{ inputs.environment }}
+      TARGET: ${{ inputs.environment == 'production' && 'prod' || 'dev' }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      EVENT: ${{ github.event_name }}
       DEPLOY_TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
       TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
       TAILSCALE_OAUTH_SECRET: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
     steps:
+      - name: Only promote.yml deploys production
+        if: ${{ env.ENVIRONMENT == 'production' && env.EVENT == 'workflow_dispatch' && env.DRY_RUN != 'true' }}
+        run: |
+          echo "::error::A run by hand can only plan a production deploy (dry_run); promote.yml deploys it, after approval."
+          exit 1
+
       # The scripts, from the branch the workflow runs on: an older release doesn't have them.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,7 +118,7 @@ jobs:
           export PATH="$PWD/scripts/bitwarden-cli/node_modules/.bin:$PATH"
           scripts/fetch-secrets.sh "$TARGET" "$RUNNER_TEMP/secrets"
 
-      - name: Deploy through the host's Docker daemon
+      - name: ${{ inputs.dry_run && 'Plan' || 'Deploy' }} through the host's Docker daemon
         run: |
           # The project directory is /opt/auth-broker on the runner too, as on the host (see deploy-context.sh).
           sudo install -d -o "$(id -u)" -g "$(id -g)" /opt/auth-broker
