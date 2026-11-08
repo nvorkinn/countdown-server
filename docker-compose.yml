@@ -56,7 +56,7 @@ services:
     command: ["gunicorn", "--bind", "0.0.0.0:5000", "wsgi:app"]
     volumes:
       - ./data:/app/data
-    # Decrypted from secrets/<environment>/ by deploy.sh, as are the other services' env_files.
+    # Fetched from Vaultwarden by the deploy workflow and installed by deploy.sh, as are the other services' env_files.
     env_file:
       - broker.env
       - redis.env
@@ -353,7 +353,7 @@ services:
 
   # Tinyauth: the login in front of the protected routes, with Pocket ID as its only provider (no local users). Upstream's
   # image, pinned here and bumped by hand. Its labels define the `tinyauth` snippet every protected route imports.
-  # secrets/<environment>/tinyauth.env has the OIDC client's id and secret from Pocket ID.
+  # the Vaultwarden items for tinyauth.env (secrets-map.json) have the OIDC client's id and secret from Pocket ID.
   tinyauth:
     image: ghcr.io/tinyauthapp/tinyauth:v5.2.0
     container_name: tinyauth
@@ -389,7 +389,7 @@ services:
       caddy_1.reverse_proxy: "{{upstreams 3000}}"
 
   # Pocket ID: the passkey-only identity provider, at ID_HOST. Its hostname is permanent: passkeys are bound to it, so
-  # changing it locks everyone out. ENCRYPTION_KEY is in secrets/<environment>/pocket-id.env. The pocket_id_data
+  # changing it locks everyone out. ENCRYPTION_KEY is in Vaultwarden (pocket-id.env in secrets-map.json). The pocket_id_data
   # volume (SQLite database, keys, uploads) holds every user and passkey: deploy.sh backs it up before each edge
   # deploy; copy those off the host.
   pocket-id:

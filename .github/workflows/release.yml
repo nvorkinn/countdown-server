@@ -188,10 +188,8 @@ jobs:
 
   # The deploy bundles are what the hosts deploy from: this release's
   # docker-compose.yml, deploy.sh, that target's
-  # settings (config/<target>.env) and SOPS-encrypted
-  # secrets, attached to the GitHub Release. There is one per target, holding
-  # only that target's secrets/<target>/, so a host never gets (or could decrypt)
-  # another environment's. They don't need the images, so they build alongside them.
+  # settings (config/<target>.env), attached to the GitHub Release. There is one per target. The secrets aren't in
+  # them: the deploy jobs fetch those from Vaultwarden. They don't need the images, so they build alongside them.
   package:
     needs: tag
     runs-on: ubuntu-latest
@@ -212,16 +210,9 @@ jobs:
         run: |
           shas='{}'
           for target in dev prod; do
-            # Production's secrets come later than dev's; until they are committed a release has no prod bundle,
-            # so it can't be promoted (promote.yml says so).
-            if [ ! -d "secrets/$target" ]; then
-              echo "::notice::No secrets/$target/ yet, so no $target bundle for $TAG."
-              continue
-            fi
             rm -rf "deploy-$TAG"
-            mkdir -p "deploy-$TAG/secrets"
+            mkdir "deploy-$TAG"
             cp docker-compose.yml scripts/deploy.sh "deploy-$TAG/"
-            cp "secrets/$target"/*.env "deploy-$TAG/secrets/"
             cp "config/$target.env" "deploy-$TAG/settings.env"
             # Fixed order, times and owners, so a re-run builds the same bytes.
             tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - "deploy-$TAG" \

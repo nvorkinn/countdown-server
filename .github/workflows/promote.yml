@@ -62,7 +62,7 @@ jobs:
           assets="$(gh release view "$TAG" --json assets --jq '.assets[].name')" \
             || { echo "::error::No release for $TAG"; exit 1; }
           grep -qxF "deploy-$TAG-prod.tar.gz" <<< "$assets" \
-            || { echo "::error::$TAG has no production bundle (deploy-$TAG-prod.tar.gz): secrets/prod/ was not committed when it was released. Commit it and release again."; exit 1; }
+            || { echo "::error::$TAG has no production bundle (deploy-$TAG-prod.tar.gz): it was released before config/prod.env existed. Release again."; exit 1; }
 
       # Dev/QA's evidence is a deployment: every job of a Release run that names the dev-qa environment records one on
       # the commit the run started from, which for the Release button is main's head, the tag's commit, not the tag

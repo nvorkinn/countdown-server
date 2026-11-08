@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -20,10 +21,12 @@ def test_every_environment_sets_the_same_things():
 
 
 def test_each_environment_has_secrets_to_match():
-    """Each target's bundle is built from config/<target>.env and secrets/<target>/, so a target needs both."""
-    assert {path.stem for path in CONFIG.glob("*.env")} >= {
-        path.name for path in (ROOT / "secrets").iterdir() if path.is_dir()
-    }
+    """The deploy fetches secrets-map.json's <target> and bundles config/<target>.env, so a target needs both."""
+    secrets_map = json.loads((ROOT / "secrets-map.json").read_text())
+    assert secrets_map.keys() <= {path.stem for path in CONFIG.glob("*.env")}
+    for files in secrets_map.values():
+        for name in files:
+            assert (ROOT / "secrets" / f"{name}.example").exists()
 
 
 def test_every_name_the_compose_labels_and_settings_use_is_a_setting_or_secret():

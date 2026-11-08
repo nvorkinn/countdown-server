@@ -8,9 +8,9 @@
 #
 # The bundle's settings.env (the environment's non-secret settings) is installed next to the compose file too.
 #
-# Every secrets/<name>.env in the bundle is decrypted on every deploy, with the
-# host's age key, into <name>.env next to the compose file (compose won't load
-# the file if any service's env_file is missing). Nobody edits those files.
+# Every <name>.env in vault-secrets/ (which the deploy workflow fills from Vaultwarden, see secrets-map.json) is installed
+# on every deploy as <name>.env next to the compose file (compose won't load the file if any service's env_file is
+# missing). Nobody edits those files.
 #
 # edge (the Docker socket proxy, Tinyauth and Pocket ID) and redis run upstream's images, pinned by hand in
 # docker-compose.yml, so they aren't pinned to the release tag. They're brought up rather than force-recreated, so a
@@ -25,15 +25,6 @@ service="$1"
 tag="$2"
 bundle="$(cd "$(dirname "$0")" && pwd)"
 cd "${DEPLOY_DIR:-/opt/auth-broker}"
-
-# sops itself, downloaded once per version into bin/ and checked against
-# upstream's published checksums.
-SOPS_VERSION=v3.13.3
-case "$(uname -m)" in
-  aarch64) sops_arch=arm64 sops_sha256=53b0abacd38ef1b12a66d6c100956691b9cefce018d91f81e73ddf7438b94d77 ;;
-  x86_64) sops_arch=amd64 sops_sha256=e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b ;;
-  *) echo "no sops build for $(uname -m)" >&2; exit 1 ;;
-esac
 
 # The settings (config/<environment>.env), read here to tell whether this host owns the edge.
 edge_owned="$(sed -n 's/^EDGE_OWNED=//p' "$bundle/settings.env")"
@@ -63,40 +54,19 @@ case "$service" in
   redis) ;;
   *) echo "unknown service: $service" >&2; exit 1 ;;
 esac
-export SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-$PWD/age.key}"
-if [ ! -r "$SOPS_AGE_KEY_FILE" ]; then
-  echo "No age key at $SOPS_AGE_KEY_FILE to decrypt the secrets; see Secrets in the README" >&2
+# The secrets: the *.env files the deploy workflow fetched from Vaultwarden (scripts/fetch-secrets.sh) into vault-secrets/,
+# installed next to the compose file. mktemp's file is readable by the deploy user only, and unique per job, as the
+# deploy jobs can run at once; mv replaces the old one in one step.
+if ! compgen -G "vault-secrets/*.env" >/dev/null; then
+  echo "No secrets in $PWD/vault-secrets/: the workflow's Vaultwarden step should have put them there" >&2
   exit 1
 fi
-sops="$PWD/bin/sops-$SOPS_VERSION"
-if [ ! -x "$sops" ]; then
-  mkdir -p bin
-  # Unique temp name, then mv, so two deploy jobs downloading at once can't
-  # leave a half-written binary.
-  tmp="$(mktemp bin/.sops-XXXXXX)"
-  curl -fsSL --retry 3 -o "$tmp" \
-    "https://github.com/getsops/sops/releases/download/$SOPS_VERSION/sops-$SOPS_VERSION.linux.$sops_arch"
-  echo "$sops_sha256  $tmp" | sha256sum -c --quiet -
-  chmod 755 "$tmp"
-  mv "$tmp" "$sops"
-fi
-for encrypted in "$bundle"/secrets/*.env; do
-  name="$(basename "$encrypted")"
-  # What the deploy workflow fetched from Vaultwarden (scripts/fetch-secrets.sh), if this environment has it set up,
-  # is used as it is; otherwise the bundle's sops file is decrypted.
-  if [ -r "vault-secrets/$name" ]; then
-    tmp="$(mktemp "$name.XXXXXX")"
-    cp "vault-secrets/$name" "$tmp"
-    mv "$tmp" "$name"
-    echo "Installed $name from Vaultwarden"
-    continue
-  fi
-  # mktemp's file is readable by the deploy user only, and unique per job, as
-  # the deploy jobs can run at once; mv replaces the old one in one step.
+for secret in vault-secrets/*.env; do
+  name="$(basename "$secret")"
   tmp="$(mktemp "$name.XXXXXX")"
-  "$sops" decrypt --output-type dotenv "$encrypted" > "$tmp"
+  cp "$secret" "$tmp"
   mv "$tmp" "$name"
-  echo "Decrypted $name"
+  echo "Installed $name"
 done
 
 DB_BACKUPS_KEPT=5
