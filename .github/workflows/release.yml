@@ -250,9 +250,20 @@ jobs:
       tag: ${{ needs.tag.outputs.value }}
     secrets: inherit
 
+  # The secrets, from Vaultwarden to the host, once for all the deploys below; it needs no image, so it runs beside the
+  # builds.
+  secrets-dev:
+    name: secrets (dev-qa)
+    needs: tag
+    uses: ./.github/workflows/deploy-secrets.yml
+    with:
+      environment: dev-qa
+      target: dev
+    secrets: inherit
+
   deploy-services-dev:
     name: services (dev-qa)
-    needs: [tag, images, package]
+    needs: [tag, images, package, secrets-dev]
     uses: ./.github/workflows/deploy-services.yml
     with:
       environment: dev-qa

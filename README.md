@@ -383,9 +383,10 @@ the `.example` files in `secrets/` list what each file holds. Settings that aren
 and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with
 `POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting).
 
-On every deploy the workflow runs `scripts/fetch-secrets.sh`, which logs in to Vaultwarden as the `deploy-bot` user (it can
-read only these two collections), writes one `<name>.env` per file of `secrets-map.json`'s target and copies them to
-`/opt/auth-broker/vault-secrets/` on the host, where `deploy.sh` installs them next to the compose file. A deploy fails,
+Once per release or promotion, `deploy-secrets.yml` (called by `release.yml` and `promote.yml`, before their deploys) runs
+`scripts/fetch-secrets.sh`, which logs in to Vaultwarden as the `deploy-bot` user (it can read only these two
+collections), writes one `<name>.env` per file of `secrets-map.json`'s target and copies them to
+`/opt/auth-broker/vault-secrets/` on the host, where each service's `deploy.sh` installs them next to the compose file. A deploy fails,
 before it changes anything, if Vaultwarden can't be reached or an item is missing. So Vaultwarden has to be up to deploy
 (running services don't need it). The `dev-qa` and `production` environments each need the secrets `BW_CLIENTID`,
 `BW_CLIENTSECRET` (the bot's API key) and `BW_PASSWORD` (its master password, which `bw unlock` needs).
