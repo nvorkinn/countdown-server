@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}You already have an account{% endblock %}
+{% block heading %}You already have an account{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">That email is already registered</h2>
+        <p class="card-subtitle">Sign in with your passkey, then add this screen from the "Add a screen" link and enter the code it shows.</p>
+    </div>
+    <a class="btn-save" href="{{ login_url }}">Sign in</a>
+</div>
+{% endblock %}

@@ -139,7 +139,7 @@
     {% endif %}
 
     {#- To /pair itself, without ?code=, so a code sent from a link isn't sent again from the answer. #}
-    <form method="POST" action="{{ url_for('pages.pair') }}" id="code-form">
+    <form method="POST" action="{{ url_for('pages.add_screen') }}" id="code-form">
         <input type="text" name="code" class="pairing-input" maxlength="6" autocomplete="off"
                autocapitalize="characters" placeholder="ABC123" value="{{ code }}" required autofocus>
         <button type="submit" class="btn-save">Connect</button>

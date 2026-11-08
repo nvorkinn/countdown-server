@@ -16,7 +16,7 @@ def _mock_response(json_data):
 def test_login_requires_paired_session(client):
     response = client.get("/auth/spotify/login")
     assert response.status_code == 302
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
 
 
 def test_login_redirects_to_spotify_with_state(paired_client):

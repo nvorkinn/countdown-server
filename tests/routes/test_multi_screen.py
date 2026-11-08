@@ -23,7 +23,7 @@ def _pair(app, client, secret):
     with app.app_context():
         name_screen(device_id)
         code = pairing.issue_code(device_id)
-    assert client.post("/pair", data={"code": code}).status_code == 302
+    assert client.post("/pair/add", data={"code": code}).status_code == 302
     return device_id
 
 
@@ -36,8 +36,8 @@ def two_screens(app, client):
 @pytest.fixture
 def other_screen(app):
     stranger = app.test_client()
-    stranger.environ_base["HTTP_X_AUTHENTIK_UID"] = "user-2"
-    stranger.environ_base["HTTP_X_AUTHENTIK_USERNAME"] = "stranger"
+    stranger.environ_base["HTTP_REMOTE_SUB"] = "user-2"
+    stranger.environ_base["HTTP_REMOTE_NAME"] = "stranger"
     return _pair(app, stranger, OTHER_SECRET)
 
 
@@ -165,7 +165,7 @@ def test_an_unknown_screen_is_not_found(client, two_screens):
 
 
 def test_a_user_with_no_screens_is_sent_to_pair(client):
-    assert client.get("/device").headers["Location"] == "/pair"
+    assert client.get("/device").headers["Location"] == "/pair/add"
     assert client.get("/device/anything").status_code == 404
 
 
@@ -179,7 +179,7 @@ def test_the_switcher_lists_every_screen_and_marks_the_current_one(client, two_s
 
     assert f'<a href="/device/{first}" class="nav-item current" aria-current="page">' in page
     assert f'<a href="/device/{second}" class="nav-item">' in page
-    assert '<a href="/pair" class="nav-add">+ Add a screen</a>' in page
+    assert '<a href="/pair/add" class="nav-add">+ Add a screen</a>' in page
 
 
 def test_plain_device_marks_the_most_recent_screen_as_current(client, two_screens):
@@ -195,7 +195,7 @@ def test_the_switcher_uses_the_screens_name(app, client, two_screens):
 
 
 def test_no_switcher_for_a_user_without_screens(client):
-    assert 'class="screens"' not in client.get("/pair").data.decode()
+    assert 'class="screens"' not in client.get("/pair/add").data.decode()
 
 
 def test_another_users_screens_never_appear_in_the_switcher(client, two_screens, other_screen):
@@ -238,7 +238,7 @@ def test_spotify_callback_refuses_a_user_who_no_longer_has_a_screen(app, client,
 
     with app.app_context():
         assert db.session.get(SpotifyToken, USER) is None
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
 
 
 def test_spotify_login_needs_a_signed_in_user(anonymous_client):
@@ -317,5 +317,5 @@ def test_a_login_change_draws_all_the_users_screens_again_and_no_change_none(cli
 
 
 def test_the_account_page_needs_a_screen(client, anonymous_client):
-    assert client.get("/account").headers["Location"] == "/pair"
+    assert client.get("/account").headers["Location"] == "/pair/add"
     assert anonymous_client.get("/account").status_code == 401

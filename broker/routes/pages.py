@@ -9,6 +9,7 @@ from flask import Blueprint, Response, current_app, g, jsonify, redirect, render
 from redis import Redis, RedisError
 
 from broker.auth import (
+    current_user,
     paired_device_id,
     require_paired_user,
     require_user_id,
@@ -17,6 +18,7 @@ from broker.auth import (
     user_devices,
 )
 from broker.clients import apple_music, weather
+from broker.clients.pocket_id import PocketIdClient, PocketIdNotConfiguredError, UserExistsError
 from broker.db import db
 from broker.models import (
     CLOCK_FORMATS,
@@ -46,13 +48,14 @@ from broker.services import (
     pairing,
     parcel_key,
     render_jobs,
+    signup,
     stops,
     weather_place,
 )
 from broker.services.postcodes import normalize_postcode
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from datetime import datetime
 
     from flask.typing import ResponseReturnValue
@@ -132,7 +135,7 @@ def screens() -> dict[str, list[dict[str, str | bool]] | bool]:
     if not devices:
         return {"screens": []}
     # On the page adding a screen, or the account's, that's what the sidebar marks rather than a screen.
-    adding = request.endpoint == "pages.pair"
+    adding = request.endpoint == "pages.add_screen"
     on_account = request.blueprint == "account"
     current = None if adding or on_account else g.get("device_id") or devices[0].device_id
     return {
@@ -145,7 +148,7 @@ def screens() -> dict[str, list[dict[str, str | bool]] | bool]:
 @bp.get("/")
 def index() -> ResponseReturnValue:
     """Send the user to their screen's settings, or to pairing if they have none."""
-    return redirect(url_for("pages.device_config") if paired_device_id() else url_for("pages.pair"))
+    return redirect(url_for("pages.device_config") if paired_device_id() else url_for("pages.add_screen"))
 
 
 @bp.get("/about")
@@ -154,9 +157,84 @@ def about() -> ResponseReturnValue:
     return render_template("about.html")
 
 
+@bp.before_app_request
+def claim_reserved_device() -> None:
+    """Give a user who has just signed in after signing up (pair) the device whose code they entered."""
+    user = current_user()
+    if user is None or request.endpoint == "static":
+        return
+    device_id = pairing.claim_pending(user)
+    if device_id is not None:
+        config_store.publish(device_id)
+        _write_subscriptions_to_redis()
+
+
 @bp.route("/pair", methods=["GET", "POST"])
+def pair() -> ResponseReturnValue:
+    """Sign a new owner up: the public page a screen's Wi-Fi setup sends them to, with its pairing code (?code=).
+
+    It's outside the login, so the visitor has no account yet. They give their name and email, and the broker creates
+    them in Pocket ID (clients/pocket_id.py) and sends them there to add a passkey; the screen becomes theirs when they
+    first arrive signed in (claim_reserved_device). An email that already has an account is never given a token: that
+    person logs in as usual, then adds the screen at /pair/add.
+    """
+    if current_user() is not None:
+        return redirect(url_for("pages.add_screen", code=request.args.get("code") or None))
+    if request.method == "GET":
+        code = request.args.get("code", "")
+        code = code.strip().upper() if pairing.looks_like_code(code) else ""
+        return _render_signup(code=code)
+    return _sign_up()
+
+
+def _site_url() -> str:
+    return current_app.config["SITE_URL"] or url_for("pages.index", _external=True)
+
+
+def _render_signup(code: str = "", error: str | None = None, name: str = "", email: str = "") -> str:
+    return render_template("signup.html", code=code, error=error, name=name, email=email)
+
+
+def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way the sign-up can end
+    config = current_app.config
+    try:
+        pocket_id = PocketIdClient(
+            config["POCKET_ID_URL"], config["POCKET_ID_API_KEY"], config["POCKET_ID_COUNTDOWN_GROUP_ID"]
+        )
+    except PocketIdNotConfiguredError:
+        return _render_signup(error="Sign-up isn't available right now."), HTTPStatus.SERVICE_UNAVAILABLE
+
+    # Every attempt counts against signup_throttle (it makes accounts), and wrong codes against pair_throttle (it
+    # guards the codes); a locked-out IP is refused even with the right code.
+    pair_throttle = current_app.extensions["pair_throttle"]
+    signup_throttle = current_app.extensions["signup_throttle"]
+    ip = request.remote_addr or "unknown"
+    retry_after = max(pair_throttle.retry_after(ip) or 0, signup_throttle.retry_after(ip) or 0)
+    if retry_after:
+        return _too_many_attempts(retry_after, _render_signup)
+    if (lockout := signup_throttle.record_failure(ip)) is not None:
+        return _too_many_attempts(lockout, _render_signup)
+
+    code = request.form.get("code", "").strip().upper()
+    name = " ".join(request.form.get("name", "").split())
+    email = request.form.get("email", "").strip().lower()
+    try:
+        url = signup.sign_up(pocket_id, code, name, email, _site_url())
+    except UserExistsError:
+        return render_template("signup_exists.html", login_url=_site_url()), HTTPStatus.CONFLICT
+    except signup.SignupError as e:
+        if e.wrong_code:
+            current_app.logger.warning("Wrong pairing code from %s", ip)
+            if (lockout := pair_throttle.record_failure(ip)) is not None:
+                return _too_many_attempts(lockout, _render_signup)
+        page = _render_signup(code="" if e.wrong_code else code, error=e.message, name=name, email=email)
+        return page, e.status
+    return redirect(url, HTTPStatus.SEE_OTHER)
+
+
+@bp.route("/pair/add", methods=["GET", "POST"])
 @require_user_id
-def pair(user_id: str) -> ResponseReturnValue:
+def add_screen(user_id: str) -> ResponseReturnValue:
     """Pair the signed-in user with a device.
 
     A device that has just finished Wi-Fi setup sends its owner's browser here with a pairing token (?t=, or the URL
@@ -193,11 +271,12 @@ def pair(user_id: str) -> ResponseReturnValue:
     return redirect(url_for("pages.device_config"))
 
 
-def _too_many_attempts(retry_after: int) -> ResponseReturnValue:
+def _too_many_attempts(retry_after: int, render: Callable[..., str] | None = None) -> ResponseReturnValue:
     minutes = -(-retry_after // 60)
     wait = "a minute" if minutes == 1 else f"{minutes} minutes"
     error = f"Too many incorrect codes. Please wait {wait} and try again."
-    return _render_pair(error=error), 429, {"Retry-After": str(retry_after)}
+    page = (render or _render_pair)(error=error)
+    return page, 429, {"Retry-After": str(retry_after)}
 
 
 def _render_pair(error: str | None, token: str = "", code: str = "") -> str:

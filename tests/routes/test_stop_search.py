@@ -17,7 +17,7 @@ def test_search_stops_requires_a_paired_browser(client):
         response = client.get("/api/stops/search?q=kings")
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
     get.assert_not_called()
 
 

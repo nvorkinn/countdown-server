@@ -37,7 +37,7 @@ def _logged(caplog):
 
 
 def test_nothing_is_logged_by_default(client, caplog):
-    client.get("/pair")
+    client.get("/pair/add")
     assert _logged(caplog) == []
 
 
@@ -50,8 +50,8 @@ def test_every_request_is_logged_with_its_headers_and_the_redirect(app, client, 
 
     [entry] = _logged(caplog)
     assert (entry["method"], entry["path"], entry["query"], entry["status"]) == ("GET", "/", "x=1", 302)
-    assert entry["location"] == "/pair"
-    assert entry["headers"]["X-Authentik-Uid"] == "user-1"
+    assert entry["location"] == "/pair/add"
+    assert entry["headers"]["Remote-Sub"] == "user-1"
     assert entry["headers"]["X-Test"] == "yes"
     assert entry["headers"]["Authorization"] == "REDACTED"
     assert entry["headers"]["Cookie"] == "REDACTED"

@@ -345,7 +345,7 @@ def test_using_the_code_queues_the_screen_after_deleting_its_key(app, store, pai
         return enqueue_(client, device_ids)
 
     with patch.object(render_jobs, "enqueue", side_effect=enqueue_and_look):
-        client.post("/pair", data={"code": code})
+        client.post("/pair/add", data={"code": code})
 
     assert _jobs(store) == [device_id]
     assert seen[0] is None
@@ -400,7 +400,7 @@ def test_redis_down_never_fails_a_save_or_a_code(app, client, register_device, c
     with patch.object(render_jobs, "logger") as logger:
         issued = cli("code", device_id)
         code = issued.output.split(":")[0]
-        used = client.post("/pair", data={"code": code})
+        used = client.post("/pair/add", data={"code": code})
         saved = client.post("/device", data={"style": "card"})
 
     assert issued.exit_code == 0

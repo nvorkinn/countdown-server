@@ -17,11 +17,22 @@ def load(app: Flask) -> None:
     # ".nikolaivorkinn.com", to share the cookie (it carries only the Spotify OAuth state) with sibling subdomains.
     app.config["SESSION_COOKIE_DOMAIN"] = os.environ.get("SESSION_COOKIE_DOMAIN") or None
 
-    # The request header the login proxy (Caddy forward auth to Authentik) puts the signed-in user's
-    # id in. Caddy overwrites it on every browser-facing request; see caddy/Caddyfile.
-    app.config["USER_HEADER"] = os.environ.get("AUTH_USER_HEADER", "X-Authentik-Uid")
-    # The header with the signed-in user's username, which is only shown.
-    app.config["USERNAME_HEADER"] = os.environ.get("AUTH_USERNAME_HEADER", "X-Authentik-Username")
+    # The request header the login proxy (Caddy forward auth to Tinyauth) puts the signed-in user's id in: Tinyauth's
+    # Remote-Sub, the OIDC `sub` of Pocket ID, which is the user's Pocket ID id. Caddy overwrites it on every
+    # browser-facing request, so only the proxy can set it.
+    app.config["USER_HEADER"] = os.environ.get("AUTH_USER_HEADER", "Remote-Sub")
+    # The header with the signed-in user's name, which is only shown.
+    app.config["USERNAME_HEADER"] = os.environ.get("AUTH_USERNAME_HEADER", "Remote-Name")
+
+    # Pocket ID, the passkey login: the sign-up page (public) creates the new owner's account through its admin API.
+    # Unset (the default) turns sign-up off; the key is a server secret, never sent to a device or logged.
+    app.config["POCKET_ID_URL"] = os.environ.get("POCKET_ID_URL", "").rstrip("/")
+    app.config["POCKET_ID_API_KEY"] = os.environ.get("POCKET_ID_API_KEY", "")
+    # The id (not the name) of Pocket ID's `countdown` group, which new users join.
+    app.config["POCKET_ID_COUNTDOWN_GROUP_ID"] = os.environ.get("POCKET_ID_COUNTDOWN_GROUP_ID", "")
+    # Where Pocket ID sends a new user after they've added a passkey: the settings site. Unset, the site the sign-up
+    # page was served from.
+    app.config["SITE_URL"] = os.environ.get("SITE_URL", "").rstrip("/")
 
     app.config["SPOTIFY_CLIENT_ID"] = os.environ["SPOTIFY_CLIENT_ID"]
     app.config["SPOTIFY_CLIENT_SECRET"] = os.environ["SPOTIFY_CLIENT_SECRET"]

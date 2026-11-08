@@ -19,7 +19,7 @@ from flask import current_app
 from sqlalchemy import delete, or_, select
 
 from broker.db import db
-from broker.models import Device, PairingCode
+from broker.models import Device, PairingCode, PendingPairing
 from broker.services import assignments, device_keys, pairing_key, render_jobs, render_screens
 
 # Excludes visually ambiguous characters (0/O, 1/I/L) since this gets typed in by hand.
@@ -150,3 +150,57 @@ def redeem_code(code: str, user: str) -> str | None:
     db.session.commit()
     _after_pairing(device_id, previous, user)
     return device_id
+
+
+# How long a sign-up's device waits for its new user to first sign in: they have to add a passkey first.
+PENDING_TTL = timedelta(hours=1)
+
+
+def code_is_live(code: str) -> bool:
+    """Whether `code` is a code a device shows that hasn't expired, without using it up."""
+    pairing_code = db.session.get(PairingCode, code)
+    return pairing_code is not None and pairing_code.expires_at >= datetime.now(UTC)
+
+
+def reserve_for_signup(code: str, user: str) -> str | None:
+    """Use up a live code for a sign-up whose user hasn't signed in yet, returning the device_id (None if it's spent).
+
+    The device isn't the user's until they sign in (claim_pending), so a code alone never makes anyone an owner
+    without going through Pocket ID. The code is deleted by a conditional DELETE, so of two sign-ups racing on
+    one code only one gets the device.
+    """
+    now = datetime.now(UTC)
+    pairing_code = db.session.get(PairingCode, code)
+    if pairing_code is None or pairing_code.expires_at < now:
+        return None
+    device_id = pairing_code.device_id
+    deleted = db.session.execute(delete(PairingCode).where(PairingCode.code == code, PairingCode.expires_at >= now))
+    if deleted.rowcount != 1:
+        db.session.rollback()
+        return None
+    db.session.execute(
+        delete(PendingPairing).where(or_(PendingPairing.user_id == user, PendingPairing.expires_at < now))
+    )
+    db.session.add(PendingPairing(user_id=user, device_id=device_id, expires_at=now + PENDING_TTL))
+    db.session.commit()
+    return device_id
+
+
+def claim_pending(user: str) -> str | None:
+    """Make a signed-in user the owner of the device their sign-up reserved, returning its device_id (else None).
+
+    `user` is the Pocket ID user the login proxy says has just signed in. A device someone else
+    has since been paired with is left alone.
+    """
+    pending = db.session.get(PendingPairing, user)
+    if pending is None:
+        return None
+    db.session.delete(pending)
+    device = db.session.get(Device, pending.device_id)
+    if pending.expires_at < datetime.now(UTC) or device is None or device.owner not in (None, user):
+        db.session.commit()
+        return None
+    previous = _pair(device, user)
+    db.session.commit()
+    _after_pairing(device.device_id, previous, user)
+    return device.device_id

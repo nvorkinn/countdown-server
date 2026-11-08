@@ -129,7 +129,7 @@ def test_using_the_code_deletes_its_key(app, store, paired_client):
     code = _ask_for_code(app, device_id)
     assert _stored(store, device_id) is not None
 
-    client.post("/pair", data={"code": code})
+    client.post("/pair/add", data={"code": code})
 
     assert _stored(store, device_id) is None
     assert store.get(config_store.key(device_id)) is not None  # its config back in the store, without the code
@@ -139,7 +139,7 @@ def test_a_code_used_by_a_new_owner_deletes_its_key(app, store, client, register
     device_id, _secret = register_device()
     code = _ask_for_code(app, device_id)
 
-    client.post("/pair", data={"code": code})
+    client.post("/pair/add", data={"code": code})
 
     assert _stored(store, device_id) is None
 
@@ -220,7 +220,7 @@ def test_only_this_devices_key_goes(app, store, paired_client, register_device, 
     other_code = _ask_for_code(app, other_id)
     code = _ask_for_code(app, device_id)
 
-    client.post("/pair", data={"code": code})
+    client.post("/pair/add", data={"code": code})
 
     assert _stored(store, other_id)["pairing_code"] == other_code
 
@@ -253,7 +253,7 @@ def test_redis_down_never_stops_a_code_being_issued_or_used(app, client, registe
     ):
         issued = cli("code", device_id)
         code = issued.output.split(":")[0]
-        used = client.post("/pair", data={"code": code})
+        used = client.post("/pair/add", data={"code": code})
 
     assert issued.exit_code == 0
     assert used.status_code == 302
@@ -271,7 +271,7 @@ def test_no_code_is_ever_logged(app, store, paired_client, cli):
         patch("broker.services.device_keys.logger") as keys_logger,
     ):
         code = _ask_for_code(app, device_id)
-        client.post("/pair", data={"code": code})
+        client.post("/pair/add", data={"code": code})
         cli("code", device_id)
         cli("forget", device_id)
 

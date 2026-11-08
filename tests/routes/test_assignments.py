@@ -53,7 +53,7 @@ def test_pairing_by_code_and_the_owner_command_name_the_screen_too(app, client, 
     by_code = _register(client, "a-screen-paired-by-a-code-0123")
     with app.app_context():
         code = pairing.issue_code(by_code)
-    client.post("/pair", data={"code": code})
+    client.post("/pair/add", data={"code": code})
     by_command = _register(client, "a-screen-given-an-owner-0123")
     cli("owner", by_command, "user-2")
 
@@ -153,19 +153,19 @@ def test_the_screens_name_is_never_logged(client, paired, caplog):
 
 
 def test_the_username_is_shown_at_the_top_of_the_pages(client, paired):
-    for path in ["/device", "/pair"]:
+    for path in ["/device", "/pair/add"]:
         assert f'<div class="whoami" title="Signed in as {USERNAME}">{USERNAME}</div>' in client.get(path).data.decode()
 
 
 def test_the_username_is_escaped(client, paired):
-    client.environ_base["HTTP_X_AUTHENTIK_USERNAME"] = "<script>alert(1)</script>"
+    client.environ_base["HTTP_REMOTE_NAME"] = "<script>alert(1)</script>"
 
-    page = client.get("/pair").data.decode()
+    page = client.get("/pair/add").data.decode()
 
     assert "<script>alert(1)</script>" not in page
     assert "&lt;script&gt;" in page
 
 
 def test_no_username_shows_nothing(client):
-    del client.environ_base["HTTP_X_AUTHENTIK_USERNAME"]
-    assert 'class="whoami"' not in client.get("/pair").data.decode()
+    del client.environ_base["HTTP_REMOTE_NAME"]
+    assert 'class="whoami"' not in client.get("/pair/add").data.decode()
