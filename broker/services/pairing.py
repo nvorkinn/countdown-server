@@ -180,12 +180,37 @@ def reserve_for_signup(code: str, user: str) -> str | None:
     if deleted is None:
         db.session.rollback()
         return None
+    _hold_for(user, device_id, now)
+    return device_id
+
+
+def token_is_open(token: str) -> bool:
+    """Whether a device has registered with this pairing token and has no owner yet."""
+    device = db.session.scalar(select(Device).where(Device.pairing_token == token))
+    return device is not None and device.owner is None
+
+
+def reserve_for_signup_by_token(token: str, user: str) -> str | None:
+    """Hold the device a pairing token belongs to for a sign-up whose user hasn't signed in yet.
+
+    The token is what the device sent its owner's browser with, so it stands in for the code (as pair_by_token does for
+    a signed-in user). Returns the device_id, or None if no device has registered with it or it already has an owner.
+    As with a code, the device isn't the user's until they sign in (claim_pending).
+    """
+    device = db.session.scalar(select(Device).where(Device.pairing_token == token))
+    if device is None or device.owner is not None:
+        return None
+    _hold_for(user, device.device_id, datetime.now(UTC))
+    return device.device_id
+
+
+def _hold_for(user: str, device_id: str, now: datetime) -> None:
+    """Reserve the device for the Pocket ID user (replacing any earlier or expired reservation of theirs) and commit."""
     db.session.execute(
         delete(PendingPairing).where(or_(PendingPairing.user_id == user, PendingPairing.expires_at < now))
     )
     db.session.add(PendingPairing(user_id=user, device_id=device_id, expires_at=now + PENDING_TTL))
     db.session.commit()
-    return device_id
 
 
 def claim_pending(user: str) -> str | None:

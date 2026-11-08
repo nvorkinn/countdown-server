@@ -212,3 +212,79 @@ def test_a_signed_in_user_is_sent_to_add_a_screen_instead(client):
 
 def test_the_api_key_is_never_sent_with_a_page(anonymous_client, pocket):
     assert API_KEY not in anonymous_client.get("/pair").get_data(as_text=True)
+
+
+@pytest.fixture
+def screen_token(app, register_device):
+    """A registered, unowned screen and the pairing token it sent its owner's browser with."""
+    device_id, _ = register_device()
+    with app.app_context():
+        return db.session.get_one(Device, device_id).pairing_token, device_id
+
+
+def test_a_screen_link_with_a_token_asks_only_for_name_and_email(anonymous_client, screen_token):
+    token, _ = screen_token
+
+    page = anonymous_client.get(f"/pair?t={token}")
+
+    assert page.status_code == 200
+    assert f'name="token" value="{token}"'.encode() in page.data
+    assert b'name="code"' not in page.data
+
+
+def test_a_malformed_token_is_ignored_and_the_code_field_comes_back(anonymous_client):
+    page = anonymous_client.get("/pair?t=not-a-token")
+
+    assert b'name="token"' not in page.data
+    assert b'name="code"' in page.data
+
+
+def test_signing_up_with_the_screens_token_needs_no_code(app, anonymous_client, pocket, screen_token):
+    token, device_id = screen_token
+
+    response = anonymous_client.post("/pair", data={"token": token, **FORM})
+
+    assert response.status_code == 303
+    assert pocket.paths()[0] == ("POST", "/api/users")
+    with app.app_context():
+        assert db.session.get_one(PendingPairing, NEW_USER).device_id == device_id
+        assert db.session.get_one(Device, device_id).owner is None  # theirs once they sign in
+
+    anonymous_client.get("/device", headers={"Remote-Sub": NEW_USER, "Remote-Name": "Ada Lovelace"})
+    with app.app_context():
+        assert db.session.get_one(Device, device_id).owner == NEW_USER
+
+
+def test_a_token_no_screen_has_registered_with_creates_no_account(app, anonymous_client, pocket):
+    response = anonymous_client.post("/pair", data={"token": "a" * 64, **FORM})
+
+    assert response.status_code == 409
+    assert b"connected yet" in response.data
+    assert pocket.calls == []  # nothing was sent to Pocket ID
+    with app.app_context():
+        assert db.session.scalar(db.select(PendingPairing)) is None
+
+
+def test_a_token_for_a_screen_that_already_has_an_owner_creates_no_account(app, anonymous_client, pocket, screen_token):
+    token, device_id = screen_token
+    with app.app_context():
+        db.session.get_one(Device, device_id).owner = "someone-else"
+        db.session.commit()
+
+    response = anonymous_client.post("/pair", data={"token": token, **FORM})
+
+    assert response.status_code == 409
+    assert pocket.calls == []
+
+
+def test_an_existing_email_with_a_token_is_sent_back_through_login_to_the_token_page(
+    anonymous_client, pocket, screen_token
+):
+    token, _ = screen_token
+    pocket.create_status = 409
+
+    response = anonymous_client.post("/pair", data={"token": token, **FORM})
+
+    assert response.status_code == 409
+    assert f"{SITE}/pair/add?t={token}".encode() in response.data
+    assert pocket.paths() == [("POST", "/api/users")]  # no token made for an existing account

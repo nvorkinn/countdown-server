@@ -15,12 +15,17 @@
     {% endif %}
 
     <form method="POST" action="{{ url_for('pages.pair') }}">
+        {% if token %}
+        {# The screen sent its owner here with its own pairing token, so there is no code to type. #}
+        <input type="hidden" name="token" value="{{ token }}">
+        {% else %}
         <label for="code">Code on your device</label>
         <input type="text" id="code" name="code" class="pairing-input" maxlength="6" autocomplete="off"
                autocapitalize="characters" placeholder="ABC123" value="{{ code }}" required {% if not code %}autofocus{% endif %}>
+        {% endif %}
         <label for="name">Your name</label>
         <input type="text" id="name" name="name" class="search-input" maxlength="100" autocomplete="name"
-               value="{{ name }}" required {% if code %}autofocus{% endif %}>
+               value="{{ name }}" required {% if code or token %}autofocus{% endif %}>
         <label for="email">Email</label>
         <input type="email" id="email" name="email" class="search-input" maxlength="254" autocomplete="email"
                value="{{ email }}" required>
