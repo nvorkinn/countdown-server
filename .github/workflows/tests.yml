@@ -118,24 +118,6 @@ jobs:
       - name: Check dependencies
         run: uv run --locked deptry .
 
-  # Everything in secrets/ is committed, so make sure no value in it is plaintext.
-  secrets:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Check secrets are encrypted
-        run: |
-          status=0
-          for f in secrets/*/*.env; do
-            # SOPS's dotenv format: every value is ENC[...], plus its own sops_* metadata.
-            if ! grep -q '^sops_mac=' "$f" || grep -vE '^(#|$|sops_)' "$f" | grep -qv '=ENC\['; then
-              echo "::error file=$f::not fully SOPS-encrypted; encrypt it with sops before committing"
-              status=1
-            fi
-          done
-          exit $status
-
   # The file hygiene hooks of .pre-commit-config.yaml. Ruff, ty and the Terraform hooks are skipped: the ruff and ty
   # jobs above and cloudflare.yml already run them, and they would need the project installed or terraform and tflint.
   pre-commit:

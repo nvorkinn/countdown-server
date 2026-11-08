@@ -89,17 +89,17 @@ broker to trust them. The broker has no user table: the Pocket ID user id is sto
 | **Glowmarkt password** | the owner, on the account page | `glowmarkt_credentials`, encrypted | Never leaves the broker's image: the glow provider signs in with it. |
 | **Parcel API key** | the owner, on the account page | `parcel_keys`, encrypted | From the owner's own Parcel Premium account (web.parcelapp.net). Read through `services/parcel_key.get_parcel_api_key`; never sent to the browser or logged. |
 | **GitHub token** | the owner, on the account page | `github_tokens`, encrypted | A read-only fine-grained PAT, used only by the developer provider. |
-| **`CREDENTIAL_ENCRYPTION_KEY`** | operator | `secrets/<environment>/broker.env` | The Fernet key for the encrypted columns. Changing it makes them unreadable. |
-| **App keys** | operator | `secrets/<environment>/broker.env` | Spotify client id and secret, the MusicKit key (signs Apple developer tokens), `TFL_APP_KEY` (only for the settings page's stop search). |
-| **`FLASK_SECRET_KEY`** | operator | `secrets/<environment>/broker.env` | Signs the session cookie, which holds only the Spotify OAuth state and the GitHub dashboard's CSRF token. |
-| **`STATUS_TOKEN`** | operator | `secrets/<environment>/broker.env` | Bearer for `GET /api/status/devices`. |
+| **`CREDENTIAL_ENCRYPTION_KEY`** | operator | Vaultwarden (`broker.env`) | The Fernet key for the encrypted columns. Changing it makes them unreadable. |
+| **App keys** | operator | Vaultwarden (`broker.env`) | Spotify client id and secret, the MusicKit key (signs Apple developer tokens), `TFL_APP_KEY` (only for the settings page's stop search). |
+| **`FLASK_SECRET_KEY`** | operator | Vaultwarden (`broker.env`) | Signs the session cookie, which holds only the Spotify OAuth state and the GitHub dashboard's CSRF token. |
+| **`STATUS_TOKEN`** | operator | Vaultwarden (`broker.env`) | Bearer for `GET /api/status/devices`. |
 | **GitHub App sign-in** | the dashboard's user, through Connect GitHub | `github_app_tokens`, encrypted | Acts as them for 8 hours, renewed for 6 months. The `/github` dashboard's only GitHub access. |
-| **`GITHUB_APP_CLIENT_SECRET`**, **`GITHUB_APP_WEBHOOK_SECRET`** | operator | `secrets/<environment>/broker.env` | The dashboard's GitHub App: signing in, and checking its webhook's signature. |
-| **`POCKET_ID_API_KEY`** | operator | `secrets/<environment>/broker.env` | A Pocket ID admin API key, which the sign-up flow uses to create users and add them to the `countdown` group (`POCKET_ID_COUNTDOWN_GROUP_ID`). |
-| **Tinyauth's Pocket ID client** | operator | `secrets/<environment>/tinyauth.env` | The OIDC client id and secret Pocket ID issued for Tinyauth. |
-| **Pocket ID's `ENCRYPTION_KEY`** | operator | `secrets/<environment>/pocket-id.env` | Encrypts what Pocket ID stores. Never changed after first start. |
-| **`REDIS_PASSWORD`** | operator | `secrets/<environment>/redis.env` | Used by everything that talks to Redis, including countdown. |
-| **`LOGS_INGEST_TOKEN`** | operator | `secrets/<environment>/caddy.env` | Bearer for the ingest paths on `logs.` and `metrics.`. The broker forwards inside the network without it. The routes' labels name it as Caddy's `{env.LOGS_INGEST_TOKEN}` placeholder, so the value is never in a label or in `.env`. |
+| **`GITHUB_APP_CLIENT_SECRET`**, **`GITHUB_APP_WEBHOOK_SECRET`** | operator | Vaultwarden (`broker.env`) | The dashboard's GitHub App: signing in, and checking its webhook's signature. |
+| **`POCKET_ID_API_KEY`** | operator | Vaultwarden (`broker.env`) | A Pocket ID admin API key, which the sign-up flow uses to create users and add them to the `countdown` group (`POCKET_ID_COUNTDOWN_GROUP_ID`). |
+| **Tinyauth's Pocket ID client** | operator | Vaultwarden (`tinyauth.env`) | The OIDC client id and secret Pocket ID issued for Tinyauth. |
+| **Pocket ID's `ENCRYPTION_KEY`** | operator | Vaultwarden (`pocket-id.env`) | Encrypts what Pocket ID stores. Never changed after first start. |
+| **`REDIS_PASSWORD`** | operator | Vaultwarden (`redis.env`) | Used by everything that talks to Redis, including countdown. |
+| **`LOGS_INGEST_TOKEN`** | operator | Vaultwarden (`caddy.env`) | Bearer for the ingest paths on `logs.` and `metrics.`. The broker forwards inside the network without it. The routes' labels name it as Caddy's `{env.LOGS_INGEST_TOKEN}` placeholder, so the value is never in a label or in `.env`. |
 
 No credential is ever written to Redis: configs carry only flags like `glowmarkt.enabled`, and the providers write only
 the data they fetched. The pairing code is the exception, in `v1:pairing:<device id>` for its ten minutes.

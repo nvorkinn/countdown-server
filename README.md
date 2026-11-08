@@ -152,7 +152,7 @@ GitHub's Settings → Developer settings → GitHub Apps:
   and merging). After changing them, accept them on the App's installation; GitHub doesn't apply them until you do.
 - Then install it on your account, for the repositories the dashboard should show.
 
-Enable it with `sops secrets/dev/broker.env`, then release:
+Enable it by adding these to the `countdown-server/dev` collection in Vaultwarden (and `secrets-map.json`), then release:
 
 ```dotenv
 GITHUB_DASHBOARD_USER_ID=<your Remote-Sub>
@@ -300,9 +300,9 @@ It builds five images for arm64 (the host is ARM) on an ARM runner, tagged with 
 - `ghcr.io/nvorkinn/countdown-server-victoria-logs`
 - `ghcr.io/nvorkinn/countdown-server-victoria-metrics` (with the vmui dashboards)
 
-It also attaches a deploy bundle to the release (`docker-compose.yml`, `scripts/deploy.sh`, the encrypted secrets and
-the environment's settings) for each environment, with only that environment's secrets (`deploy-<tag>-dev.tar.gz` and
-`deploy-<tag>-prod.tar.gz`; there is no prod bundle until `secrets/prod/` is committed). A release deploys to
+It also attaches a deploy bundle to the release (`docker-compose.yml`, `scripts/deploy.sh`, and the
+environment's settings) for each environment (`deploy-<tag>-dev.tar.gz` and `deploy-<tag>-prod.tar.gz`); the secrets
+aren't in them, the deploy jobs fetch those from Vaultwarden (see Secrets). A release deploys to
 **dev/QA** with no approval: starting the release is the decision. Production is never touched by a release; it gets a
 tag that has been through dev/QA, by promotion (below). Two reusable workflows deploy a target (`deploy-services.yml`
 and `deploy-edge.yml`), each taking an optional approval environment (reviewers) for targets that need one:
@@ -328,8 +328,7 @@ deploys the images and the `prod` bundle that the Release made, the same tag tha
 before anyone is asked if:
 
 - the tag doesn't exist or its commit isn't on `main`;
-- the release has no `deploy-<tag>-prod.tar.gz` (it was released before `secrets/prod/` was committed: commit them
-  and release again);
+- the release has no `deploy-<tag>-prod.tar.gz` (it was released before `config/prod.env` existed: release again);
 - the tag wasn't deployed to dev/QA: a deployment to `dev-qa` recorded on the tag's commit has to have succeeded. (A
   Release started with the button runs on `main`, so its deployments carry the tag's commit rather than the tag,
   which is why they are looked up by commit.) The one other way through is a tag that an earlier promotion deployed
@@ -365,47 +364,34 @@ Make compose changes in the repo: each deploy replaces the host's copy.
     reachable only over Tailscale. Its deploy jobs first join the tailnet as `tag:ci` (the `tailscale/github-action` step,
     skipped where `TAILSCALE_OAUTH_CLIENT_ID` is empty, as in `production`), so `dev-qa` also needs the secrets
     `TAILSCALE_OAUTH_CLIENT_ID` and `TAILSCALE_OAUTH_SECRET` (an OAuth client allowed to create `tag:ci` nodes), and the
-    tailnet's ACL must let `tag:ci` SSH to the server. The host's `/opt/auth-broker/` and its age key
-    (`/opt/auth-broker/age.key`) come from [server-config](https://github.com/nvorkinn/server-config).
+    tailnet's ACL must let `tag:ci` SSH to the server. The host's `/opt/auth-broker/` comes from [server-config](https://github.com/nvorkinn/server-config).
     Dev has no edge of its own: its containers join home-stack's Docker network `edge` (`EDGE_OWNED=false`), which already runs
     Caddy, Tinyauth (`tauth.nikolaivorkinn.com`) and Pocket ID (`id.nikolaivorkinn.com`). Dev's names (`auth.dev.`, `logs.dev.`,
     `metrics.dev.`, `dev.`) are CNAMEs to `home.nikolaivorkinn.com`; Caddy gets their certificates one by one through its
     Cloudflare DNS challenge, as its wildcard covers only `*.nikolaivorkinn.com`.
-- **The host** needs Docker Compose v2 (`sudo apt install docker-compose-v2`), `curl` and its age key (below).
-- **Before the first promotion,** `secrets/prod/` has to be committed, encrypted for the laptop and the production
-  host, with the matching `prod` rule in `.sops.yaml` uncommented (see Secrets below), and a release made after that:
-  releases from before it have no prod bundle and can't be promoted.
+- **The host** needs Docker Compose v2 (`sudo apt install docker-compose-v2`), and `curl`.
+- **Before the first promotion,** the `countdown-server/prod` collection in Vaultwarden has to hold the production
+  secrets (see Secrets below).
 
 ### Secrets
 
-Every secret is in `secrets/<environment>/` (`dev/` today; `prod/` for production), as `broker.env`, `caddy.env` (the log ingest
-token), `redis.env` and, where this repo runs the edge, `tinyauth.env` and `pocket-id.env`, encrypted with [SOPS](https://github.com/getsops/sops) and age; the `.example` files in
-`secrets/` list what each holds. `.sops.yaml` lists who can decrypt each environment's files: your laptop's age key and
-that environment's host's (`/opt/auth-broker/age.key`), so one environment's host can't decrypt another's secrets. A
-release's deploy bundle for an environment holds only that environment's files, and `deploy.sh` decrypts them all on
-every deploy. CI fails if any value isn't encrypted. Settings that aren't secret are in `config/<environment>.env`
+Every secret is a login item in [Vaultwarden](https://vault.nikolaivorkinn.com), named
+`countdown-server/<target>/<VARIABLE>` with the value as its password, in the collection `countdown-server/dev` or
+`countdown-server/prod`. `secrets-map.json` says which item fills which variable of which `.env` file (`broker.env`,
+`caddy.env` (the log ingest token), `redis.env` and, where this repo runs the edge, `tinyauth.env` and `pocket-id.env`);
+the `.example` files in `secrets/` list what each file holds. Settings that aren't secret are in `config/<environment>.env`
 and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with
 `POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting).
 
-```bash
-sops secrets/dev/broker.env    # edit, re-encrypted on save; then commit, release and deploy
-```
+On every deploy the workflow runs `scripts/fetch-secrets.sh`, which logs in to Vaultwarden as the `deploy-bot` user (it can
+read only these two collections), writes one `<name>.env` per file of `secrets-map.json`'s target and copies them to
+`/opt/auth-broker/vault-secrets/` on the host, where `deploy.sh` installs them next to the compose file. A deploy fails,
+before it changes anything, if Vaultwarden can't be reached or an item is missing. So Vaultwarden has to be up to deploy
+(running services don't need it). The `dev-qa` and `production` environments each need the secrets `BW_CLIENTID`,
+`BW_CLIENTSECRET` (the bot's API key) and `BW_PASSWORD` (its master password, which `bw unlock` needs).
 
-To set up: `age-keygen -o ~/.config/sops/age/keys.txt` on your laptop (and keep a copy somewhere safe: it's the only
-key that can edit the secrets), `age-keygen -o /opt/auth-broker/age.key` on each host, put the laptop's public key and
-that host's in `.sops.yaml`'s rule for its environment, and run `sops updatekeys secrets/<environment>/*.env` whenever a
-key changes.
-
-### Secrets from Vaultwarden
-
-Where an environment has the deploy bot's credentials (the secrets `BW_CLIENTID`, `BW_CLIENTSECRET` and `BW_PASSWORD`), the
-deploy workflows read its secrets from [Vaultwarden](https://vault.nikolaivorkinn.com) instead: `scripts/fetch-secrets.sh`
-logs in as the `deploy-bot` user, which can read only the `countdown-server/<target>` collection, and writes one
-`<name>.env` per file listed in `secrets-map.json`. The workflow copies them to `/opt/auth-broker/vault-secrets/` on
-the host, and `deploy.sh` installs them in place of decrypting the bundle's SOPS file of the same name. Each variable is a
-login item in the collection, named `countdown-server/<target>/<VARIABLE>`, with the value as its password; to add one,
-create the item and add its name to `secrets-map.json` under the file it belongs in. A deploy fails, before it changes
-anything, if Vaultwarden can't be reached or an item is missing. Environments without the credentials still use SOPS.
+To change a secret, edit its item in Vaultwarden and deploy; to add one, create the item, add its name to `secrets-map.json`
+under the file it belongs in, and add the variable to the `.example` file.
 
 ### Settings
 
@@ -486,9 +472,9 @@ locks everyone out. Tinyauth is at `tauth.<domain>` (`TAUTH_HOST`).
 1. Open `https://id.<domain>/setup` and create the admin account with a passkey.
 2. Create the groups `admins` and `countdown`; add yourself to both.
 3. Create an OIDC client for Tinyauth with the callback URL `https://tauth.<domain>/api/oauth/callback/pocketid`; its id
-   and secret go in `secrets/<environment>/tinyauth.env`. Restart Tinyauth.
+   and secret go in Vaultwarden, as the `tinyauth.env` items of `secrets-map.json`. Restart Tinyauth.
 4. Create an API key (Settings > Admin > API Keys) and note the `countdown` group's id: they go in
-   `secrets/<environment>/broker.env` as `POCKET_ID_API_KEY` and `POCKET_ID_COUNTDOWN_GROUP_ID`.
+   Vaultwarden, as the `broker.env` items `POCKET_ID_API_KEY` and `POCKET_ID_COUNTDOWN_GROUP_ID`.
 
 `ENCRYPTION_KEY` (`pocket-id.env`) is generated once and never changed.
 

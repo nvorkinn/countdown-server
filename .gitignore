@@ -1,5 +1,4 @@
-# Decrypted env files, on the host or for local development. The encrypted
-# copies in secrets/ are committed.
+# Env files with real secrets, on the host or for local development. Only the .example files in secrets/ are committed.
 /.env
 /broker.env
 /caddy.env
