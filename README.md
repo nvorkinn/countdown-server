@@ -324,25 +324,25 @@ images per release. Before each edge deploy it also backs up Pocket ID's data (s
 ### Promoting to production
 
 Run the **Promote** workflow from the Actions tab on `main` with the release's tag (`v1.2.3`). It builds nothing: it
-deploys the images and the `prod` bundle that the Release made, the same tag that ran on dev/QA. Its `check` job fails
+deploys the images that the Release made, with that tag's `docker-compose.yml` and `config/prod.env`: the same tag that ran
+on dev/QA. Its `check` job fails
 before anyone is asked if:
 
 - the tag doesn't exist or its commit isn't on `main`;
-- the release has no `deploy-<tag>-prod.tar.gz` (it was released before `config/prod.env` existed: release again);
 - the tag wasn't deployed to dev/QA: a deployment to `dev-qa` recorded on the tag's commit has to have succeeded. (A
   Release started with the button runs on `main`, so its deployments carry the tag's commit rather than the tag,
   which is why they are looked up by commit.) The one other way through is a tag that an earlier promotion deployed
   to production, which is a rollback.
 
-Then the `approve-production` environment's reviewers are asked once for the whole promotion, and the services and
-edge deploy to `production` as in a release (the edge first, so the socket proxy is there for Caddy). One promotion
-runs at a time.
+Then the `approve-production` environment's reviewers are asked once for the whole promotion, and `deploy-compose.yml`
+deploys to `production` as it does to dev/QA, in one job: the edge (the socket proxy, Tinyauth and Pocket ID) and every
+service, the socket proxy up before Caddy (`depends_on`). Pocket ID's data is backed up first, and an image that
+didn't change since the last release is left running. To see what a tag would do before promoting it, run **Deploy compose**
+by hand with `production`: it only plans. One promotion runs at a time.
 
 To **roll back production,** promote an older tag that was deployed to dev/QA or promoted before; the same checks and
-approval apply (the host keeps the newest 5 bundles and the previous images, and fetches the bundle again if it is
-gone). To roll back dev/QA, release a revert, or re-run the deploy jobs of an older
-release's workflow run. To deploy by hand, set the versions in `/opt/auth-broker/.env` and run `docker compose up -d`.
-Make compose changes in the repo: each deploy replaces the host's copy.
+approval apply (the host keeps the previous images). To roll back dev/QA, release a revert, or run **Deploy compose** by hand
+with an older tag. Make compose changes in the repo: each deploy replaces what runs on the host.
 
 **Deploying through the host's Docker daemon.** `deploy-compose.yml` (a release's `deploy (dev-qa)` job, or Actions >
 Deploy compose > Run workflow with a release tag) deploys that release to dev/QA without running anything on the host. Run by
