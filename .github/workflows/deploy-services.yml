@@ -1,7 +1,8 @@
 name: Deploy services
 
 # One target's deploy of this repo's own services (Caddy, the broker and its providers, Fluent Bit, VictoriaLogs,
-# VictoriaMetrics, Redis), called by release.yml (dev/QA) and promote.yml (production). See also deploy-authentik.yml.
+# VictoriaMetrics, Redis), called by release.yml (dev/QA) and promote.yml (production). See also deploy-edge.yml. Caddy
+# is deployed on production only: deploy.sh leaves it alone where the edge isn't this repo's (dev/QA).
 on:
   workflow_call:
     inputs:

@@ -1,7 +1,7 @@
 # Cloudflare DNS
 
-The A records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, `AUTH_HOST`, `SSO_HOST`,
-`LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`), for dev/QA and production, in the `nikolaivorkinn.com`
+The A records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, `AUTH_HOST`, `TAUTH_HOST`,
+`ID_HOST`, `LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`), for dev/QA and production, in the `nikolaivorkinn.com`
 zone. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
 
 The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are not managed here.
@@ -23,8 +23,16 @@ with *apply* ticked applies, on the latest release tag only (how a failed apply 
 
 ## Setup
 
-The state is in the same Oracle bucket as `terraform/` (the `TF_STATE_*` variables and the `AWS_*` secrets are shared), under its own keys,
-`cloudflare/terraform.tfstate` and `cloudflare/prod/terraform.tfstate`. It also needs a Cloudflare API token, `CLOUDFLARE_API_TOKEN`:
+State lives in an Oracle Cloud Object Storage bucket, through its S3-compatible API (`backend.tf`), under the keys
+`cloudflare/terraform.tfstate` (dev/QA) and `cloudflare/prod/terraform.tfstate` (production). One-time setup in Oracle Cloud:
+create a private bucket with versioning on, a customer secret key (Profile > User settings > Customer secret keys) for a
+user that may manage objects in it, and note the Object Storage namespace and the bucket's region. Then add the variables
+`TF_STATE_BUCKET`, `TF_STATE_REGION` (e.g. `eu-frankfurt-1`) and `TF_STATE_ENDPOINT`
+(`https://<namespace>.compat.objectstorage.<region>.oraclecloud.com`), and the key as the secrets `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY`, in the repo's Settings > Secrets and variables > Actions. The workflow sets
+`AWS_REQUEST_CHECKSUM_CALCULATION` and `AWS_RESPONSE_CHECKSUM_VALIDATION` to `when_required`, which Oracle's S3 API needs
+(export both to run Terraform from your own machine). State locking is off, so the workflow's concurrency group keeps
+applies to one at a time. It also needs a Cloudflare API token, `CLOUDFLARE_API_TOKEN`:
 
 - a repository secret, a **Zone:DNS:Read** token for `nikolaivorkinn.com`, which plans use;
 - a secret of each of the `terraform` (dev/QA) and `terraform-production` environments, a **Zone:DNS:Edit** token for

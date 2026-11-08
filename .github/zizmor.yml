@@ -26,9 +26,7 @@ rules:
       # left to a follow-up.
       - tests.yml
       - release.yml
-      - terraform.yml
       - deploy-services.yml
-      - deploy-authentik.yml
   ref-version-mismatch:
     ignore:
       # The shared nvorkinn/.github workflows are pinned to a commit on its main branch (no release tags), and the

@@ -1,5 +1,5 @@
-# State lives in the same Oracle Cloud Object Storage bucket as terraform/'s (see its backend.tf and README.md for the
-# GitHub variables and secrets that reach it), under its own keys. The zone is shared, but each environment's records
+# State lives in an Oracle Cloud Object Storage bucket (see README.md for the GitHub variables and secrets that reach
+# it), under its own keys. The zone is shared, but each environment's records
 # are applied by its own workflow, so each has its own state.
 terraform {
   backend "s3" {

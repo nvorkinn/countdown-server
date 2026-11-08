@@ -29,7 +29,7 @@ pipeline:
       scrape_interval: 30
 
   filters:
-    # JSON log lines (the broker, Caddy, authentik, ...) get their fields lifted, so `level` and `_msg`
+    # JSON log lines (the broker, Caddy, ...) get their fields lifted, so `level` and `_msg`
     # reach VictoriaLogs as the app wrote them; other lines keep their text in `log`.
     - name: parser
       match: docker_logs

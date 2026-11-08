@@ -51,17 +51,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Keep in step with required_version in infra/cloudflare/versions.tf and TF_VERSION in terraform.yml.
+  # Keep in step with required_version in infra/cloudflare/versions.tf.
   TF_VERSION: 1.16.6
   TF_IN_AUTOMATION: "1"
   TF_INPUT: "0"
   TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugins
-  # The state bucket, shared with terraform/ (Settings > Secrets and variables > Actions > Variables).
+  # The state bucket (Settings > Secrets and variables > Actions > Variables).
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
   TF_STATE_ENDPOINT: ${{ vars.TF_STATE_ENDPOINT }}
   # Oracle's S3 API refuses the AWS SDK's default chunked, checksummed upload, so these make the S3 backend send a
-  # plain one (see terraform.yml).
+  # plain one.
   AWS_REQUEST_CHECKSUM_CALCULATION: when_required
   AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
   # The release tag being planned, empty for a pull request or a button run on a branch. Apply needs one.

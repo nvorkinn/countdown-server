@@ -45,7 +45,7 @@ def test_a_service_is_started_with_compose_s_command_network_environment_and_mou
     assert options[options.index("--network") + 1] == "host"
     assert options[options.index("--volume") + 1] == f"{tmp_path / 'data'}:/app/data:ro"
     env = dict(option.removeprefix("--env=").split("=", 1) for option in options if option.startswith("--env="))
-    assert env.keys() == check_image_starts.ENV_FILES["broker.env"].keys() | {"REDIS_PASSWORD"}
+    assert env.keys() == check_image_starts.ENV_FILES["broker.env"].keys() | {"REDIS_PASSWORD", "REDIS_URL"}
     assert check_image_starts.command(service) == ["python", "-m", "broker.providers.glow"]
 
 

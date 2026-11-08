@@ -20,7 +20,7 @@ erDiagram
         string device_id PK "token_hex(6)"
         string display_secret_hash UK "SHA-256 of the screen's secret"
         string pairing_token UK
-        string owner "authentik uid"
+        string owner "Pocket ID user id"
         datetime created_at
         datetime paired_at "NULL until paired"
         string device_name "friendly name"

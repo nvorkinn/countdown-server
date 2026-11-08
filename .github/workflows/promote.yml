@@ -136,42 +136,28 @@ jobs:
       allow_older_tag: true
     secrets: inherit
 
+  # Production's edge: the Docker socket proxy, Tinyauth and Pocket ID (upstream's images). Caddy is a service, below,
+  # and starts after this so that the socket proxy is there for it.
+  deploy-edge:
+    name: edge (production)
+    needs: [check, approve]
+    uses: ./.github/workflows/deploy-edge.yml
+    with:
+      environment: production
+      target: prod
+      tag: ${{ inputs.tag }}
+      bundle_sha256: ${{ needs.check.outputs.sha256 }}
+    secrets: inherit
+
   deploy-services:
     name: services (production)
-    needs: [check, approve]
+    needs: [check, approve, deploy-edge]
+    # Even if the edge failed to deploy: the broker and the rest don't depend on it.
+    if: ${{ !cancelled() && needs.approve.result == 'success' }}
     uses: ./.github/workflows/deploy-services.yml
     with:
       environment: production
       target: prod
       tag: ${{ inputs.tag }}
       bundle_sha256: ${{ needs.check.outputs.sha256 }}
-    secrets: inherit
-
-  deploy-authentik:
-    name: authentik (production)
-    needs: [check, approve]
-    uses: ./.github/workflows/deploy-authentik.yml
-    with:
-      environment: production
-      target: prod
-      tag: ${{ inputs.tag }}
-      bundle_sha256: ${{ needs.check.outputs.sha256 }}
-    secrets: inherit
-
-  # Production's authentik configuration, after both deploys, as in release.yml (Terraform goes through Caddy). It asks
-  # for its own approval in terraform-production when the plan has changes, and may apply an older tag (a rollback).
-  terraform:
-    name: terraform (production)
-    needs: [deploy-authentik, deploy-services]
-    if: ${{ !cancelled() && needs.deploy-authentik.result == 'success' }}
-    permissions:
-      contents: read
-      # The plan job comments on pull requests, so its token asks for this even here.
-      pull-requests: write
-    uses: ./.github/workflows/terraform.yml
-    with:
-      apply: true
-      target: prod
-      tag: ${{ inputs.tag }}
-      allow_older_tag: true
     secrets: inherit

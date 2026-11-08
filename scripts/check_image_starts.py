@@ -95,8 +95,9 @@ def compose_services(image: str) -> dict[str, dict]:
 def run_options(name: str, service: dict, deploy_dir: Path) -> list[str]:
     """Return the `docker run` options that start `service` as compose does, with `deploy_dir` as compose's ./."""
     options = ["--detach", "--name", container(name)]
-    if "network_mode" in service:
-        options += ["--network", service["network_mode"]]
+    # Compose puts the services on its networks, where Redis is `redis`. Here the host's network, so that the broker
+    # answers on 127.0.0.1:5000, and `redis` is loopback, where nothing listens: as on a host whose Redis is down.
+    options += ["--network", service.get("network_mode", "host"), "--add-host", "redis:127.0.0.1"]
     env_files = service.get("env_file", [])
     for env_file in [env_files] if isinstance(env_files, str) else env_files:
         if env_file == "settings.env":
