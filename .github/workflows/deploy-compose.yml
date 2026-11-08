@@ -1,0 +1,87 @@
+name: Deploy compose
+
+# A prototype of deploying through the host's Docker daemon (DOCKER_HOST=ssh://...), run by hand against dev/QA: the
+# secrets are fetched from Vaultwarden as in deploy-secrets.yml, but stay on the runner with the compose file and the
+# settings, and scripts/deploy-context.sh drives the daemon over SSH, instead of fetch-release.sh and deploy.sh running on
+# the host. One job deploys every service (no matrix, so no locks and no max-parallel). Not wired into release.yml yet,
+# and dev/QA only: production's edge, Caddy and Pocket ID backup are still deploy.sh's.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release to deploy to dev/QA, e.g. v1.2.3
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy (dev-qa, docker context)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: dev-qa
+    concurrency:
+      group: deploy-compose-dev-qa
+      cancel-in-progress: false
+    env:
+      TAG: ${{ inputs.tag }}
+      TARGET: dev
+      DEPLOY_TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+      TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+      TAILSCALE_OAUTH_SECRET: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
+    steps:
+      # The compose file and settings of the release itself.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+
+      - name: Join the tailnet
+        if: ${{ env.TAILSCALE_OAUTH_CLIENT_ID != '' }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+        with:
+          oauth-client-id: ${{ env.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ env.TAILSCALE_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Set up SSH
+        env:
+          ORACLE_SSH_TOKEN: ${{ secrets.ORACLE_SSH_TOKEN }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$ORACLE_SSH_TOKEN" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The Docker CLI runs `ssh <host> docker system dial-stdio` for every command, so one connection is kept open
+          # and shared.
+          cat > ~/.ssh/config <<'CONFIG'
+          Host *
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            ControlMaster auto
+            ControlPath ~/.ssh/cm-%C
+            ControlPersist 120
+            ServerAliveInterval 30
+          CONFIG
+          sed -i 's/^          //' ~/.ssh/config
+
+      - name: Fetch the secrets from Vaultwarden
+        env:
+          BW_CLIENTID: ${{ secrets.BW_CLIENTID }}
+          BW_CLIENTSECRET: ${{ secrets.BW_CLIENTSECRET }}
+          BW_PASSWORD: ${{ secrets.BW_PASSWORD }}
+        run: |
+          npm ci --prefix scripts/bitwarden-cli --ignore-scripts --no-audit --no-fund --loglevel=error
+          export PATH="$PWD/scripts/bitwarden-cli/node_modules/.bin:$PATH"
+          scripts/fetch-secrets.sh "$TARGET" "$RUNNER_TEMP/secrets"
+
+      - name: Deploy through the host's Docker daemon
+        run: |
+          # The project directory is /opt/auth-broker on the runner too, as on the host (see deploy-context.sh).
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /opt/auth-broker
+          export DOCKER_HOST="ssh://$DEPLOY_TARGET"
+          scripts/deploy-context.sh "$TARGET" "$TAG" "$RUNNER_TEMP/secrets"
+          rm -rf "$RUNNER_TEMP/secrets"

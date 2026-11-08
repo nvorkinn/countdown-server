@@ -344,6 +344,14 @@ gone). To roll back dev/QA, release a revert, or re-run the deploy jobs of an ol
 release's workflow run. To deploy by hand, set the versions in `/opt/auth-broker/.env` and run `docker compose up -d`.
 Make compose changes in the repo: each deploy replaces the host's copy.
 
+**Prototype: deploying through the host's Docker daemon.** `Deploy compose` (Actions > Deploy compose > Run workflow, with
+a release tag) deploys that release to dev/QA without running anything on the host: it fetches the secrets from Vaultwarden
+onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the same path as on the host, so
+`./data` means the same on both), and `scripts/deploy-context.sh` runs `docker compose` against the host with
+`DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It is
+not part of a release yet and does not do what production needs (the edge, Pocket ID's backup, recreating Caddy only when it
+changed); see the script's header.
+
 **One-time setup** in the repository's settings:
 
 - **Environments:**
