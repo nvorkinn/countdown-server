@@ -23,7 +23,8 @@ bp = Blueprint("frames", __name__, url_prefix="/api")
 NO_FRAME_RETRY_S = 10
 
 # Where a screen's reports go: VictoriaLogs' JSON lines endpoint and VictoriaMetrics' InfluxDB line protocol endpoint,
-# both on the host's loopback, which the broker shares through host networking.
+# both on the host's loopback by default (for running the broker on the host); the compose file points the broker at
+# the two services by name with VICTORIA_LOGS_URL and VICTORIA_METRICS_URL.
 FORWARD_TIMEOUT = 2
 LOGS_URL_DEFAULT = "http://127.0.0.1:9428/insert/jsonline?_stream_fields=service,host&_msg_field=_msg&_time_field=_time"
 METRICS_URL_DEFAULT = "http://127.0.0.1:8428/write"

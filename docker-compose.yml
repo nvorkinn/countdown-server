@@ -23,6 +23,12 @@ x-request-logging: &request-logging
 x-redis-url: &redis-url
   REDIS_URL: redis://redis:6379/0
 
+# Where the broker forwards the screens' logs and metrics: VictoriaLogs and VictoriaMetrics by their service names on
+# the default network (the broker no longer shares the host's loopback, which is what its built-in defaults assume).
+x-victoria-urls: &victoria-urls
+  VICTORIA_LOGS_URL: "http://victoria-logs:9428/insert/jsonline?_stream_fields=service,host&_msg_field=_msg&_time_field=_time"
+  VICTORIA_METRICS_URL: http://victoria-metrics:8428/write
+
 # The routes and access rules are labels: caddy-docker-proxy turns each `caddy*` label into Caddyfile, and Tinyauth reads
 # each `tinyauth.apps.*` label as the access rule of the app (the hostname in its config.domain; the subdomain must match
 # the container's name otherwise, so every app here sets the domain). The hostnames come from config/<environment>.env,
@@ -56,7 +62,7 @@ services:
       - redis.env
       - settings.env
     environment:
-      <<: [*request-logging, *redis-url]
+      <<: [*request-logging, *redis-url, *victoria-urls]
       SESSION_COOKIE_SECURE: "true"
       SESSION_COOKIE_SAMESITE: Lax
     labels:
