@@ -75,7 +75,9 @@ jobs:
           BW_PASSWORD: ${{ secrets.BW_PASSWORD }}
           TARGET: ${{ inputs.target }}
         run: |
-          npm install --global @bitwarden/cli@2026.10.0
+          # From scripts/bitwarden-cli's lockfile, so the exact version and hashes are pinned.
+          npm ci --prefix scripts/bitwarden-cli --ignore-scripts
+          export PATH="$PWD/scripts/bitwarden-cli/node_modules/.bin:$PATH"
           scripts/fetch-secrets.sh "$TARGET" "$RUNNER_TEMP/secrets"
           # Into vault-secrets/ on the host, each file moved in whole, as deploy jobs can run at once.
           tar -C "$RUNNER_TEMP/secrets" -cf - . | ssh -i ~/.ssh/id_deploy "$DEPLOY_TARGET" '
