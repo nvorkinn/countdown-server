@@ -316,7 +316,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     read_only: true
-    tmpfs: [/run]
+    # Its entrypoint writes /tmp/haproxy.cfg before starting HAProxy.
+    tmpfs: [/run, /tmp]
     security_opt: [no-new-privileges:true]
     mem_limit: 64m
 
