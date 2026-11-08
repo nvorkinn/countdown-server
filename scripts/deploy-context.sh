@@ -16,7 +16,8 @@ target="$1"
 tag="$2"
 secrets="$3"
 : "${DOCKER_HOST:?}"
-repo="$(cd "$(dirname "$0")/.." && pwd)"
+# The release's compose file and settings: this checkout's unless RELEASE_DIR is another one (the tag being deployed).
+release="${RELEASE_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 dir="${PROJECT_DIR:-/opt/auth-broker}"
 DB_BACKUPS_KEPT=5
 IMAGES_KEPT=2
@@ -28,8 +29,8 @@ export COMPOSE_PROJECT_NAME=auth-broker
 # The project: the compose file, this environment's settings and secrets, and the .env Compose fills the compose file
 # from. No secret goes in .env: Compose would copy it into labels, where `docker inspect` shows it. The secrets are in
 # the *.env files, which the services list as env_file and Compose reads here and gives the containers.
-cp "$repo/docker-compose.yml" docker-compose.yml
-cp "$repo/config/$target.env" settings.env
+cp "$release/docker-compose.yml" docker-compose.yml
+cp "$release/config/$target.env" settings.env
 (umask 077 && cp "$secrets"/*.env .)
 edge_owned="$(sed -n 's/^EDGE_OWNED=//p' settings.env)"
 (

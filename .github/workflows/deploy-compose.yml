@@ -32,10 +32,16 @@ jobs:
       TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
       TAILSCALE_OAUTH_SECRET: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
     steps:
-      # The compose file and settings of the release itself.
+      # The scripts, from the branch the workflow runs on: an older release doesn't have them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # And the compose file and settings of the release itself.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
+          path: release
           persist-credentials: false
 
       - name: Join the tailnet
@@ -83,5 +89,5 @@ jobs:
           # The project directory is /opt/auth-broker on the runner too, as on the host (see deploy-context.sh).
           sudo install -d -o "$(id -u)" -g "$(id -g)" /opt/auth-broker
           export DOCKER_HOST="ssh://$DEPLOY_TARGET"
-          scripts/deploy-context.sh "$TARGET" "$TAG" "$RUNNER_TEMP/secrets"
+          RELEASE_DIR="$PWD/release" scripts/deploy-context.sh "$TARGET" "$TAG" "$RUNNER_TEMP/secrets"
           rm -rf "$RUNNER_TEMP/secrets"
