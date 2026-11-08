@@ -355,6 +355,6 @@ def test_pairing_subscribes_to_the_weather_registration_gave(app, client, fake_r
     else:
         with app.app_context():
             code = pairing.issue_code(device_id)
-        assert client.post("/pair", data={"code": code}).status_code == 302
+        assert client.post("/pair/add", data={"code": code}).status_code == 302
 
     assert fake_redis.sets["v1:sub:weather"] == {"london"}

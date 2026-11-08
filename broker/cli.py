@@ -95,7 +95,7 @@ def code(device_id: str) -> None:
 @click.argument("device_id")
 @click.argument("user")
 def owner(device_id: str, user: str) -> None:
-    """Make a user (their Authentik user id) the owner of a device."""
+    """Make a user (their Pocket ID user id) the owner of a device."""
     device = _get_device(device_id)
     previous = device.owner
     device.owner = user

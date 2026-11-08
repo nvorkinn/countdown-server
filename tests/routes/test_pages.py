@@ -52,13 +52,13 @@ REPO = Path(__file__).parents[2]
 
 def test_pages_show_the_logo(client):
     assert (REPO / "broker" / "static" / "countdown-pill.svg").is_file()
-    assert 'src="/static/countdown-pill.svg" alt="Countdown"' in client.get("/pair").get_data(as_text=True)
+    assert 'src="/static/countdown-pill.svg" alt="Countdown"' in client.get("/pair/add").get_data(as_text=True)
 
 
 def test_index_redirects_to_pair_when_unpaired(client):
     response = client.get("/")
     assert response.status_code == 302
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
 
 
 def test_index_redirects_to_device_when_paired(paired_client):
@@ -68,13 +68,13 @@ def test_index_redirects_to_device_when_paired(paired_client):
 
 
 def test_pair_get_renders_form(client):
-    response = client.get("/pair")
+    response = client.get("/pair/add")
     assert response.status_code == 200
     assert b"pairing code" in response.data.lower()
 
 
 def test_pair_rejects_unknown_code(client):
-    response = client.post("/pair", data={"code": "NOPE12"})
+    response = client.post("/pair/add", data={"code": "NOPE12"})
     assert response.status_code == 200
     assert b"invalid or has expired" in response.data
 
@@ -83,10 +83,10 @@ def test_pair_code_is_single_use(app, client, register_device):
     device_id, _secret = register_device()
     code = _issue(app, device_id)
 
-    first = client.post("/pair", data={"code": code})
+    first = client.post("/pair/add", data={"code": code})
     assert first.status_code == 302
 
-    second = client.post("/pair", data={"code": code})
+    second = client.post("/pair/add", data={"code": code})
     assert b"invalid or has expired" in second.data
 
 
@@ -94,7 +94,7 @@ def test_pair_accepts_lowercase_code(app, client, register_device):
     device_id, _secret = register_device()
     code = _issue(app, device_id)
 
-    response = client.post("/pair", data={"code": code.lower()})
+    response = client.post("/pair/add", data={"code": code.lower()})
     assert response.status_code == 302
 
 
@@ -105,31 +105,31 @@ def _prefilled_code(response):
 
 
 def test_pair_fills_in_a_code_given_in_the_link(client):
-    response = client.get("/pair?code=abc234")
+    response = client.get("/pair/add?code=abc234")
     assert response.status_code == 200
     assert _prefilled_code(response) == "ABC234"
 
 
 @pytest.mark.parametrize("code", ["", "a" * 64, "ABC12", "ABC2345", "ABCD0O", "<b>12"])
 def test_pair_fills_in_nothing_that_isnt_a_code(client, code):
-    assert _prefilled_code(client.get("/pair", query_string={"code": code})) == ""
+    assert _prefilled_code(client.get("/pair/add", query_string={"code": code})) == ""
 
 
 def test_pair_takes_the_code_only_from_code_not_t(client):
-    assert _prefilled_code(client.get("/pair?t=ABC234")) == ""
+    assert _prefilled_code(client.get("/pair/add?t=ABC234")) == ""
 
 
 def test_pair_sends_the_code_to_pair_itself_so_a_wrong_one_isnt_sent_again(client):
-    response = client.get("/pair?code=ABC234")
-    assert b'action="/pair"' in response.data
+    response = client.get("/pair/add?code=ABC234")
+    assert b'action="/pair/add"' in response.data
 
 
 def test_a_code_from_the_link_pairs_like_a_typed_one(app, client, register_device):
     device_id, _secret = register_device()
     code = _issue(app, device_id)
 
-    page = client.get(f"/pair?code={code.lower()}")
-    response = client.post("/pair", data={"code": _prefilled_code(page)})
+    page = client.get(f"/pair/add?code={code.lower()}")
+    response = client.post("/pair/add", data={"code": _prefilled_code(page)})
 
     assert response.status_code == 302
     with app.app_context():
@@ -140,8 +140,8 @@ def test_wrong_codes_lock_out_the_ip_even_for_the_right_code(app, client, regist
     device_id, _secret = register_device()
     code = _issue(app, device_id)
 
-    responses = [client.post("/pair", data={"code": "NOPE22"}) for _ in range(10)]
-    locked = client.post("/pair", data={"code": code})
+    responses = [client.post("/pair/add", data={"code": "NOPE22"}) for _ in range(10)]
+    locked = client.post("/pair/add", data={"code": code})
 
     assert [r.status_code for r in responses] == [200] * 9 + [429]
     assert locked.status_code == 429
@@ -153,7 +153,7 @@ def test_wrong_codes_lock_out_the_ip_even_for_the_right_code(app, client, regist
 def test_device_config_requires_pairing(client):
     response = client.get("/device")
     assert response.status_code == 302
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
 
 
 def test_device_config_get_renders_settings(paired_client):
@@ -475,7 +475,7 @@ def test_disconnect_removes_stored_token(app, paired_client):
 def test_disconnect_requires_pairing(client):
     response = client.post("/account/spotify/disconnect")
     assert response.status_code == 302
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
 
 
 def test_the_account_stores_the_glowmarkt_password_encrypted(app, paired_client):
@@ -521,7 +521,7 @@ def test_a_blank_glowmarkt_password_keeps_the_saved_one(app, paired_client):
 
 
 def _redirects_to_pair(response):
-    return response.status_code == 302 and response.headers["Location"] == "/pair"
+    return response.status_code == 302 and response.headers["Location"] == "/pair/add"
 
 
 def test_unpairing_a_device_revokes_the_user_that_paired_it(paired_client, cli):
@@ -550,31 +550,31 @@ def test_pairing_again_after_an_unpair_restores_access(app, paired_client, cli):
     with app.app_context():
         code = pairing.live_code(device_id)
 
-    assert client.post("/pair", data={"code": code}).status_code == 302
+    assert client.post("/pair/add", data={"code": code}).status_code == 302
 
     assert client.get("/device").status_code == 200
 
 
 def test_another_user_cannot_see_the_settings(app, paired_client):
     other = app.test_client()
-    other.environ_base["HTTP_X_AUTHENTIK_UID"] = "someone-else"
+    other.environ_base["HTTP_REMOTE_SUB"] = "someone-else"
 
     assert _redirects_to_pair(other.get("/device"))
 
 
 def test_pages_need_the_login_proxy_header(anonymous_client, paired_client):
     assert anonymous_client.get("/device").status_code == 401
-    assert anonymous_client.get("/pair").status_code == 401
-    assert anonymous_client.post("/pair", data={"code": "ABC234"}).status_code == 401
+    assert anonymous_client.get("/pair/add").status_code == 401
+    assert anonymous_client.post("/pair/add", data={"code": "ABC234"}).status_code == 401
 
 
 def test_a_code_hands_a_device_to_the_user_who_enters_it(app, paired_client):
     client, device_id, _secret = paired_client
     code = _issue(app, device_id)
     new_owner = app.test_client()
-    new_owner.environ_base["HTTP_X_AUTHENTIK_UID"] = "someone-else"
+    new_owner.environ_base["HTTP_REMOTE_SUB"] = "someone-else"
 
-    assert new_owner.post("/pair", data={"code": code}).status_code == 302
+    assert new_owner.post("/pair/add", data={"code": code}).status_code == 302
 
     assert new_owner.get("/device").status_code == 200
     assert _redirects_to_pair(client.get("/device"))
@@ -711,7 +711,7 @@ def _wrong_codes(client, times, ip="203.0.113.7"):
     """Post `times` wrong codes as if from `ip` (as Caddy forwards it) and return the last response."""
     response = None
     for _ in range(times):
-        response = client.post("/pair", data={"code": "NOPE12"}, headers={"X-Forwarded-For": ip})
+        response = client.post("/pair/add", data={"code": "NOPE12"}, headers={"X-Forwarded-For": ip})
     return response
 
 
@@ -731,12 +731,12 @@ def test_a_locked_out_ip_is_refused_even_with_the_right_code(app, client, regist
     code = _issue(app, device_id)
     _wrong_codes(client, 10)
 
-    response = client.post("/pair", data={"code": code}, headers={"X-Forwarded-For": "203.0.113.7"})
+    response = client.post("/pair/add", data={"code": code}, headers={"X-Forwarded-For": "203.0.113.7"})
 
     assert response.status_code == 429
     assert _redirects_to_pair(client.get("/device"))  # not paired
     # The code wasn't used up: the same browser can pair with it from a different IP.
-    assert client.post("/pair", data={"code": code}, headers={"X-Forwarded-For": "198.51.100.2"}).status_code == 302
+    assert client.post("/pair/add", data={"code": code}, headers={"X-Forwarded-For": "198.51.100.2"}).status_code == 302
 
 
 def test_pair_lockout_tells_the_visitor_how_many_minutes_to_wait(app, client):
@@ -756,7 +756,7 @@ def test_pair_throttles_each_forwarded_ip_separately(client):
     _wrong_codes(client, 10, ip="203.0.113.7")
 
     assert _wrong_codes(client, 1, ip="198.51.100.2").status_code == 200
-    assert client.get("/pair").status_code == 200  # the form itself is never throttled
+    assert client.get("/pair/add").status_code == 200  # the form itself is never throttled
 
 
 def test_pair_logs_wrong_codes_and_lockouts(client, caplog):
@@ -790,7 +790,7 @@ def test_unlink_screen_clears_the_display_secret(app, client, paired_client):
 def test_unlink_screen_requires_pairing(client):
     response = client.post("/device/display/unlink")
     assert response.status_code == 302
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
 
 
 def test_device_config_shows_one_style_picker_with_the_stored_style_selected(app, paired_client):

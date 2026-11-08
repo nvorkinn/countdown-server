@@ -28,7 +28,7 @@ def test_require_device_auth_accepts_correct_secret(client, register_device):
 def test_require_paired_user_redirects_when_unpaired(client):
     response = client.get("/device")
     assert response.status_code == 302
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
 
 
 def test_require_paired_user_allows_the_paired_user(paired_client):
@@ -97,7 +97,7 @@ def test_require_user_id_keeps_the_urls_own_arguments(app):
         assert view(name="project") == "user-1/project"
 
 
-@pytest.mark.parametrize("headers", [{}, {"X-Authentik-Uid": ""}, {"X-Authentik-Uid": "  "}])
+@pytest.mark.parametrize("headers", [{}, {"Remote-Sub": ""}, {"Remote-Sub": "  "}])
 def test_require_user_id_turns_away_a_request_without_the_login_header(app, headers):
     @require_user_id
     def view(user_id):
@@ -116,7 +116,7 @@ def test_require_user_lets_the_view_run_without_the_users_id(app):
         assert view() == "ok"
 
 
-@pytest.mark.parametrize("headers", [{}, {"X-Authentik-Uid": "  "}])
+@pytest.mark.parametrize("headers", [{}, {"Remote-Sub": "  "}])
 def test_require_user_turns_away_a_request_without_the_login_header(app, headers):
     @require_user
     def view():

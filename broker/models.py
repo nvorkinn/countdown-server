@@ -26,7 +26,7 @@ class Device(Model):
     display_secret_hash: Mapped[str | None] = mapped_column(String, index=True, unique=True)
     # What the owner's browser presents to pair without a code (services/pairing.token_for), derived from the secret.
     pairing_token: Mapped[str | None] = mapped_column(String, index=True, unique=True)
-    # The Authentik user id of the device's one owner (auth.current_user).
+    # The Pocket ID user id (Tinyauth's Remote-Sub) of the device's one owner (auth.current_user).
     owner: Mapped[str | None] = mapped_column(String, index=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     paired_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
@@ -42,6 +42,17 @@ class Device(Model):
     # The services a screen shows (Spotify, Apple Music, GitHub, Parcel, Glowmarkt) are linked to its owner's account,
     # not to the screen: see SpotifyToken and the rest, keyed by user_id.
     assignment: Mapped[RendererAssignment | None] = relationship(back_populates="device", cascade="all, delete-orphan")
+
+
+class PendingPairing(Model):
+    """A sign-up that has entered a device's code but not yet signed in: the device goes to that user when they do."""
+
+    __tablename__ = "pending_pairings"
+
+    # The Pocket ID user created for the sign-up, as Tinyauth will later forward it (auth.current_user).
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"))
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
 class PairingCode(Model):
@@ -252,7 +263,7 @@ class SpotifyToken(Model):
 
     __tablename__ = "spotify_tokens"
 
-    # The Authentik user id (auth.current_user) whose account it is, as Device.owner names them.
+    # The Pocket ID user id (auth.current_user) whose account it is, as Device.owner names them.
     user_id: Mapped[str] = mapped_column(String, primary_key=True)
     refresh_token: Mapped[str] = mapped_column(String)
     access_token: Mapped[str | None] = mapped_column(String)
@@ -343,7 +354,7 @@ class GitHubAppToken(Model):
 
     __tablename__ = "github_app_tokens"
 
-    # The Authentik user id (auth.current_user) who connected.
+    # The Pocket ID user id (auth.current_user) who connected.
     user_id: Mapped[str] = mapped_column(String, primary_key=True)
     access_token_encrypted: Mapped[str] = mapped_column(String)
     refresh_token_encrypted: Mapped[str] = mapped_column(String)

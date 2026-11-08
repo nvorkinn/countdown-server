@@ -30,7 +30,7 @@ def test_disabled_by_default(client):
 
 def test_authentication_and_personal_authorization(client, anonymous_client, dashboard):
     assert anonymous_client.get("/github").status_code == 401
-    assert client.get("/github", headers={"X-Authentik-Uid": "someone-else"}).status_code == 403
+    assert client.get("/github", headers={"Remote-Sub": "someone-else"}).status_code == 403
     assert not dashboard.repositories.called
 
 
@@ -150,7 +150,7 @@ def test_dashboard_returns_public_message_not_exception_diagnostics(client, dash
 def test_approve_requires_login_personal_identity_and_csrf(client, anonymous_client, dashboard):
     path = "/github/repositories/alice/project/runs/4/approve"
     assert anonymous_client.post(path, json={"environment_id": 10}).status_code == 401
-    assert client.post(path, headers={"X-Authentik-Uid": "other"}, json={"environment_id": 10}).status_code == 403
+    assert client.post(path, headers={"Remote-Sub": "other"}, json={"environment_id": 10}).status_code == 403
     assert client.post(path, json={"environment_id": 10}).status_code == 403
     dashboard.approve_deployment.assert_not_called()
 
@@ -307,6 +307,6 @@ def test_views_that_do_not_use_the_user_run_without_its_id(client, dashboard):
 
 
 def test_the_privacy_check_applies_to_views_with_and_without_the_user_id(client, dashboard):
-    other = {"X-Authentik-Uid": "someone-else"}
+    other = {"Remote-Sub": "someone-else"}
     for path in ("/github/connect", "/github/changes", "/github/repositories", "/github/callback"):
         assert client.get(path, headers=other).status_code == 403

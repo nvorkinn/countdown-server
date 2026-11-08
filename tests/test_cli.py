@@ -29,7 +29,7 @@ def _issue(app, device_id):
 
 def _paired_device(app, client, register_device):
     device_id, secret = register_device()
-    client.post("/pair", data={"code": _issue(app, device_id)})
+    client.post("/pair/add", data={"code": _issue(app, device_id)})
     return device_id, secret
 
 
@@ -150,8 +150,8 @@ def test_code_hands_an_already_paired_device_to_another_user(app, client, regist
     code = result.output.split(":")[0]
     assert _shown(app, device_id)["pairing_code"] == code  # the device shows it too
     new_owner = app.test_client()
-    new_owner.environ_base["HTTP_X_AUTHENTIK_UID"] = "someone-else"
-    new_owner.post("/pair", data={"code": code})
+    new_owner.environ_base["HTTP_REMOTE_SUB"] = "someone-else"
+    new_owner.post("/pair/add", data={"code": code})
     assert new_owner.get("/device").status_code == 200
     assert client.get("/device").status_code == 302  # one owner at a time
     assert _shown(app, device_id)["clock_format"] == "12h"

@@ -237,7 +237,7 @@ def test_the_screen_is_only_its_owners(app, paired_client, anonymous_client, dra
     _client, device_id, _secret = paired_client
     draw(device_id, bytes(FRAME_BYTES))
     stranger = app.test_client()
-    stranger.environ_base["HTTP_X_AUTHENTIK_UID"] = "someone-else"
+    stranger.environ_base["HTTP_REMOTE_SUB"] = "someone-else"
 
     for path in (f"/device/{device_id}/screen", f"/device/{device_id}/screen/frame.png"):
         assert stranger.get(path).status_code == 404

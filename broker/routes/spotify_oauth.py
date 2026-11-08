@@ -36,7 +36,7 @@ def callback() -> ResponseReturnValue:
     # Checked again: the user may have lost their screens, or signed out, since they left.
     user_id = current_user()
     if user_id is None or not user_devices():
-        return redirect(url_for("pages.pair"))
+        return redirect(url_for("pages.add_screen"))
 
     spotify.exchange_code(user_id, request.args.get("code"))
     return redirect(url_for("account.account"))

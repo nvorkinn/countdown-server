@@ -23,7 +23,12 @@ from .routes import (
     stop_search,
     telegram_webhook,
 )
-from .services.pair_throttle import MAX_REGISTRATION_LOCKOUT_SECONDS, REGISTRATIONS_PER_MINUTE, PairThrottle
+from .services.pair_throttle import (
+    MAX_REGISTRATION_LOCKOUT_SECONDS,
+    REGISTRATIONS_PER_MINUTE,
+    SIGNUPS_PER_MINUTE,
+    PairThrottle,
+)
 
 
 def create_app() -> Flask:
@@ -47,6 +52,10 @@ def create_app() -> Flask:
     )
 
     app.extensions["pair_throttle"] = PairThrottle()
+    # The public sign-up makes an account in Pocket ID per call, so every call counts, like /register.
+    app.extensions["signup_throttle"] = PairThrottle(
+        max_events=SIGNUPS_PER_MINUTE, max_lockout=MAX_REGISTRATION_LOCKOUT_SECONDS
+    )
     app.extensions["register_throttle"] = PairThrottle(
         max_events=REGISTRATIONS_PER_MINUTE, max_lockout=MAX_REGISTRATION_LOCKOUT_SECONDS
     )
