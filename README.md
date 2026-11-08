@@ -9,8 +9,9 @@ The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare
   them, so no credential leaves the broker;
 - writes each screen's config and subscriptions to Redis for countdown, and serves each screen the frame the render
   pool drew;
-- runs the shared infrastructure on the Oracle Cloud ARM host: the edge (Caddy, Tinyauth and Pocket ID), Redis, Fluent
-  Bit, VictoriaLogs and VictoriaMetrics.
+- runs the shared infrastructure on the host: the edge (Caddy, Tinyauth and Pocket ID; production only), Redis, Fluent
+  Bit, VictoriaLogs and VictoriaMetrics. Production runs on the Oracle Cloud ARM host; dev/QA runs on the home server
+  (`nikolai-server`), behind [home-stack](https://github.com/nvorkinn/home-stack)'s edge.
 
 It also serves a personal [GitHub dashboard](#github-dashboard) at `/github`.
 
@@ -360,6 +361,16 @@ Make compose changes in the repo: each deploy replaces the host's copy.
   `DEPLOY_HOST`, `DEPLOY_USER` (in the `docker` group, owning `/opt/auth-broker/`), `ORACLE_SSH_TOKEN` (a
   private key for that user) and `DEPLOY_SSH_KNOWN_HOSTS` (`ssh-keyscan <host>`), plus the DNS ones in
   [infra/cloudflare/README.md](infra/cloudflare/README.md#setup) and `CODECOV_TOKEN`.
+  - **`dev-qa` is the home server,** `nikolai-server` (`DEPLOY_HOST=nikolai-server.tail7c722e.ts.net`, `DEPLOY_USER=ansible`),
+    reachable only over Tailscale. Its deploy jobs first join the tailnet as `tag:ci` (the `tailscale/github-action` step,
+    skipped where `TAILSCALE_OAUTH_CLIENT_ID` is empty, as in `production`), so `dev-qa` also needs the secrets
+    `TAILSCALE_OAUTH_CLIENT_ID` and `TAILSCALE_OAUTH_SECRET` (an OAuth client allowed to create `tag:ci` nodes), and the
+    tailnet's ACL must let `tag:ci` SSH to the server. The host's `/opt/auth-broker/` and its age key
+    (`/opt/auth-broker/age.key`) come from [server-config](https://github.com/nvorkinn/server-config).
+    Dev has no edge of its own: its containers join home-stack's Docker network `edge` (`EDGE_OWNED=false`), which already runs
+    Caddy, Tinyauth (`tauth.nikolaivorkinn.com`) and Pocket ID (`id.nikolaivorkinn.com`). Dev's names (`auth.dev.`, `logs.dev.`,
+    `metrics.dev.`, `dev.`) are CNAMEs to `home.nikolaivorkinn.com`; Caddy gets their certificates one by one through its
+    Cloudflare DNS challenge, as its wildcard covers only `*.nikolaivorkinn.com`.
 - **The host** needs Docker Compose v2 (`sudo apt install docker-compose-v2`), `curl` and its age key (below).
 - **Before the first promotion,** `secrets/prod/` has to be committed, encrypted for the laptop and the production
   host, with the matching `prod` rule in `.sops.yaml` uncommented (see Secrets below), and a release made after that:

@@ -1,4 +1,5 @@
-# The A records for the names one environment's Caddy serves. The names come from config/<environment>.env, the file
+# The records for the names one environment's Caddy serves: A records to the host's address in production, CNAMEs to the
+# home server in dev/QA (see var.cname_targets). The names come from config/<environment>.env, the file
 # the deploy bundle's settings.env is made from, so DNS and Caddy can't disagree about them. They are DNS-only: the
 # firmware pins Let's Encrypt's roots, so nothing may sit in front of the servers and swap in another CA (see the
 # firmware's README). Dev/QA and production are applied separately (the Release and Promote workflows), each with its
@@ -6,9 +7,17 @@
 locals {
   settings = { for line in regexall("(?m)^([A-Z][A-Z0-9_]*)=(.*)$", file("${path.module}/../../config/${var.environment}.env")) : line[0] => trimspace(line[1]) }
 
+  # Where the environment's names point: a CNAME target (dev/QA, on the home server) or, without one, an A record to the
+  # environment's address.
+  cname_target = lookup(var.cname_targets, var.environment, null)
+
   # APEX_HOST and www. redirect to AUTH_HOST (config/*.env), but all of them need a record. TAUTH_HOST is Tinyauth and
-  # ID_HOST Pocket ID.
-  names = toset([local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.AUTH_HOST, local.settings.TAUTH_HOST, local.settings.ID_HOST, local.settings.LOGS_HOST, local.settings.METRICS_HOST])
+  # ID_HOST Pocket ID; where this repo doesn't run them (EDGE_OWNED=false: dev/QA uses home-stack's, which owns their
+  # records) they get none.
+  names = toset(concat(
+    [local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.AUTH_HOST, local.settings.LOGS_HOST, local.settings.METRICS_HOST],
+    local.settings.EDGE_OWNED == "true" ? [local.settings.TAUTH_HOST, local.settings.ID_HOST] : [],
+  ))
 }
 
 resource "cloudflare_dns_record" "host" {
@@ -16,8 +25,8 @@ resource "cloudflare_dns_record" "host" {
 
   zone_id = var.zone_id
   name    = each.value
-  type    = "A"
-  content = var.host_ips[var.environment]
+  type    = local.cname_target == null ? "A" : "CNAME"
+  content = local.cname_target == null ? var.host_ips[var.environment] : local.cname_target
   ttl     = 300
   proxied = false
   comment = "${var.environment} (managed by Terraform, infra/cloudflare)"
