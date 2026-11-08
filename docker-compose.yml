@@ -226,6 +226,8 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - fluent-bit-state:/state
 
+  # The ingest routes match the token as Caddy's runtime placeholder {env.LOGS_INGEST_TOKEN}, read from the Caddy
+  # container's own environment (caddy.env), so the secret is never in a label, `docker inspect` or Caddy's logs.
   # Logs: single-node VictoriaLogs, served at LOGS_HOST: ingest with the ingest token, the UI to Pocket ID's `admins`.
   victoria-logs:
     <<: *release-image
@@ -243,7 +245,7 @@ services:
       caddy: ${LOGS_HOST:?}
       # /insert/* takes the bearer token and no login: the machines sending logs can't sign in.
       caddy.@ingest.path: /insert/*
-      caddy.@ingest.header: Authorization "Bearer ${LOGS_INGEST_TOKEN:?}"
+      caddy.@ingest.header: Authorization "Bearer {env.LOGS_INGEST_TOKEN}"
       caddy.handle_0: "@ingest"
       caddy.handle_0.reverse_proxy: "{{upstreams 9428}}"
       caddy.handle_1.import: tinyauth
@@ -268,7 +270,7 @@ services:
     labels:
       caddy: ${METRICS_HOST:?}
       caddy.@ingest.path: /api/v1/write /api/v1/import /api/v1/import/* /influx/*
-      caddy.@ingest.header: Authorization "Bearer ${LOGS_INGEST_TOKEN:?}"
+      caddy.@ingest.header: Authorization "Bearer {env.LOGS_INGEST_TOKEN}"
       caddy.handle_0: "@ingest"
       caddy.handle_0.reverse_proxy: "{{upstreams 8428}}"
       caddy.handle_1.import: tinyauth

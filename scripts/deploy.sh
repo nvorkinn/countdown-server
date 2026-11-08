@@ -126,9 +126,9 @@ fi
   cp "$bundle/settings.env" settings.env.tmp
   mv settings.env.tmp settings.env
   # Keep only the version pins, and add what Compose fills into docker-compose.yml's labels and networks: the settings
-  # (hostnames and the like, not secret), which edge profile and network this environment has, and the log ingest token
-  # (Caddy's route for VictoriaLogs and VictoriaMetrics matches on it, as a label; .env is readable by its owner only).
-  # The other secrets are in the *.env files.
+  # (hostnames and the like, not secret) and which edge profile and network this environment has. No secret goes in
+  # here: Compose would copy it into labels, where `docker inspect` and Caddy's logs show it. The secrets are in the
+  # *.env files (the log ingest token reaches Caddy's routes as the runtime placeholder {env.LOGS_INGEST_TOKEN}).
   # AUTH_BROKER_VERSION is the broker's pin from before the rename (now COUNTDOWN_SERVER_VERSION).
   (
     umask 077
@@ -139,7 +139,6 @@ fi
     else
       printf 'COMPOSE_PROFILES=\nEDGE_NETWORK_EXTERNAL=true\n' >> .env.tmp
     fi
-    grep -E '^LOGS_INGEST_TOKEN=' caddy.env >> .env.tmp
   )
   mv .env.tmp .env
   if [ -n "$var" ]; then

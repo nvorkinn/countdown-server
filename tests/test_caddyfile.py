@@ -110,7 +110,9 @@ def test_the_victoria_uis_are_for_admins_and_only_ingest_skips_the_login():
         assert labels[f"tinyauth.apps.{app}.oauth.groups"] == "admins"
         assert labels[f"tinyauth.apps.{app}.config.domain"] == "${" + host + "}"
         # The ingest route has the bearer token and no login; the rest imports the login.
-        assert labels["caddy.@ingest.header"].startswith('Authorization "Bearer ')
+        # The token is Caddy's runtime placeholder, never its value: a value in a label shows in `docker inspect` and in
+        # the Caddyfile caddy-docker-proxy logs.
+        assert labels["caddy.@ingest.header"] == 'Authorization "Bearer {env.LOGS_INGEST_TOKEN}"'
         assert not any(key.startswith("caddy.handle_0.import") for key in labels)
         assert labels["caddy.handle_1.import"] == "tinyauth"
 

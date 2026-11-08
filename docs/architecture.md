@@ -99,7 +99,7 @@ broker to trust them. The broker has no user table: the Pocket ID user id is sto
 | **Tinyauth's Pocket ID client** | operator | `secrets/<environment>/tinyauth.env` | The OIDC client id and secret Pocket ID issued for Tinyauth. |
 | **Pocket ID's `ENCRYPTION_KEY`** | operator | `secrets/<environment>/pocket-id.env` | Encrypts what Pocket ID stores. Never changed after first start. |
 | **`REDIS_PASSWORD`** | operator | `secrets/<environment>/redis.env` | Used by everything that talks to Redis, including countdown. |
-| **`LOGS_INGEST_TOKEN`** | operator | `secrets/<environment>/caddy.env` | Bearer for the ingest paths on `logs.` and `metrics.`. The broker forwards inside the network without it. `deploy.sh` also puts it in the host's `.env`, for the routes' labels. |
+| **`LOGS_INGEST_TOKEN`** | operator | `secrets/<environment>/caddy.env` | Bearer for the ingest paths on `logs.` and `metrics.`. The broker forwards inside the network without it. The routes' labels name it as Caddy's `{env.LOGS_INGEST_TOKEN}` placeholder, so the value is never in a label or in `.env`. |
 
 No credential is ever written to Redis: configs carry only flags like `glowmarkt.enabled`, and the providers write only
 the data they fetched. The pairing code is the exception, in `v1:pairing:<device id>` for its ten minutes.

@@ -31,7 +31,6 @@ def test_every_name_the_compose_labels_and_settings_use_is_a_setting_or_secret()
     compose = (ROOT / "docker-compose.yml").read_text()
     names = set(re.findall(r"\$\{([A-Z_]+)[:}?-]", compose))
     known = set(_settings(CONFIG / "dev.env")) | {
-        "LOGS_INGEST_TOKEN",
         "COMPOSE_PROFILES",
         "EDGE_NETWORK_EXTERNAL",
         "EDGE_TRUSTED_PROXIES",
