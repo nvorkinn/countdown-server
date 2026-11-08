@@ -12,7 +12,6 @@ from broker.services import pairing
 if TYPE_CHECKING:
     from broker.clients.pocket_id import PocketIdClient
 
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_NAME = 100
 MAX_EMAIL = 254
 INVALID_CODE = "That code is invalid or has expired."
@@ -32,6 +31,20 @@ class SignupError(Exception):
         self.wrong_code = wrong_code
 
 
+def _looks_like_email(email: str) -> bool:
+    """One @, text on both sides, a dot inside the domain, no whitespace. Plain string checks: a regex for this can backtrack."""
+    local, at, domain = email.partition("@")
+    return (
+        bool(at)
+        and bool(local)
+        and "@" not in domain
+        and not any(c.isspace() for c in email)
+        and 0 < domain.find(".") < len(domain) - 1
+        and not domain.startswith(".")
+        and not domain.endswith(".")
+    )
+
+
 def sign_up(pocket_id: PocketIdClient, code: str, name: str, email: str, return_to: str) -> str:
     """Sign the person up and return the Pocket ID page where they add a passkey, which sends them on to `return_to`.
 
@@ -40,7 +53,7 @@ def sign_up(pocket_id: PocketIdClient, code: str, name: str, email: str, return_
     """
     if not pairing.code_is_live(code):
         raise SignupError(INVALID_CODE, HTTPStatus.BAD_REQUEST, wrong_code=True)
-    if not name or len(name) > MAX_NAME or len(email) > MAX_EMAIL or not EMAIL_RE.match(email):
+    if not name or len(name) > MAX_NAME or len(email) > MAX_EMAIL or not _looks_like_email(email):
         msg = "Please enter your name and a valid email."
         raise SignupError(msg, HTTPStatus.BAD_REQUEST)
 

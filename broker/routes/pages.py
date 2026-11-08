@@ -176,7 +176,7 @@ def pair() -> ResponseReturnValue:
     It's outside the login, so the visitor has no account yet. They give their name and email, and the broker creates
     them in Pocket ID (clients/pocket_id.py) and sends them there to add a passkey; the screen becomes theirs when they
     first arrive signed in (claim_reserved_device). An email that already has an account is never given a token: that
-    person logs in as usual, then adds the screen at /pair/add.
+    person is sent through the login to /pair/add?code=, which adds the screen without retyping the code.
     """
     if current_user() is not None:
         return redirect(url_for("pages.add_screen", code=request.args.get("code") or None))
@@ -221,7 +221,9 @@ def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way th
     try:
         url = signup.sign_up(pocket_id, code, name, email, _site_url())
     except UserExistsError:
-        return render_template("signup_exists.html", login_url=_site_url()), HTTPStatus.CONFLICT
+        # Back through the login to /pair/add, which pairs the screen from ?code= with no typing.
+        login_url = _site_url().rstrip("/") + url_for("pages.add_screen", code=code)
+        return render_template("signup_exists.html", login_url=login_url), HTTPStatus.CONFLICT
     except signup.SignupError as e:
         if e.wrong_code:
             current_app.logger.warning("Wrong pairing code from %s", ip)

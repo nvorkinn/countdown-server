@@ -130,7 +130,8 @@ def test_an_existing_email_is_sent_to_login_and_never_given_a_token(app, anonymo
     response = anonymous_client.post("/pair", data={"code": pairing_code, **FORM})
 
     assert response.status_code == 409
-    assert SITE.encode() in response.data
+    # The login link leads on to the page that pairs from the code, so it isn't typed again.
+    assert f"{SITE}/pair/add?code={pairing_code}".encode() in response.data
     assert pocket.paths() == [("POST", "/api/users")]  # no token, no group change
     # The code isn't used up by that, and nothing is reserved.
     with app.app_context():
