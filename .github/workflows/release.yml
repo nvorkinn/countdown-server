@@ -257,5 +257,6 @@ jobs:
     needs: [tag, images]
     uses: ./.github/workflows/deploy-compose.yml
     with:
+      environment: dev-qa
       tag: ${{ needs.tag.outputs.value }}
     secrets: inherit

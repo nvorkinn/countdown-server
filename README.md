@@ -344,15 +344,17 @@ gone). To roll back dev/QA, release a revert, or re-run the deploy jobs of an ol
 release's workflow run. To deploy by hand, set the versions in `/opt/auth-broker/.env` and run `docker compose up -d`.
 Make compose changes in the repo: each deploy replaces the host's copy.
 
-**Dev/QA: deploying through the host's Docker daemon.** `deploy-compose.yml` (a release's `deploy (dev-qa)` job, or Actions >
-Deploy compose > Run workflow with a release tag) deploys that release to dev/QA without running anything on the host: it
-fetches the secrets from Vaultwarden
+**Deploying through the host's Docker daemon.** `deploy-compose.yml` (a release's `deploy (dev-qa)` job, or Actions >
+Deploy compose > Run workflow with a release tag) deploys that release to dev/QA without running anything on the host. Run by
+hand with `production` it only plans: it pulls the images and prints what a deploy would do (which containers it would
+replace and which it would leave alone), changing no container and taking no backup. It fetches the secrets from Vaultwarden
 onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the same path as on the host, so
 `./data` means the same on both), and `scripts/deploy-context.sh` runs `docker compose` against the host with
-`DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It does
-not yet do what production needs (the edge, Pocket ID's backup, recreating Caddy only when it changed; see the script's
-header), so production still uses `deploy.sh`. The first time it ran on a host that `deploy.sh` had set up it recreated every
-container once, and left them alone after that.
+`DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. Like
+`deploy.sh` it backs up the database and Pocket ID's data, brings the edge up before Caddy (`depends_on`), and leaves an
+image that didn't change since the last release (the infra images are re-tagged each release) running. The first time it
+runs on a host that `deploy.sh` set up it recreates every container once, and leaves them alone after that. Production
+still uses `deploy.sh` until its first plan has been read.
 
 **One-time setup** in the repository's settings:
 
