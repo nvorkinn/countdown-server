@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -6,6 +7,8 @@ import yaml
 
 ROOT = Path(__file__).parent.parent
 COMPOSE = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+# What the deploy writes into each secrets file, per target: the Vaultwarden items it fetches.
+SECRETS_MAP = json.loads((ROOT / "secrets-map.json").read_text())
 # What broker.create_app() cannot start without: config.load() reads each of these with os.environ[...].
 REQUIRED = re.findall(r'os\.environ\["(\w+)"\]', (ROOT / "broker" / "config.py").read_text())
 # And what loop.read_only_app() can't (CREDENTIAL_ENCRYPTION_KEY).
@@ -15,15 +18,17 @@ REQUIRED_READ_ONLY = re.findall(r'os\.environ\["(\w+)"\]', (ROOT / "broker" / "p
 def _env_file_names(service: dict) -> set[str]:
     """Return the variables a service's env_files provide.
 
-    Those are the names secrets/<file>.example lists (the variables of secrets-map.json's Vaultwarden items), and for
-    settings.env config/dev.env's (every environment's has the same).
+    Those are the variables secrets-map.json has for each secrets file in every target that has it (what the deploy
+    writes), and for settings.env config/dev.env's (every environment's has the same).
     """
     names: set[str] = set()
     for env_file in service.get("env_file", []):
-        listing = (
-            ROOT / "config" / "dev.env" if env_file == "settings.env" else ROOT / "secrets" / f"{env_file}.example"
-        )
-        names |= set(re.findall(r"^([A-Z][A-Z0-9_]*)=", listing.read_text(), re.MULTILINE))
+        if env_file == "settings.env":
+            names |= set(re.findall(r"^([A-Z][A-Z0-9_]*)=", (ROOT / "config" / "dev.env").read_text(), re.MULTILINE))
+            continue
+        per_target = [set(files[env_file]) for files in SECRETS_MAP.values() if env_file in files]
+        assert per_target, f"{env_file} is in no target of secrets-map.json"
+        names |= set.intersection(*per_target)
     return names
 
 

@@ -231,7 +231,7 @@ Python 3.14 and [uv](https://docs.astral.sh/uv/). Clone with the submodule:
 ```bash
 git clone --recurse-submodules https://github.com/nvorkinn/countdown-server.git   # or: git submodule update --init
 uv sync && source .venv/bin/activate
-cp secrets/broker.env.example .env   # fill in Spotify app credentials, FLASK_SECRET_KEY and CREDENTIAL_ENCRYPTION_KEY
+cp .env.example .env   # fill in Spotify app credentials, FLASK_SECRET_KEY and CREDENTIAL_ENCRYPTION_KEY
 export SPOTIFY_REDIRECT_URI=https://auth.nikolaivorkinn.com/auth/spotify/callback
 export $(grep -v '^#' .env | xargs)
 FLASK_DEBUG=1 python wsgi.py
@@ -379,7 +379,7 @@ Every secret is a login item in [Vaultwarden](https://vault.nikolaivorkinn.com),
 `countdown-server/<target>/<VARIABLE>` with the value as its password, in the collection `countdown-server/dev` or
 `countdown-server/prod`. `secrets-map.json` says which item fills which variable of which `.env` file (`broker.env`,
 `caddy.env` (the log ingest token), `redis.env` and, where this repo runs the edge, `tinyauth.env` and `pocket-id.env`);
-the `.example` files in `secrets/` list what each file holds. Settings that aren't secret are in `config/<environment>.env`
+`.env.example` lists the broker's for local development. Settings that aren't secret are in `config/<environment>.env`
 and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with
 `POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting).
 
@@ -395,7 +395,7 @@ The bot always logs in with the device id in `scripts/bitwarden-cli/data.json` (
 and Vaultwarden emails every new device).
 
 To change a secret, edit its item in Vaultwarden and deploy; to add one, create the item, add its name to `secrets-map.json`
-under the file it belongs in, and add the variable to the `.example` file.
+under the file it belongs in.
 
 ### Settings
 

@@ -6,7 +6,6 @@ docker-compose.yml.
 
 import importlib.util
 import json
-import re
 from pathlib import Path
 
 import yaml
@@ -57,9 +56,11 @@ def test_the_broker_gets_its_compose_environment_too(tmp_path):
 
 
 def test_the_stand_in_secrets_are_ones_the_real_env_files_have():
+    secrets_map = json.loads((ROOT / "secrets-map.json").read_text())
     for env_file, values in check_image_starts.ENV_FILES.items():
-        example = (ROOT / "secrets" / f"{env_file}.example").read_text()
-        assert set(values) <= set(re.findall(r"^([A-Z][A-Z0-9_]*)=", example, re.MULTILINE)), env_file
+        real = [set(files[env_file]) for files in secrets_map.values() if env_file in files]
+        assert real, env_file
+        assert set(values) <= set.intersection(*real), env_file
 
 
 def test_error_and_fatal_log_lines_fail_it_but_warnings_and_plain_text_dont():
