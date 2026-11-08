@@ -179,20 +179,28 @@ def pair() -> ResponseReturnValue:
     person is sent through the login to /pair/add?code=, which adds the screen without retyping the code.
     """
     if current_user() is not None:
-        return redirect(url_for("pages.add_screen", code=request.args.get("code") or None))
+        return redirect(
+            url_for("pages.add_screen", code=request.args.get("code") or None, t=request.args.get("t") or None)
+        )
     if request.method == "GET":
         code = request.args.get("code", "")
         code = code.strip().upper() if pairing.looks_like_code(code) else ""
-        return _render_signup(code=code)
+        return _render_signup(code=code, token=_pairing_token(request.args.get("t", "")))
     return _sign_up()
+
+
+def _pairing_token(value: str) -> str:
+    """Return the pairing token in `value` (the screen's own, from its link), or "" if it isn't shaped like one."""
+    value = value.strip().lower()
+    return value if PAIRING_TOKEN_RE.match(value) else ""
 
 
 def _site_url() -> str:
     return current_app.config["SITE_URL"] or url_for("pages.index", _external=True)
 
 
-def _render_signup(code: str = "", error: str | None = None, name: str = "", email: str = "") -> str:
-    return render_template("signup.html", code=code, error=error, name=name, email=email)
+def _render_signup(code: str = "", error: str | None = None, name: str = "", email: str = "", token: str = "") -> str:
+    return render_template("signup.html", code=code, error=error, name=name, email=email, token=token)
 
 
 def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way the sign-up can end
@@ -216,20 +224,22 @@ def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way th
         return _too_many_attempts(lockout, _render_signup)
 
     code = request.form.get("code", "").strip().upper()
+    token = _pairing_token(request.form.get("token", ""))
     name = " ".join(request.form.get("name", "").split())
     email = request.form.get("email", "").strip().lower()
     try:
-        url = signup.sign_up(pocket_id, code, name, email, _site_url())
+        url = signup.sign_up(pocket_id, code, name, email, _site_url(), token)
     except UserExistsError:
-        # Back through the login to /pair/add, which pairs the screen from ?code= with no typing.
-        login_url = _site_url().rstrip("/") + url_for("pages.add_screen", code=code)
+        # Back through the login to /pair/add, which pairs the screen from ?t= or ?code= with no typing.
+        target = url_for("pages.add_screen", t=token) if token else url_for("pages.add_screen", code=code)
+        login_url = _site_url().rstrip("/") + target
         return render_template("signup_exists.html", login_url=login_url), HTTPStatus.CONFLICT
     except signup.SignupError as e:
         if e.wrong_code:
             current_app.logger.warning("Wrong pairing code from %s", ip)
             if (lockout := pair_throttle.record_failure(ip)) is not None:
                 return _too_many_attempts(lockout, _render_signup)
-        page = _render_signup(code="" if e.wrong_code else code, error=e.message, name=name, email=email)
+        page = _render_signup(code="" if e.wrong_code else code, error=e.message, name=name, email=email, token=token)
         return page, e.status
     return redirect(url, HTTPStatus.SEE_OTHER)
 
