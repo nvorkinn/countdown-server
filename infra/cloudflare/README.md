@@ -1,14 +1,17 @@
 # Cloudflare DNS
 
-The A records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, `AUTH_HOST`, `TAUTH_HOST`,
+The records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, `AUTH_HOST`, `TAUTH_HOST`,
 `ID_HOST`, `LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`), for dev/QA and production, in the `nikolaivorkinn.com`
-zone. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
+zone. Production's are A records to its host. Dev/QA runs on the home server, so its are CNAMEs to `home.nikolaivorkinn.com`
+(`cname_targets` in `variables.tf`; home-stack's cloudflare-ddns keeps that name's address current), and `TAUTH_HOST` / `ID_HOST`
+get none where `EDGE_OWNED=false`, as they are home-stack's own names. Explicit records are needed because a wildcard
+doesn't match below an existing name such as `dev.nikolaivorkinn.com`. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
 
 The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are not managed here.
 
 ## Changing DNS
 
-Edit `host_ips` in `variables.tf` (for example, to move production to a new host), or the hostnames in
+Edit `host_ips` or `cname_targets` in `variables.tf` (for example, to move production to a new host), or the hostnames in
 `config/<environment>.env`, in a pull request. The workflow (`.github/workflows/cloudflare.yml`) comments the plan of
 both environments on the PR. Nothing is applied when the PR merges. Each environment is applied by its own deploy, with
 its own state (`cloudflare/terraform.tfstate` for dev, `cloudflare/prod/terraform.tfstate` for prod):

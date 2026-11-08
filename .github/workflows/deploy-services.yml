@@ -57,10 +57,21 @@ jobs:
       TAG: ${{ inputs.tag }}
       SERVICE: ${{ matrix.service }}
       DEPLOY_TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+      # Set where the host is reachable only over the tailnet (dev/QA, on the home server); production's is public.
+      TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+      TAILSCALE_OAUTH_SECRET: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
       BUNDLE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ inputs.tag }}/deploy-${{ inputs.tag }}-${{ inputs.target }}.tar.gz
       BUNDLE_SHA256: ${{ inputs.bundle_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Join the tailnet
+        if: ${{ env.TAILSCALE_OAUTH_CLIENT_ID != '' }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+        with:
+          oauth-client-id: ${{ env.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ env.TAILSCALE_OAUTH_SECRET }}
+          tags: tag:ci
 
       - name: Set up SSH
         env:
