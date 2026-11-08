@@ -82,6 +82,15 @@ if [ ! -x "$sops" ]; then
 fi
 for encrypted in "$bundle"/secrets/*.env; do
   name="$(basename "$encrypted")"
+  # What the deploy workflow fetched from Vaultwarden (scripts/fetch-secrets.sh), if this environment has it set up,
+  # is used as it is; otherwise the bundle's sops file is decrypted.
+  if [ -r "vault-secrets/$name" ]; then
+    tmp="$(mktemp "$name.XXXXXX")"
+    cp "vault-secrets/$name" "$tmp"
+    mv "$tmp" "$name"
+    echo "Installed $name from Vaultwarden"
+    continue
+  fi
   # mktemp's file is readable by the deploy user only, and unique per job, as
   # the deploy jobs can run at once; mv replaces the old one in one step.
   tmp="$(mktemp "$name.XXXXXX")"
