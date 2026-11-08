@@ -15,6 +15,9 @@ map="$(cd "$(dirname "$0")/.." && pwd)/secrets-map.json"
 BITWARDENCLI_APPDATA_DIR="$(mktemp -d)"
 export BITWARDENCLI_APPDATA_DIR
 trap 'bw logout >/dev/null 2>&1 || true; rm -rf "$BITWARDENCLI_APPDATA_DIR"' EXIT
+# The CLI makes up a random device id (global_applicationId_appId) in a fresh state directory, so every run would be a
+# new device to Vaultwarden, which emails "new device logged in" each time. A fixed one makes it the same device.
+cp "$(dirname "$0")/bitwarden-cli/data.json" "$BITWARDENCLI_APPDATA_DIR/data.json"
 
 bw config server "${BW_SERVER:-https://vault.nikolaivorkinn.com}" >/dev/null
 bw login --apikey >/dev/null
