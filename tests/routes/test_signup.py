@@ -216,7 +216,7 @@ def test_the_api_key_is_never_sent_with_a_page(anonymous_client, pocket):
 
 @pytest.fixture
 def screen_token(app, register_device):
-    """A registered, unowned screen and the pairing token it sent its owner's browser with."""
+    """Register an unowned screen and return the pairing token it sends its owner's browser, and its id."""
     device_id, _ = register_device()
     with app.app_context():
         return db.session.get_one(Device, device_id).pairing_token, device_id
