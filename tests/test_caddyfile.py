@@ -85,9 +85,30 @@ def test_the_login_headers_are_stripped_from_every_request():
 
 def test_only_the_browser_routes_import_the_login():
     labels = _labels("countdown-server")
-    assert labels["caddy_0.handle_0"] == "@browser"
-    assert labels["caddy_0.handle_0.import"] == "tinyauth"
-    assert not any(key.startswith("caddy_0.handle_1.import") for key in labels)
+    assert labels["caddy_0.handle_1"] == "@browser"
+    assert labels["caddy_0.handle_1.import"] == "tinyauth"
+    assert not any(key.startswith(f"caddy_0.handle_{n}.import") for key in labels for n in (0, 2))
+
+
+def test_sign_up_asks_the_login_who_is_calling_but_serves_the_page_either_way():
+    """/pair is public, yet a signed-in visitor gets the Remote-* headers (so a second screen needs no form)."""
+    labels = _labels("countdown-server")
+    prefix = "caddy_0.handle_0.forward_auth"
+    assert labels["caddy_0.@pair.path"] == "/pair"
+    assert labels["caddy_0.handle_0"] == "@pair"
+    assert labels[prefix] == "tinyauth:3000"
+    assert labels[f"{prefix}.uri"] == "/api/auth/caddy"
+    assert set(labels[f"{prefix}.copy_headers"].split()) == {
+        "Remote-User", "Remote-Name", "Remote-Email", "Remote-Groups", "Remote-Sub"
+    }  # fmt: skip
+    # Any refusal from the login carries on without headers: the matched response needs a route, or it is sent on.
+    assert labels[f"{prefix}.@anonymous.status"] == "3xx 4xx 5xx"
+    assert labels[f"{prefix}.handle_response"] == "@anonymous"
+    assert f"{prefix}.handle_response.vars" in labels
+    # A visitor's own Remote-* headers are stripped before the login is asked, on every route.
+    assert {"-Remote-User", "-Remote-Email", "-Remote-Name", "-Remote-Groups", "-Remote-Sub"} <= {
+        value for key, value in labels.items() if key.startswith("caddy_0.request_header_")
+    }
 
 
 def test_bare_domain_redirects_to_the_settings_site():

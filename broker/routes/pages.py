@@ -200,7 +200,11 @@ def _site_url() -> str:
 
 
 def _render_signup(code: str = "", error: str | None = None, name: str = "", email: str = "", token: str = "") -> str:
-    return render_template("signup.html", code=code, error=error, name=name, email=email, token=token)
+    # Behind the login, where the screen is paired from its token (or code) with no form.
+    signin_url = url_for("pages.add_screen", t=token or None, code=None if token else code or None)
+    return render_template(
+        "signup.html", code=code, error=error, name=name, email=email, token=token, signin_url=signin_url
+    )
 
 
 def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way the sign-up can end
