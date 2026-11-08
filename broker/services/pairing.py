@@ -174,8 +174,10 @@ def reserve_for_signup(code: str, user: str) -> str | None:
     if pairing_code is None or pairing_code.expires_at < now:
         return None
     device_id = pairing_code.device_id
-    deleted = db.session.execute(delete(PairingCode).where(PairingCode.code == code, PairingCode.expires_at >= now))
-    if deleted.rowcount != 1:
+    deleted = db.session.execute(
+        delete(PairingCode).where(PairingCode.code == code, PairingCode.expires_at >= now).returning(PairingCode.code)
+    ).first()
+    if deleted is None:
         db.session.rollback()
         return None
     db.session.execute(
