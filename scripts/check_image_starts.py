@@ -39,7 +39,7 @@ STARTED = {
     "parcel-provider": "Starting the parcel provider",
 }
 
-# Stand-ins for what deploy.sh decrypts into each env_file on the host: the secrets broker.create_app() and
+# Stand-ins for what the deploy fetches from Vaultwarden into each env_file: the secrets broker.create_app() and
 # loop.read_only_app() can't start without. Leaving out the optional ones keeps what they turn on off.
 ENV_FILES = {
     "broker.env": {

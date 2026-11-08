@@ -21,7 +21,7 @@ def test_every_environment_sets_the_same_things():
 
 
 def test_each_environment_has_secrets_to_match():
-    """The deploy fetches secrets-map.json's <target> and bundles config/<target>.env, so a target needs both."""
+    """The deploy fetches secrets-map.json's <target> and stages config/<target>.env, so a target needs both."""
     secrets_map = json.loads((ROOT / "secrets-map.json").read_text())
     assert secrets_map.keys() <= {path.stem for path in CONFIG.glob("*.env")}
 

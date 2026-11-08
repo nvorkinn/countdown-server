@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Deploys a release to one host from the runner, through the Docker daemon on the host (DOCKER_HOST=ssh://...), instead
-# of running deploy.sh on the host: the compose file, the settings and the secrets are read here, and only containers,
-# images and the data directory are on the host. Used by deploy-compose.yml.
+# Deploys a release to one host from the runner, through the Docker daemon on the host (DOCKER_HOST=ssh://...), without
+# running anything on the host: the compose file, the settings and the secrets are read here, and only containers,
+# images and the data directory are on the host. Used by deploy-compose.yml (release.yml and promote.yml).
 # Usage: deploy-context.sh <target> <tag> <secrets dir>     (target: dev or prod; secrets dir: fetch-secrets.sh's output)
 #
 # The project directory is /opt/auth-broker here as well as on the host, so that docker-compose.yml's relative paths
@@ -10,8 +10,8 @@
 # DRY_RUN=true pulls the images and prints what `docker compose up` would do, but changes no container, backs nothing up
 # and removes no image: to see what a deploy to a host would do before it does it.
 #
-# The first deploy to a host that deploy.sh set up recreates every container once (the config hashes Compose labelled
-# them with differ between Compose versions); after that only what changed is recreated.
+# The first deploy to a host that another Compose version set up may recreate its containers once (the config hashes
+# Compose labels them with differ between versions); after that only what changed is recreated.
 set -euo pipefail
 
 target="$1"

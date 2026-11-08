@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run by deploy-secrets.yml, once per release or promotion, on the runner: logs in to Vaultwarden as the deploy-bot user
-# with the Bitwarden CLI and writes one <name>.env per entry of secrets-map.json's <target> into <outdir>, ready to be
-# sent to the host.
+# Run by deploy-compose.yml, once per deploy, on the runner: logs in to Vaultwarden as the deploy-bot user
+# with the Bitwarden CLI and writes one <name>.env per entry of secrets-map.json's <target> into <outdir>, which
+# deploy-context.sh stages with the compose file.
 # Usage: fetch-secrets.sh <target> <outdir>        (target: dev or prod; outdir: a new directory)
 # Needs BW_CLIENTID, BW_CLIENTSECRET (the bot's API key) and BW_PASSWORD (its master password, which `bw unlock` needs
 # even after an API-key login). BW_SERVER defaults to the project's Vaultwarden.
