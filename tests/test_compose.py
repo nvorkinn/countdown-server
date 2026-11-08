@@ -15,8 +15,8 @@ REQUIRED_READ_ONLY = re.findall(r'os\.environ\["(\w+)"\]', (ROOT / "broker" / "p
 def _env_file_names(service: dict) -> set[str]:
     """Return the variables a service's env_files provide.
 
-    Those are the names secrets/<file>.example lists (the variables of the Vaultwarden items in secrets-map.json), and for settings.env config/dev.env's (every environment's
-    has the same).
+    Those are the names secrets/<file>.example lists (the variables of secrets-map.json's Vaultwarden items), and for
+    settings.env config/dev.env's (every environment's has the same).
     """
     names: set[str] = set()
     for env_file in service.get("env_file", []):
