@@ -6,7 +6,6 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h2 class="card-title">Create your account</h2>
         <p class="card-subtitle">Tell us who you are, then you'll add a passkey to sign in. There are no passwords.</p>
     </div>
 
@@ -31,5 +30,6 @@
                value="{{ email }}" required>
         <button type="submit" class="btn-save">Continue</button>
     </form>
+    <p class="card-subtitle"><a href="{{ signin_url }}">Already have an account? Sign in</a></p>
 </div>
 {% endblock %}

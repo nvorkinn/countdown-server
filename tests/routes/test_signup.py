@@ -288,3 +288,16 @@ def test_an_existing_email_with_a_token_is_sent_back_through_login_to_the_token_
     assert response.status_code == 409
     assert f"{SITE}/pair/add?t={token}".encode() in response.data
     assert pocket.paths() == [("POST", "/api/users")]  # no token made for an existing account
+
+
+def test_the_form_links_returning_people_to_the_page_behind_the_login(anonymous_client, screen_token):
+    token, _ = screen_token
+
+    with_token = anonymous_client.get(f"/pair?t={token}").get_data(as_text=True)
+    with_code = anonymous_client.get("/pair?code=abc234").get_data(as_text=True)
+    bare = anonymous_client.get("/pair").get_data(as_text=True)
+
+    assert f'href="/pair/add?t={token}"' in with_token
+    assert 'href="/pair/add?code=ABC234"' in with_code
+    assert 'href="/pair/add"' in bare
+    assert "Already have an account? Sign in" in bare
