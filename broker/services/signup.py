@@ -1,6 +1,5 @@
 """Signing a new owner up: check the pairing code, make their Pocket ID account, and reserve the screen for them."""
 
-import re
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
@@ -32,7 +31,7 @@ class SignupError(Exception):
 
 
 def _looks_like_email(email: str) -> bool:
-    """One @, text on both sides, a dot inside the domain, no whitespace. Plain string checks: a regex for this can backtrack."""
+    """One @, text on both sides, a dot inside the domain, no whitespace. Plain string checks, as a regex can backtrack."""
     local, at, domain = email.partition("@")
     return (
         bool(at)
