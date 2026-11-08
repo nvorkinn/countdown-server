@@ -31,7 +31,7 @@ class SignupError(Exception):
 
 
 def _looks_like_email(email: str) -> bool:
-    """One @, text on both sides, a dot inside the domain, no whitespace. Plain string checks, as a regex can backtrack."""
+    """One @, text on both sides, a dot inside the domain, no whitespace (string checks: a regex can backtrack)."""
     local, at, domain = email.partition("@")
     return (
         bool(at)
