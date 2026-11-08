@@ -12,8 +12,9 @@ it; [the database](database.md) has the tables.
 | **countdown's providers** | countdown, on the same host | Fetch TfL, Entur, weather and notice data for the stops and places in the broker's subscriptions, into Redis. |
 | **countdown-server** (the broker) | this repository | Device identities, pairing, settings, linked accounts, the configs and subscriptions in Redis, and serving frames. State is one SQLite file. |
 | **The broker's providers** | this repository, the broker's image | glow (energy), spotify (Spotify and Apple Music) and developer (GitHub). They need credentials only the broker holds, so they run here. |
-| **Caddy** | this repository | TLS, routing, and the authentik sign-in gate for browser pages. |
-| **authentik** | this repository (`terraform/`) | Sign-in, sign-up, passkeys and Google login. Its embedded outpost answers Caddy's forward auth. |
+| **Caddy** | this repository (prod) or home-stack (dev) | caddy-docker-proxy: TLS and routing, from the Docker labels on each service, and the sign-in gate for browser pages. |
+| **Tinyauth** | this repository (prod) or home-stack (dev) | Answers Caddy's forward auth: checks the visitor's Pocket ID login and group against each app's `tinyauth.apps.*` labels, and passes the user on in `Remote-*` headers. |
+| **Pocket ID** | this repository (prod) or home-stack (dev) | The passkey-only identity provider, at `id.<domain>`. Users sign up and in here; the broker adds sign-ups to the `countdown` group through its API. |
 | **Redis** | this repository | The store between the broker, the providers and the render pool. A cache: nothing on disk. |
 | **Fluent Bit, VictoriaLogs, VictoriaMetrics** | this repository | Logs and metrics from the containers, the render pool and the screens. |
 | **countdown-api** | [countdown-api](https://github.com/nvorkinn/countdown-api), the `vendor/countdown-api` submodule | The store contract: every Redis key shared with countdown, the models of their values, and the fixtures both sides test against. |
@@ -28,7 +29,8 @@ flowchart TB
     PH["Phone / browser"]
     ESP["ESP32 screen"]
     CD["Caddy"]
-    AK["authentik"]
+    TA["Tinyauth"]
+    PI["Pocket ID"]
     subgraph broker["countdown-server"]
         BR["Flask app"]
         DB[("SQLite")]
@@ -42,7 +44,8 @@ flowchart TB
     API["Third-party APIs"]
 
     PH -- "settings" --> CD
-    CD -. "sign-in" .-> AK
+    CD -. "forward auth" .-> TA
+    TA -. "login" .-> PI
     ESP -- "poll" --> CD
     CD -- "frame" --> ESP
     CD -- "settings, polls" --> BR
@@ -62,14 +65,17 @@ flowchart TB
     linkStyle 3,5,9,14 stroke:#2f81f7,stroke-width:3px
 ```
 
-Everything runs on one host, with host networking, so services reach each other on `127.0.0.1` (authentik is the
-exception: it publishes only `127.0.0.1:9000`).
+Services reach each other by name on the compose network (`redis`), and Caddy reaches the ones it routes to over the
+Docker network `edge`, which is created here in production and is home-stack's in dev. Redis is also published on the
+host's `127.0.0.1:6379`, for countdown; so are VictoriaLogs and VictoriaMetrics (9428, 8428), for Fluent Bit on the
+host's network. Nothing is published on a public address except Caddy's 80 and 443.
 
 Caddy routes by path. The screen's paths (`/api/frame`, `/api/devices/*`), the status endpoint (`/api/status/*`) and
 the public `/about` page go straight to the broker, which checks the bearer secret itself. Every other path is a
-browser page: Caddy asks authentik's outpost first, then passes `X-Authentik-Uid` and `X-Authentik-Username` to the
-broker. Caddy strips those headers from every incoming request, and the broker listens only on loopback, which is what
-makes it safe for the broker to trust them. The broker has no user table: the uid is stored as a device's `owner`.
+browser page: Caddy asks Tinyauth first (group `countdown`), then passes its `Remote-*` headers (`Remote-Sub`,
+`Remote-Name`, ...) to the broker. The sign-up page `/pair` and `/static/*` are public. Caddy strips those headers from
+every incoming request, and the broker is reachable only over the `edge` network, which is what makes it safe for the
+broker to trust them. The broker has no user table: the Pocket ID user id is stored as a device's `owner`.
 
 ## Secrets
 
@@ -89,8 +95,11 @@ makes it safe for the broker to trust them. The broker has no user table: the ui
 | **`STATUS_TOKEN`** | operator | `secrets/<environment>/broker.env` | Bearer for `GET /api/status/devices`. |
 | **GitHub App sign-in** | the dashboard's user, through Connect GitHub | `github_app_tokens`, encrypted | Acts as them for 8 hours, renewed for 6 months. The `/github` dashboard's only GitHub access. |
 | **`GITHUB_APP_CLIENT_SECRET`**, **`GITHUB_APP_WEBHOOK_SECRET`** | operator | `secrets/<environment>/broker.env` | The dashboard's GitHub App: signing in, and checking its webhook's signature. |
+| **`POCKET_ID_API_KEY`** | operator | `secrets/<environment>/broker.env` | A Pocket ID admin API key, which the sign-up flow uses to create users and add them to the `countdown` group (`POCKET_ID_COUNTDOWN_GROUP_ID`). |
+| **Tinyauth's Pocket ID client** | operator | `secrets/<environment>/tinyauth.env` | The OIDC client id and secret Pocket ID issued for Tinyauth. |
+| **Pocket ID's `ENCRYPTION_KEY`** | operator | `secrets/<environment>/pocket-id.env` | Encrypts what Pocket ID stores. Never changed after first start. |
 | **`REDIS_PASSWORD`** | operator | `secrets/<environment>/redis.env` | Used by everything that talks to Redis, including countdown. |
-| **`LOGS_INGEST_TOKEN`** | operator | `secrets/<environment>/caddy.env` | Bearer for the ingest paths on `logs.` and `metrics.`. The broker forwards on loopback without it. |
+| **`LOGS_INGEST_TOKEN`** | operator | `secrets/<environment>/caddy.env` | Bearer for the ingest paths on `logs.` and `metrics.`. The broker forwards inside the network without it. The routes' labels name it as Caddy's `{env.LOGS_INGEST_TOKEN}` placeholder, so the value is never in a label or in `.env`. |
 
 No credential is ever written to Redis: configs carry only flags like `glowmarkt.enabled`, and the providers write only
 the data they fetched. The pairing code is the exception, in `v1:pairing:<device id>` for its ten minutes.
@@ -98,7 +107,7 @@ the data they fetched. The pairing code is the exception, in `v1:pairing:<device
 ## Setting up a screen
 
 Once the owner has given the screen their Wi-Fi details, two things happen at the same time: the screen registers
-with the broker, and the phone is sent to the pairing page, signing in with authentik on the way if it has to.
+with the broker, and the phone is sent to the pairing page, signing in with Pocket ID on the way if it has to.
 
 ### Usually: the screen has registered by the time the phone gets there
 
@@ -107,7 +116,7 @@ sequenceDiagram
     autonumber
     participant S as ESP32 screen
     participant P as Phone
-    participant A as authentik
+    participant A as Pocket ID
     participant B as Broker
     participant R as Redis and render pool
 
@@ -120,7 +129,7 @@ sequenceDiagram
         S->>B: POST /api/frame
         B-->>S: 404, try again in 10 s
     and The phone signs in
-        P->>A: no session yet, so Caddy sends it to sign in or sign up
+        P->>A: no session yet, so Tinyauth sends it to sign in or sign up
         A-->>P: back to /pair?t=TOKEN
     end
     P->>B: POST /pair/token

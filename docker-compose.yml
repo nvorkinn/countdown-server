@@ -13,39 +13,35 @@ x-logging: &logging
     max-size: 10m
     max-file: "3"
 
-# QA tracing of every request's headers, by the broker (broker/request_log.py) and by Caddy (the
-# access_log snippet in caddy/Caddyfile). "true" turns both on. Read at start, so it takes
-# `docker compose up -d`.
+# QA tracing of every request's headers, by the broker (broker/request_log.py). "true" turns it on. Read at start, so it
+# takes `docker compose up -d`.
 x-request-logging: &request-logging
   LOG_REQUEST_HEADERS: "false"
 
-# Shared by the Authentik server and worker, which run the same image.
-x-authentik: &authentik
-  image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-2026.8.4}
-  restart: unless-stopped
-  env_file:
-    - authentik.env
-    - settings.env
-  environment:
-    AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
-    AUTHENTIK_POSTGRESQL__NAME: authentik
-    AUTHENTIK_POSTGRESQL__USER: authentik
-    # Email (sign-up confirmation, password recovery) through Resend's SMTP. The API key is the password,
-    # AUTHENTIK_EMAIL__PASSWORD, in secrets/<environment>/authentik.env.
-    AUTHENTIK_EMAIL__HOST: smtp.resend.com
-    AUTHENTIK_EMAIL__PORT: "587"
-    AUTHENTIK_EMAIL__USERNAME: resend
-    AUTHENTIK_EMAIL__USE_TLS: "true"
-    AUTHENTIK_EMAIL__USE_SSL: "false"
-    AUTHENTIK_EMAIL__TIMEOUT: "30"
-  depends_on:
-    authentik-postgresql:
-      condition: service_healthy
-  shm_size: 512mb
-  volumes:
-    # Uploaded logos and backgrounds. Not /data: there, media is a symlink to /media in the
-    # image, so uploads land in the container layer and vanish on every recreate.
-    - authentik_media:/media
+# Redis is on the default network, as its name `redis` (it is also published on the host's loopback, for countdown).
+# This wins over REDIS_URL in broker.env.
+x-redis-url: &redis-url
+  REDIS_URL: redis://redis:6379/0
+
+# Where the broker forwards the screens' logs and metrics: VictoriaLogs and VictoriaMetrics by their service names on
+# the default network (the broker no longer shares the host's loopback, which is what its built-in defaults assume).
+x-victoria-urls: &victoria-urls
+  VICTORIA_LOGS_URL: "http://victoria-logs:9428/insert/jsonline?_stream_fields=service,host&_msg_field=_msg&_time_field=_time"
+  VICTORIA_METRICS_URL: http://victoria-metrics:8428/write
+
+# The routes and access rules are labels: caddy-docker-proxy turns each `caddy*` label into Caddyfile, and Tinyauth reads
+# each `tinyauth.apps.*` label as the access rule of the app (the hostname in its config.domain; the subdomain must match
+# the container's name otherwise, so every app here sets the domain). The hostnames come from config/<environment>.env,
+# which deploy.sh copies into .env for Compose to fill in.
+#
+# Two ways to run the edge (Caddy, Tinyauth, Pocket ID), told apart by two settings (config/<environment>.env):
+# - prod owns it: the `edge` profile starts them here, and the network `edge` is created by this file;
+# - dev runs on home-stack's, which is already on the external Docker network `edge`: no profile, and this file only
+#   joins that network. Its Tinyauth must define the same `(tinyauth)` snippet (see tinyauth below).
+#
+# Tinyauth 5.x denied every OAuth user of an app restricted only by oauth.groups (issue #1016, closed upstream). Until
+# a Tinyauth release is tested without it, the OAuth whitelist `/.*/` is set globally and on each app; the group is the
+# real rule.
 
 services:
   countdown-server:
@@ -53,10 +49,11 @@ services:
     image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
     container_name: countdown-server
     logging: *logging
-    # Host networking, to reach Redis, VictoriaLogs and VictoriaMetrics on loopback, as Caddy reaches
-    # it. That would make the image's 0.0.0.0 bind public, so bind loopback.
-    network_mode: host
-    command: ["gunicorn", "--bind", "127.0.0.1:5000", "wsgi:app"]
+    # Gunicorn binds the container's own address: Caddy reaches it over the edge network, and nothing is published.
+    # Anything else on the edge network could reach it too, and it trusts the Remote-* headers Tinyauth's forward
+    # auth sets, so the edge network is for the reverse proxy and trusted services only.
+    networks: [default, edge]
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "wsgi:app"]
     volumes:
       - ./data:/app/data
     # Decrypted from secrets/<environment>/ by deploy.sh, as are the other services' env_files.
@@ -65,9 +62,44 @@ services:
       - redis.env
       - settings.env
     environment:
-      <<: *request-logging
+      <<: [*request-logging, *redis-url, *victoria-urls]
       SESSION_COOKIE_SECURE: "true"
       SESSION_COOKIE_SAMESITE: Lax
+    labels:
+      # The settings site. Everything but the screens' API (Bearer secrets), the status endpoint (its own token),
+      # GitHub's webhook (signed with its secret), Telegram's webhook (its secret token) and the public /about page
+      # with its pictures needs a Pocket ID login, as a member of `countdown`. The sign-up page (/pair, which sends the
+      # visitor to Pocket ID to register), the static files and the device endpoints are public; /pair/add and
+      # /pair/token are behind the login. /api/stops and /api/places are browser calls.
+      caddy_0: ${AUTH_HOST:?}
+      # The broker trusts the Remote-* headers (set by forward auth) as the signed-in user, so nothing a visitor
+      # sends in these may get through: strip them from every request. The X-Authentik-* ones are the headers of the
+      # login this replaced, which the broker may still read.
+      caddy_0.request_header_0: -Remote-User
+      caddy_0.request_header_1: -Remote-Email
+      caddy_0.request_header_2: -Remote-Name
+      caddy_0.request_header_3: -Remote-Groups
+      caddy_0.request_header_4: -Remote-Sub
+      caddy_0.request_header_5: -X-Authentik-Uid
+      caddy_0.request_header_6: -X-Authentik-Username
+      caddy_0.request_header_7: -X-Authentik-Email
+      # Most frame answers are 304s, which through Caddy have no Content-Length, so the ESP32 reads until the
+      # connection closes: Caddy's idle timeout, 5 minutes. The screen opens a new connection for every poll anyway,
+      # so close each one after its answer.
+      caddy_0.header: /api/frame Connection close
+      caddy_0.@browser.not.path: /api/frame /api/frame/* /api/devices/* /api/status/* /api/github/webhook /api/telegram/webhook /about /static/* /pair
+      caddy_0.handle_0: "@browser"
+      caddy_0.handle_0.import: tinyauth
+      caddy_0.handle_0.reverse_proxy: "{{upstreams 5000}}"
+      caddy_0.handle_1.reverse_proxy: "{{upstreams 5000}}"
+      # The bare domain has nothing of its own: send it to the settings site, keeping the path (so the apex's /about
+      # works). A temporary redirect, so browsers don't remember it if the apex ever gets a page. Needs A records for
+      # both names pointing at the edge, or Caddy can't get a certificate.
+      caddy_1: ${APEX_HOST:?}, www.${APEX_HOST}
+      caddy_1.redir: https://${AUTH_HOST}{uri}
+      tinyauth.apps.countdown.config.domain: ${AUTH_HOST}
+      tinyauth.apps.countdown.oauth.groups: countdown
+      tinyauth.apps.countdown.oauth.whitelist: /.*/
 
   # The music provider (broker/providers/music.py): what each screen's Spotify and Apple Music are playing, into
   # Redis. It starts the broker's app and writes refreshed Spotify tokens back, so ./data is writable here.
@@ -76,8 +108,6 @@ services:
     image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
     container_name: spotify-provider
     logging: *logging
-    # Host networking, to reach Redis on 127.0.0.1:6379.
-    network_mode: host
     command: ["python", "-m", "broker.providers.music"]
     volumes:
       - ./data:/app/data
@@ -85,6 +115,7 @@ services:
       - broker.env
       - redis.env
       - settings.env
+    environment: *redis-url
     stop_grace_period: 30s
 
   # The developer provider (broker/providers/developer.py): each screen's developer panel (GitHub and AI plans) into
@@ -95,8 +126,6 @@ services:
     image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
     container_name: developer-provider
     logging: *logging
-    # Host networking, to reach Redis on 127.0.0.1:6379.
-    network_mode: host
     command: ["python", "-m", "broker.providers.developer"]
     volumes:
       - ./data:/app/data:ro
@@ -104,6 +133,7 @@ services:
     env_file:
       - broker.env
       - redis.env
+    environment: *redis-url
     stop_grace_period: 30s
 
   # The parcel provider (broker/providers/parcel.py): each screen's active Parcel deliveries into Redis, every 20 minutes
@@ -113,8 +143,6 @@ services:
     image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
     container_name: parcel-provider
     logging: *logging
-    # Host networking, to reach Redis on 127.0.0.1:6379.
-    network_mode: host
     command: ["python", "-m", "broker.providers.parcel"]
     volumes:
       - ./data:/app/data:ro
@@ -122,84 +150,40 @@ services:
     env_file:
       - broker.env
       - redis.env
+    environment: *redis-url
     stop_grace_period: 30s
 
-  caddy:
+  # The glow provider (broker/providers/glow.py): each screen's Glowmarkt readings into Redis. It decrypts the
+  # Glowmarkt passwords with the broker's key (broker.env), so they never leave the broker, and opens the database
+  # read-only.
+  glow-provider:
     <<: *release-image
-    image: ghcr.io/nvorkinn/countdown-server-caddy:${CADDY_VERSION:-latest}
-    container_name: caddy
+    image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
+    container_name: glow-provider
     logging: *logging
+    command: ["python", "-m", "broker.providers.glow"]
+    volumes:
+      - ./data:/app/data:ro
     env_file:
-      - caddy.env
-      - settings.env
-    environment:
-      <<: *request-logging
-    # Host networking, so 127.0.0.1 in the Caddyfile is the host (the broker on
-    # :5000, authentik on :9000, VictoriaLogs on :9428, VictoriaMetrics on :8428),
-    # and Caddy binds 80/443 (and UDP 443) directly.
-    network_mode: host
-    volumes:
-      # Certificates and ACME account. Losing this makes Caddy re-request every
-      # certificate, and Let's Encrypt rate-limits repeated issuance.
-      - caddy_data:/data
-      - caddy_config:/config
-    # Up means taking connections on 443, which is what everything behind Caddy (Terraform's calls to authentik
-    # included) needs. deploy.sh's `--wait` holds the deploy job until then.
-    healthcheck:
-      test: ["CMD", "nc", "-z", "-w", "3", "127.0.0.1", "443"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
-  # Fluent Bit, with fluent-bit/ baked in: container and OTLP logs to VictoriaLogs, host and OTLP metrics to
-  # VictoriaMetrics.
-  fluent-bit:
-    <<: *release-image
-    image: ghcr.io/nvorkinn/countdown-server-fluent-bit:${FLUENT_BIT_VERSION:-latest}
-    container_name: fluent-bit
-    logging: *logging
-    network_mode: host
-    volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - fluent-bit-state:/state
-
-  # Logs: single-node VictoriaLogs on 127.0.0.1:9428, which Caddy serves at
-  # logs.nikolaivorkinn.com: ingest with the ingest token, the UI to admins.
-  victoria-logs:
-    <<: *release-image
-    image: ghcr.io/nvorkinn/countdown-server-victoria-logs:${VICTORIA_LOGS_VERSION:-latest}
-    container_name: victoria-logs
-    logging: *logging
-    network_mode: host
-    # Shares the host's 6 GB with Authentik, like VictoriaMetrics.
-    mem_limit: 512m
-    volumes:
-      - victoria_logs_data:/victoria-logs-data
-
-  # Metrics: single-node VictoriaMetrics on 127.0.0.1:8428, which Caddy serves at
-  # metrics.nikolaivorkinn.com: ingest with the ingest token, the UI to admins.
-  victoria-metrics:
-    <<: *release-image
-    image: ghcr.io/nvorkinn/countdown-server-victoria-metrics:${VICTORIA_METRICS_VERSION:-latest}
-    container_name: victoria-metrics
-    logging: *logging
-    network_mode: host
-    # The host's 6 GB is shared with Authentik. VictoriaMetrics sizes its caches
-    # from this limit (60% of it by default).
-    mem_limit: 512m
-    volumes:
-      - victoria_metrics_data:/victoria-metrics-data
+      - broker.env
+      - redis.env
+    environment: *redis-url
+    depends_on:
+      redis:
+        condition: service_healthy
 
   # The store shared with countdown (every key is in countdown-api). A cache only: everything in it is refetched
   # within minutes or rebuilt from the broker's database, so it keeps nothing on disk. Upstream's image, pinned
-  # here. On 127.0.0.1:6379 with host networking, so the broker, its providers and countdown reach it on loopback.
+  # here. The broker and its providers reach it as `redis` on the default network; countdown (not in this project)
+  # reaches it on the host's loopback, 127.0.0.1:6379, which is published for it. The password is the only guard
+  # inside the network, and nothing is published beyond loopback.
   redis:
     image: docker.io/library/redis:8.10-alpine
     container_name: redis
     logging: *logging
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "127.0.0.1:6379:6379"
     # Not root. The image's entrypoint only drops to this user when the command is redis-server itself.
     user: redis
     env_file: redis.env
@@ -211,7 +195,7 @@ services:
       - -c
       - |
         exec redis-server - <<EOF
-        bind 127.0.0.1
+        bind 0.0.0.0
         port 6379
         protected-mode yes
         requirepass $$REDIS_PASSWORD
@@ -229,71 +213,203 @@ services:
       retries: 3
       start_period: 5s
 
-  # The glow provider (broker/providers/glow.py): each screen's Glowmarkt readings into Redis. It decrypts the
-  # Glowmarkt passwords with the broker's key (broker.env), so they never leave the broker, and opens the database
-  # read-only. Host networking for Redis on 127.0.0.1:6379.
-  glow-provider:
+  # Fluent Bit, with fluent-bit/ baked in: container and OTLP logs to VictoriaLogs, host and OTLP metrics to
+  # VictoriaMetrics. On the host's network: it reports the host's metrics, takes the render pool's OTLP on loopback
+  # (127.0.0.1:4318) and sends to the loopback ports VictoriaLogs and VictoriaMetrics publish.
+  fluent-bit:
     <<: *release-image
-    image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
-    container_name: glow-provider
+    image: ghcr.io/nvorkinn/countdown-server-fluent-bit:${FLUENT_BIT_VERSION:-latest}
+    container_name: fluent-bit
     logging: *logging
     network_mode: host
-    command: ["python", "-m", "broker.providers.glow"]
     volumes:
-      - ./data:/app/data:ro
-    env_file:
-      - broker.env
-      - redis.env
-    depends_on:
-      redis:
-        condition: service_healthy
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - fluent-bit-state:/state
 
-  # authentik: upstream's release, pinned by AUTHENTIK_VERSION in .env and
-  # bumped by hand, one minor version at a time.
-  authentik-postgresql:
-    image: docker.io/library/postgres:18-alpine
-    container_name: authentik-postgresql
+  # The ingest routes match the token as Caddy's runtime placeholder {env.LOGS_INGEST_TOKEN}, read from the Caddy
+  # container's own environment (caddy.env), so the secret is never in a label, `docker inspect` or Caddy's logs.
+  # Logs: single-node VictoriaLogs, served at LOGS_HOST: ingest with the ingest token, the UI to Pocket ID's `admins`.
+  victoria-logs:
+    <<: *release-image
+    image: ghcr.io/nvorkinn/countdown-server-victoria-logs:${VICTORIA_LOGS_VERSION:-latest}
+    container_name: victoria-logs
+    logging: *logging
+    networks: [default, edge]
+    # For Fluent Bit, on the host's network; Caddy goes over the edge network.
+    ports:
+      - "127.0.0.1:9428:9428"
+    mem_limit: 512m
+    volumes:
+      - victoria_logs_data:/victoria-logs-data
+    labels:
+      caddy: ${LOGS_HOST:?}
+      # /insert/* takes the bearer token and no login: the machines sending logs can't sign in.
+      caddy.@ingest.path: /insert/*
+      caddy.@ingest.header: Authorization "Bearer {env.LOGS_INGEST_TOKEN}"
+      caddy.handle_0: "@ingest"
+      caddy.handle_0.reverse_proxy: "{{upstreams 9428}}"
+      caddy.handle_1.import: tinyauth
+      caddy.handle_1.reverse_proxy: "{{upstreams 9428}}"
+      tinyauth.apps.logs.config.domain: ${LOGS_HOST}
+      tinyauth.apps.logs.oauth.groups: admins
+      tinyauth.apps.logs.oauth.whitelist: /.*/
+
+  # Metrics: single-node VictoriaMetrics, served at METRICS_HOST, with the same ingest token as logs.
+  victoria-metrics:
+    <<: *release-image
+    image: ghcr.io/nvorkinn/countdown-server-victoria-metrics:${VICTORIA_METRICS_VERSION:-latest}
+    container_name: victoria-metrics
+    logging: *logging
+    networks: [default, edge]
+    ports:
+      - "127.0.0.1:8428:8428"
+    # VictoriaMetrics sizes its caches from this limit (60% of it by default).
+    mem_limit: 512m
+    volumes:
+      - victoria_metrics_data:/victoria-metrics-data
+    labels:
+      caddy: ${METRICS_HOST:?}
+      caddy.@ingest.path: /api/v1/write /api/v1/import /api/v1/import/* /influx/*
+      caddy.@ingest.header: Authorization "Bearer {env.LOGS_INGEST_TOKEN}"
+      caddy.handle_0: "@ingest"
+      caddy.handle_0.reverse_proxy: "{{upstreams 8428}}"
+      caddy.handle_1.import: tinyauth
+      caddy.handle_1.reverse_proxy: "{{upstreams 8428}}"
+      tinyauth.apps.metrics.config.domain: ${METRICS_HOST}
+      tinyauth.apps.metrics.oauth.groups: admins
+      tinyauth.apps.metrics.oauth.whitelist: /.*/
+
+  # ---- The edge, profile `edge`: prod's own. Dev uses home-stack's (see the top of this file). ----
+
+  # The only way to the Docker socket, for Caddy (to read the labels) and Tinyauth (to read its apps): read-only
+  # endpoints (GET containers, networks, events, ...) and nothing that creates, execs or deletes. A `:ro` mount of the
+  # socket would still allow all of that. Reachable only on the `socket` network, which is internal.
+  socket-proxy:
+    image: docker.io/tecnativa/docker-socket-proxy:v0.5.0
+    container_name: socket-proxy
+    profiles: [edge]
     logging: *logging
     restart: unless-stopped
-    env_file: authentik.env
+    networks: [socket]
     environment:
-      POSTGRES_DB: authentik
-      POSTGRES_USER: authentik
-    healthcheck:
-      # $$ so the container's shell expands these, not Compose.
-      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+      # Everything is off unless enabled; POST is off, so these are reads only.
+      CONTAINERS: "1"
+      NETWORKS: "1"
+      SERVICES: "1"
+      TASKS: "1"
+      INFO: "1"
+      POST: "0"
     volumes:
-      # Holds every user and passkey: back it up off the host.
-      # Postgres 18+ images keep PGDATA under /var/lib/postgresql/<major>/docker,
-      # so mount the parent, not .../data.
-      - authentik_db:/var/lib/postgresql
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs: [/run]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
 
-  authentik-server:
-    <<: *authentik
-    container_name: authentik-server
+  # caddy-docker-proxy (caddy/Dockerfile): Caddy, with its Caddyfile built from the labels of the containers on the
+  # edge network, kept up to date as they come and go. 80/443 are published directly.
+  caddy:
+    <<: *release-image
+    image: ghcr.io/nvorkinn/countdown-server-caddy:${CADDY_VERSION:-latest}
+    container_name: caddy
+    profiles: [edge]
     logging: *logging
-    command: server
-    volumes:
-      - authentik_media:/media
-      # Served unauthenticated at /static/dist/assets/countdown/, so this must
-      # hold brand assets only.
-      - ./authentik-assets:/web/dist/assets/countdown:ro
-    # Loopback only: Caddy (host networking) is the one way in, at
-    # sso.nikolaivorkinn.com.
+    networks: [edge, socket]
     ports:
-      - "127.0.0.1:9000:9000"
-
-  authentik-worker:
-    <<: *authentik
-    container_name: authentik-worker
-    logging: *logging
-    command: worker
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
+      CADDY_INGRESS_NETWORKS: edge
+    depends_on:
+      - socket-proxy
     volumes:
-      - authentik_media:/media
+      # Certificates and ACME account. Losing this makes Caddy re-request every
+      # certificate, and Let's Encrypt rate-limits repeated issuance.
+      - caddy_data:/data
+      - caddy_config:/config
+    # Up means taking connections on 443. deploy.sh's `--wait` holds the deploy job until then.
+    healthcheck:
+      test: ["CMD", "nc", "-z", "-w", "3", "127.0.0.1", "443"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Tinyauth: the login in front of the protected routes, with Pocket ID as its only provider (no local users). Upstream's
+  # image, pinned here and bumped by hand. Its labels define the `tinyauth` snippet every protected route imports.
+  # secrets/<environment>/tinyauth.env has the OIDC client's id and secret from Pocket ID.
+  tinyauth:
+    image: ghcr.io/tinyauthapp/tinyauth:v5.2.0
+    container_name: tinyauth
+    profiles: [edge]
+    logging: *logging
+    restart: unless-stopped
+    networks: [edge, socket]
+    env_file: tinyauth.env
+    environment:
+      TINYAUTH_APPURL: https://${TAUTH_HOST:?}
+      DOCKER_HOST: tcp://socket-proxy:2375
+      # Caddy's address as Tinyauth sees it: the edge network's range (Docker's default pools; Caddy is the only
+      # thing on the network that sends it requests).
+      TINYAUTH_AUTH_TRUSTEDPROXIES: ${EDGE_TRUSTED_PROXIES:-172.16.0.0/12,192.168.0.0/16}
+      TINYAUTH_AUTH_SECURECOOKIE: "true"
+      # Pocket ID is the only provider: straight to it, no login form.
+      TINYAUTH_OAUTH_AUTOREDIRECT: pocketid
+      TINYAUTH_OAUTH_WHITELIST: /.*/
+      TINYAUTH_OAUTH_PROVIDERS_POCKETID_NAME: Pocket ID
+      TINYAUTH_OAUTH_PROVIDERS_POCKETID_AUTHURL: https://${ID_HOST:?}/authorize
+      TINYAUTH_OAUTH_PROVIDERS_POCKETID_TOKENURL: https://${ID_HOST}/api/oidc/token
+      TINYAUTH_OAUTH_PROVIDERS_POCKETID_USERINFOURL: https://${ID_HOST}/api/oidc/userinfo
+      TINYAUTH_OAUTH_PROVIDERS_POCKETID_REDIRECTURL: https://${TAUTH_HOST}/api/oauth/callback/pocketid
+      TINYAUTH_OAUTH_PROVIDERS_POCKETID_SCOPES: openid email profile groups
+    depends_on:
+      - socket-proxy
+    labels:
+      caddy_0: (tinyauth)
+      caddy_0.forward_auth: tinyauth:3000
+      caddy_0.forward_auth.uri: /api/auth/caddy
+      caddy_0.forward_auth.copy_headers: Remote-User Remote-Email Remote-Name Remote-Groups Remote-Sub
+      caddy_1: ${TAUTH_HOST}
+      caddy_1.reverse_proxy: "{{upstreams 3000}}"
+
+  # Pocket ID: the passkey-only identity provider, at ID_HOST. Its hostname is permanent: passkeys are bound to it, so
+  # changing it locks everyone out. ENCRYPTION_KEY is in secrets/<environment>/pocket-id.env. The pocket_id_data
+  # volume (SQLite database, keys, uploads) holds every user and passkey: deploy.sh backs it up before each edge
+  # deploy; copy those off the host.
+  pocket-id:
+    image: ghcr.io/pocket-id/pocket-id:v2.19.2
+    container_name: pocket-id
+    profiles: [edge]
+    logging: *logging
+    restart: unless-stopped
+    networks: [edge]
+    env_file: pocket-id.env
+    environment:
+      APP_URL: https://${ID_HOST:?}
+      TRUST_PROXY: "true"
+      ANALYTICS_DISABLED: "true"
+    volumes:
+      - pocket_id_data:/app/data
+    healthcheck:
+      test: ["CMD", "/app/pocket-id", "healthcheck"]
+      interval: 1m30s
+      timeout: 5s
+      retries: 2
+      start_period: 10s
+    labels:
+      caddy: ${ID_HOST}
+      caddy.reverse_proxy: "{{upstreams 1411}}"
+
+networks:
+  # Prod creates it (EDGE_NETWORK_EXTERNAL=false, with the `edge` profile); dev joins home-stack's (true).
+  edge:
+    name: edge
+    external: ${EDGE_NETWORK_EXTERNAL:-false}
+  # Caddy and Tinyauth to the socket proxy and nothing else, with no way out.
+  socket:
+    internal: true
 
 volumes:
   # Fixed names so the volumes don't depend on the compose project (directory) name.
@@ -302,10 +418,8 @@ volumes:
   caddy_config:
     name: caddy_config
   fluent-bit-state:
-  authentik_db:
-    name: authentik_db
-  authentik_media:
-    name: authentik_media
+  pocket_id_data:
+    name: pocket_id_data
   victoria_logs_data:
     name: victoria_logs_data
   victoria_metrics_data:

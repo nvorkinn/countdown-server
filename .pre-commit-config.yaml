@@ -14,9 +14,9 @@ repos:
       - id: detect-private-key
       # secrets/ is also left alone: SOPS's MAC covers the file's text, so a rewrite would break decryption.
       - id: end-of-file-fixer
-        exclude: ^(vendor/|broker/static/vendor/|authentik-assets/|secrets/)
+        exclude: ^(vendor/|broker/static/vendor/|secrets/)
       - id: trailing-whitespace
-        exclude: ^(vendor/|broker/static/vendor/|authentik-assets/|secrets/)
+        exclude: ^(vendor/|broker/static/vendor/|secrets/)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.3
     hooks:
@@ -36,4 +36,4 @@ repos:
       - id: terraform_validate
         args: [--hook-config=--retry-once-with-cleanup=true]
       - id: terraform_tflint
-        args: [--args=--config=__GIT_WORKING_DIR__/terraform/.tflint.hcl]
+        args: [--args=--config=__GIT_WORKING_DIR__/infra/cloudflare/.tflint.hcl]

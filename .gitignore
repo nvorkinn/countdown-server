@@ -3,7 +3,8 @@
 /.env
 /broker.env
 /caddy.env
-/authentik.env
+/tinyauth.env
+/pocket-id.env
 /redis.env
 data/
 __pycache__/

@@ -30,11 +30,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-  # Terraform providers (terraform/ has no local modules).
-  - package-ecosystem: "terraform"
-    directory: "/terraform"
-    schedule:
-      interval: "weekly"
+  # Terraform providers (infra/cloudflare has no local modules).
   - package-ecosystem: "terraform"
     directory: "/infra/cloudflare"
     schedule:

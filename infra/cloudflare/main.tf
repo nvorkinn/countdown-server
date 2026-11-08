@@ -6,8 +6,9 @@
 locals {
   settings = { for line in regexall("(?m)^([A-Z][A-Z0-9_]*)=(.*)$", file("${path.module}/../../config/${var.environment}.env")) : line[0] => trimspace(line[1]) }
 
-  # APEX_HOST and www. redirect to AUTH_HOST (config/*.env), but all of them need a record.
-  names = toset([local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.AUTH_HOST, local.settings.SSO_HOST, local.settings.LOGS_HOST, local.settings.METRICS_HOST])
+  # APEX_HOST and www. redirect to AUTH_HOST (config/*.env), but all of them need a record. TAUTH_HOST is Tinyauth and
+  # ID_HOST Pocket ID.
+  names = toset([local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.AUTH_HOST, local.settings.TAUTH_HOST, local.settings.ID_HOST, local.settings.LOGS_HOST, local.settings.METRICS_HOST])
 }
 
 resource "cloudflare_dns_record" "host" {

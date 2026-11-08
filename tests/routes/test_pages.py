@@ -50,8 +50,8 @@ def _mock_get(json_data, status_code=200):
 REPO = Path(__file__).parents[2]
 
 
-def test_pages_show_the_logo_the_sign_in_shows(client):
-    """The header's pill is a copy of the one Authentik serves (authentik-assets/), so the two can't drift apart."""
+def test_pages_show_the_logo(client):
+    assert (REPO / "broker" / "static" / "countdown-pill.svg").is_file()
     assert 'src="/static/countdown-pill.svg" alt="Countdown"' in client.get("/pair/add").get_data(as_text=True)
 
 

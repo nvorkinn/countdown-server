@@ -4,7 +4,7 @@
 # /opt/auth-broker/releases/<tag>/ and runs it. It installs the bundled
 # docker-compose.yml, pins the service to the tag in .env, then pulls and
 # recreates just that service.
-# Usage: deploy.sh <countdown-server|caddy|fluent-bit|victoria-logs|victoria-metrics|redis|authentik> <tag>
+# Usage: deploy.sh <countdown-server|caddy|fluent-bit|victoria-logs|victoria-metrics|redis|edge> <tag>
 #
 # The bundle's settings.env (the environment's non-secret settings) is installed next to the compose file too.
 #
@@ -12,10 +12,13 @@
 # host's age key, into <name>.env next to the compose file (compose won't load
 # the file if any service's env_file is missing). Nobody edits those files.
 #
-# authentik (its three services) and redis run upstream's images, pinned by
-# hand (AUTHENTIK_VERSION in .env, redis's tag in docker-compose.yml), so
-# they aren't pinned to the release tag. They're brought up rather than
-# force-recreated, so a release that doesn't change them leaves them running.
+# edge (the Docker socket proxy, Tinyauth and Pocket ID) and redis run upstream's images, pinned by hand in
+# docker-compose.yml, so they aren't pinned to the release tag. They're brought up rather than force-recreated, so a
+# release that doesn't change them leaves them running.
+#
+# Whether this host runs the edge itself (Caddy, Tinyauth, Pocket ID: the `edge` compose profile) is EDGE_OWNED in the
+# bundle's settings.env. Where it is false (dev/QA, on home-stack's edge), the caddy and edge deploys do nothing, and the
+# services join home-stack's external Docker network `edge`.
 set -euo pipefail
 
 service="$1"
@@ -32,6 +35,17 @@ case "$(uname -m)" in
   *) echo "no sops build for $(uname -m)" >&2; exit 1 ;;
 esac
 
+# The settings (config/<environment>.env), read here to tell whether this host owns the edge.
+edge_owned="$(sed -n 's/^EDGE_OWNED=//p' "$bundle/settings.env")"
+case "$service" in
+  caddy | edge)
+    if [ "$edge_owned" != true ]; then
+      echo "$service: this environment's edge is not this repo's (EDGE_OWNED=$edge_owned), so nothing to deploy"
+      exit 0
+    fi
+    ;;
+esac
+
 services=("$service")
 var=
 case "$service" in
@@ -45,7 +59,7 @@ case "$service" in
       services=(countdown-server glow-provider spotify-provider developer-provider parcel-provider)
     fi
     ;;
-  authentik) services=(authentik-postgresql authentik-server authentik-worker) ;;
+  edge) services=(socket-proxy tinyauth pocket-id) ;;
   redis) ;;
   *) echo "unknown service: $service" >&2; exit 1 ;;
 esac
@@ -111,22 +125,21 @@ fi
   # This environment's settings (config/<environment>.env): the hostnames and the like, which aren't secret.
   cp "$bundle/settings.env" settings.env.tmp
   mv settings.env.tmp settings.env
-  # authentik-assets/ is the server's public static mount (brand assets
-  # only); made here so Docker doesn't create it root-owned. The authentik
-  # deploy ships the bundle's whole folder into it, each file copied then
-  # mv'd so the server never serves a half-written one.
-  mkdir -p authentik-assets
-  if [ "$service" = authentik ]; then
-    for asset in "$bundle"/authentik-assets/*; do
-      name="$(basename "$asset")"
-      cp "$asset" "authentik-assets/.$name.tmp"
-      mv "authentik-assets/.$name.tmp" "authentik-assets/$name"
-    done
-  fi
-  # Keep only the version pins: secrets are in the *.env files and settings
-  # in the compose file.
+  # Keep only the version pins, and add what Compose fills into docker-compose.yml's labels and networks: the settings
+  # (hostnames and the like, not secret) and which edge profile and network this environment has. No secret goes in
+  # here: Compose would copy it into labels, where `docker inspect` and Caddy's logs show it. The secrets are in the
+  # *.env files (the log ingest token reaches Caddy's routes as the runtime placeholder {env.LOGS_INGEST_TOKEN}).
   # AUTH_BROKER_VERSION is the broker's pin from before the rename (now COUNTDOWN_SERVER_VERSION).
-  (umask 077 && grep -E '^[A-Z0-9_]+_VERSION=' .env | grep -v '^AUTH_BROKER_VERSION=' > .env.tmp || true)
+  (
+    umask 077
+    { grep -E '^[A-Z0-9_]+_VERSION=' .env | grep -v '^AUTH_BROKER_VERSION=' || true; } > .env.tmp
+    grep -E '^[A-Z][A-Z0-9_]*=' settings.env >> .env.tmp
+    if [ "$edge_owned" = true ]; then
+      printf 'COMPOSE_PROFILES=edge\nEDGE_NETWORK_EXTERNAL=false\n' >> .env.tmp
+    else
+      printf 'COMPOSE_PROFILES=\nEDGE_NETWORK_EXTERNAL=true\n' >> .env.tmp
+    fi
+  )
   mv .env.tmp .env
   if [ -n "$var" ]; then
     if grep -q "^$var=" .env; then
@@ -160,6 +173,25 @@ retry_lost_lease() {
     sleep 5
   done
 }
+
+if [ "$service" = edge ]; then
+  # Pocket ID's data volume holds every user and passkey, so it is copied before each edge deploy, whether or not Pocket
+  # ID changes: a tarball in backups/ (the newest $DB_BACKUPS_KEPT are kept). The volume doesn't exist on the very first
+  # deploy. A copy taken mid-write could be unreadable; the earlier ones are kept. Copy backups/ off the host as well
+  # (see "Backups" in the README).
+  if docker volume inspect pocket_id_data >/dev/null 2>&1; then
+    mkdir -p backups
+    backup="pocket-id-$tag-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+    docker run --rm -v pocket_id_data:/data:ro -v "$PWD/backups:/backup" docker.io/library/alpine:3.22 \
+      tar -czf "/backup/$backup" -C /data .
+    echo "Backed up Pocket ID's data to backups/$backup"
+    # shellcheck disable=SC2012
+    ls -1t backups/pocket-id-*.tar.gz | tail -n +"$((DB_BACKUPS_KEPT + 1))" | xargs -r rm -f
+  fi
+  # The login this replaced, gone from hosts that ran it. Its volumes (authentik_db, authentik_media) are left for the
+  # owner to remove once nothing needs them.
+  docker rm --force authentik-server authentik-worker authentik-postgresql >/dev/null 2>&1 || true
+fi
 
 # Another deploy job's cleanup (below) can delete layers this one is still pulling, so pulls hold image.lock too, and
 # so does the cleanup. Pulls take turns as well.

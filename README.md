@@ -9,8 +9,8 @@ The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare
   them, so no credential leaves the broker;
 - writes each screen's config and subscriptions to Redis for countdown, and serves each screen the frame the render
   pool drew;
-- runs the shared infrastructure on the Oracle Cloud ARM host: Caddy, authentik, Redis, Fluent Bit, VictoriaLogs and
-  VictoriaMetrics.
+- runs the shared infrastructure on the Oracle Cloud ARM host: the edge (Caddy, Tinyauth and Pocket ID), Redis, Fluent
+  Bit, VictoriaLogs and VictoriaMetrics.
 
 It also serves a personal [GitHub dashboard](#github-dashboard) at `/github`.
 
@@ -19,18 +19,19 @@ It also serves a personal [GitHub dashboard](#github-dashboard) at `/github`.
 
 ## Services
 
-Everything runs from `docker-compose.yml` on one host, in `/opt/auth-broker/` (the repo's name before it became countdown-server).
+Everything runs from `docker-compose.yml` on one host, in `/opt/auth-broker/` (the repo's name before it became
+countdown-server). Routes and access rules are Docker labels on the service they belong to, not a separate Caddyfile; see
+[The edge](#the-edge).
 
 | Service | What it does |
 |---|---|
-| `countdown-server` | The Flask app (gunicorn on `127.0.0.1:5000`). State is one SQLite file, `data/broker.db`. |
+| `countdown-server` | The Flask app (gunicorn on port 5000 of the `edge` network). State is one SQLite file, `data/broker.db`. |
 | `glow-provider` | Fetches each screen's electricity readings from Glowmarkt every 15 minutes into `v1:energy:<device id>`. |
 | `spotify-provider` | Fetches what each screen's Spotify and Apple Music are playing (every minute), their top lists (every 30 minutes) and the playing tracks' covers. |
 | `developer-provider` | Polls each screen's GitHub and AI plans for the developer panel (every 2 minutes, every 20 seconds while a release runs). |
 | `parcel-provider` | Reads each screen's active deliveries from the owner's Parcel account (every 20 minutes by day, not overnight) into `v1:parcels:<device id>`, and whether Parcel took the key into `v1:parcels-status:<device id>`. |
-| `caddy` | TLS and routing for `auth.`, `sso.`, `logs.` and `metrics.nikolaivorkinn.com`, and the authentik sign-in gate. |
-| `authentik-server`, `-worker`, `-postgresql` | Sign-in, sign-up, passkeys and Google login, at `sso.nikolaivorkinn.com`. |
-| `redis` | The store shared with countdown. A cache only: nothing on disk. |
+| `caddy`, `tinyauth`, `pocket-id`, `socket-proxy` | The edge, in the compose profile `edge` (prod only): [caddy-docker-proxy](https://github.com/lucaslorentz/caddy-docker-proxy), the login in front of protected routes, the passkey-only identity provider behind it, and the read-only Docker socket proxy the first two use. |
+| `redis` | The store shared with countdown. A cache only: nothing on disk. On the compose network as `redis`, and on the host's `127.0.0.1:6379` for countdown. |
 | `fluent-bit`, `victoria-logs`, `victoria-metrics` | Logs and metrics from every container, the render pool and the screens. |
 
 The four providers run the broker's own image with another command and the broker's secrets. The glow, developer and parcel
@@ -67,8 +68,10 @@ failure never fails the poll.
 
 ## Pairing and settings
 
-Every browser page needs an authentik login. Caddy forward-auths the request and sets `X-Authentik-Uid` and
-`X-Authentik-Username`, which the broker trusts (so it only listens on loopback). The uid becomes the device's `owner`.
+Every browser page needs a Pocket ID login as a member of the group `countdown`. Caddy forward-auths the request to
+Tinyauth, which sets the `Remote-*` headers (`Remote-User`, `Remote-Email`, `Remote-Name`, `Remote-Groups`, `Remote-Sub`)
+that the broker trusts (so it is reachable only from the `edge` network, and Caddy strips those headers from every
+incoming request). The sign-up page (`/pair`) and the device endpoints stay public; `/pair/add` and `/pair/token` need the login.
 
 - **By token (the normal way).** After Wi-Fi setup the screen sends its owner's browser to `/pair?t=<token>` (or
   `/pair#<token>`), where the token is `sha256("pairing:" + sha256hex(secret))`. The page waits, polling
@@ -128,7 +131,7 @@ fields they don't know.
 
 `/github` shows every open PR across your repositories, their checks, the release workflows running (as a job graph,
 with **Approve** buttons for waiting environments), and a **New Release** button per project, plus **Promote** for a
-project with a Promote workflow. It's behind the same authentik login as the rest of the site, and only one user may
+project with a Promote workflow. It's behind the same login as the rest of the site, and only one user may
 open it.
 
 It runs in dev/QA only, at `https://auth.dev.nikolaivorkinn.com/github`: production's `broker.env` has none of its
@@ -151,14 +154,14 @@ GitHub's Settings → Developer settings → GitHub Apps:
 Enable it with `sops secrets/dev/broker.env`, then release:
 
 ```dotenv
-GITHUB_DASHBOARD_USER_ID=<your X-Authentik-Uid>
+GITHUB_DASHBOARD_USER_ID=<your Remote-Sub>
 GITHUB_APP_CLIENT_ID=<the App's client ID>
 GITHUB_APP_CLIENT_SECRET=<a client secret>
 GITHUB_APP_WEBHOOK_SECRET=<the webhook secret>
 ```
 
 The page shows **Connect GitHub** until you've signed in, and GitHub's tokens never reach the browser. The webhook is
-the one dashboard path outside the authentik login (GitHub can't sign in), so its signature is its only check. It
+the one dashboard path outside the login (GitHub can't sign in), so its signature is its only check. It
 doesn't call GitHub: it notes what changed in Redis (`v1:github:changes`), the page asks for those changes every 5
 seconds and re-reads only them, and reads everything every 5 minutes in case a delivery was lost. Without
 `GITHUB_APP_WEBHOOK_SECRET` the page reads everything every minute instead.
@@ -184,7 +187,7 @@ curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d secret_token="$TELEGRAM_WEBHOOK_SECRET" -d allowed_updates='["callback_query"]'
 ```
 
-Like GitHub's, the webhook is outside the authentik login, so the secret token Telegram sends is its only check.
+Like GitHub's, the webhook is outside the login, so the secret token Telegram sends is its only check.
 
 **Auto-merge** needs *Allow auto-merge* turned on in each repository's settings. GitHub only waits when the base
 branch's protection requires checks; where nothing is required, the button merges at once if the PR's checks have all
@@ -234,7 +237,7 @@ FLASK_DEBUG=1 python wsgi.py
 ```
 
 The broker uses Redis at `REDIS_URL` (default `redis://127.0.0.1:6379/0`) with `REDIS_PASSWORD`. There's no login proxy
-locally, so send `X-Authentik-Uid` yourself (e.g. with a header extension). To play a screen without hardware:
+locally, so send the `Remote-*` headers yourself (e.g. with a header extension). To play a screen without hardware:
 
 ```bash
 python scripts/simulate_device.py            # registers, and prints how to issue a pairing code
@@ -291,33 +294,31 @@ Run the **Release** workflow from the Actions tab on `main`, picking `patch`, `m
 It builds five images for arm64 (the host is ARM) on an ARM runner, tagged with the release and `latest`:
 
 - `ghcr.io/nvorkinn/countdown-server` (the broker and the providers)
-- `ghcr.io/nvorkinn/countdown-server-caddy` (with `caddy/Caddyfile`)
+- `ghcr.io/nvorkinn/countdown-server-caddy` (caddy-docker-proxy, built with xcaddy)
 - `ghcr.io/nvorkinn/countdown-server-fluent-bit` (with `fluent-bit/`)
 - `ghcr.io/nvorkinn/countdown-server-victoria-logs`
 - `ghcr.io/nvorkinn/countdown-server-victoria-metrics` (with the vmui dashboards)
 
 It also attaches a deploy bundle to the release (`docker-compose.yml`, `scripts/deploy.sh`, the encrypted secrets and
-authentik's brand assets) for each environment, with only that environment's secrets (`deploy-<tag>-dev.tar.gz` and
+the environment's settings) for each environment, with only that environment's secrets (`deploy-<tag>-dev.tar.gz` and
 `deploy-<tag>-prod.tar.gz`; there is no prod bundle until `secrets/prod/` is committed). A release deploys to
 **dev/QA** with no approval: starting the release is the decision. Production is never touched by a release; it gets a
 tag that has been through dev/QA, by promotion (below). Two reusable workflows deploy a target (`deploy-services.yml`
-and `deploy-authentik.yml`), each taking an optional approval environment (reviewers) for targets that need one:
+and `deploy-edge.yml`), each taking an optional approval environment (reviewers) for targets that need one:
 
 | Job | Deploys |
 |---|---|
 | services | Caddy, the broker and its providers, Fluent Bit, VictoriaLogs, VictoriaMetrics and Redis, a job each, two at a time |
-| authentik | authentik, on the `AUTHENTIK_VERSION` pinned in the host's `.env` |
+| edge | The Docker socket proxy, Tinyauth and Pocket ID, at the versions pinned in `docker-compose.yml`. Production only: where `EDGE_OWNED=false` (dev/QA) this and the Caddy job do nothing |
 
 A job SSHes into the host named by its target environment's secrets (`dev-qa` or `production`) and runs
 `scripts/fetch-release.sh`, which downloads the bundle into
 `/opt/auth-broker/releases/<tag>/` (checking its SHA-256, and keeping the newest 5 bundles) and runs its `deploy.sh`.
 That decrypts the secrets, installs the compose file, backs up the database (`data/broker.db.bak-<tag>`, the newest 5
 kept) when deploying the broker, pins the service's `<SERVICE>_VERSION` in `/opt/auth-broker/.env` and recreates it,
-waiting until it runs (and, for Caddy, takes connections on 443). Redis and authentik are only recreated if their service changed. Then it removes the service's older images, keeping
-the running one and one other to roll back to, so the host's disk doesn't fill up with a set of images per release.
-After authentik and the services are deployed, the `terraform` job applies this tag's authentik configuration, asking
-for approval only when the plan changes something (see [terraform/README.md](terraform/README.md)). It waits for the
-services because it reaches authentik through Caddy, which is recreated on each release.
+waiting until it runs (and, for Caddy, takes connections on 443). Redis and the edge's upstream services are only recreated if their service changed. Then it removes the service's
+older images, keeping the running one and one other to roll back to, so the host's disk doesn't fill up with a set of
+images per release. Before each edge deploy it also backs up Pocket ID's data (see [Backups](#backups)).
 
 ### Promoting to production
 
@@ -334,12 +335,12 @@ before anyone is asked if:
   to production, which is a rollback.
 
 Then the `approve-production` environment's reviewers are asked once for the whole promotion, and the services and
-authentik deploy to `production` as in a release, followed by the `terraform` job against production's Authentik,
-which asks for its own approval in `terraform-production` when the plan has changes. One promotion runs at a time.
+edge deploy to `production` as in a release (the edge first, so the socket proxy is there for Caddy). One promotion
+runs at a time.
 
 To **roll back production,** promote an older tag that was deployed to dev/QA or promoted before; the same checks and
 approval apply (the host keeps the newest 5 bundles and the previous images, and fetches the bundle again if it is
-gone), and Terraform applies that tag's configuration, so read its plan before approving. To roll back dev/QA, release a revert, or re-run the deploy jobs of an older
+gone). To roll back dev/QA, release a revert, or re-run the deploy jobs of an older
 release's workflow run. To deploy by hand, set the versions in `/opt/auth-broker/.env` and run `docker compose up -d`.
 Make compose changes in the repo: each deploy replaces the host's copy.
 
@@ -351,13 +352,14 @@ Make compose changes in the repo: each deploy replaces the host's copy.
   - `approve-production` with yourself as a required reviewer: it is the one gate of a promotion. (A job can name only
     one environment, and a matrix of jobs that named a protected one would ask for approval each, which is why the
     approval is not `production` itself.)
-  - `terraform` and `terraform-production`, each with yourself as a required reviewer (that's what stops Terraform
-    applying on its own) and a branch rule: see [terraform/README.md](terraform/README.md#applying).
+  - `terraform` and `terraform-production`, each with yourself as a required reviewer (that's what stops the DNS
+    records in `infra/cloudflare` applying on their own) and a branch rule: see
+    [infra/cloudflare/README.md](infra/cloudflare/README.md).
 - **Secrets,** in each of `dev-qa` and `production` (an environment's secret takes precedence over a repository's of
   the same name, so a repository-level copy is only a fallback, and best deleted once every target has its own):
   `DEPLOY_HOST`, `DEPLOY_USER` (in the `docker` group, owning `/opt/auth-broker/`), `ORACLE_SSH_TOKEN` (a
-  private key for that user) and `DEPLOY_SSH_KNOWN_HOSTS` (`ssh-keyscan <host>`), plus the Terraform ones in
-  [terraform/README.md](terraform/README.md#secrets) and `CODECOV_TOKEN`.
+  private key for that user) and `DEPLOY_SSH_KNOWN_HOSTS` (`ssh-keyscan <host>`), plus the DNS ones in
+  [infra/cloudflare/README.md](infra/cloudflare/README.md#setup) and `CODECOV_TOKEN`.
 - **The host** needs Docker Compose v2 (`sudo apt install docker-compose-v2`), `curl` and its age key (below).
 - **Before the first promotion,** `secrets/prod/` has to be committed, encrypted for the laptop and the production
   host, with the matching `prod` rule in `.sops.yaml` uncommented (see Secrets below), and a release made after that:
@@ -365,12 +367,14 @@ Make compose changes in the repo: each deploy replaces the host's copy.
 
 ### Secrets
 
-Every secret is in `secrets/<environment>/` (`dev/` today; `prod/` for production), as `broker.env`, `caddy.env`,
-`authentik.env` and `redis.env`, encrypted with [SOPS](https://github.com/getsops/sops) and age; the `.example` files in
+Every secret is in `secrets/<environment>/` (`dev/` today; `prod/` for production), as `broker.env`, `caddy.env` (the log ingest
+token), `redis.env` and, where this repo runs the edge, `tinyauth.env` and `pocket-id.env`, encrypted with [SOPS](https://github.com/getsops/sops) and age; the `.example` files in
 `secrets/` list what each holds. `.sops.yaml` lists who can decrypt each environment's files: your laptop's age key and
 that environment's host's (`/opt/auth-broker/age.key`), so one environment's host can't decrypt another's secrets. A
 release's deploy bundle for an environment holds only that environment's files, and `deploy.sh` decrypts them all on
-every deploy. CI fails if any value isn't encrypted. Settings that aren't secret are in `docker-compose.yml`.
+every deploy. CI fails if any value isn't encrypted. Settings that aren't secret are in `config/<environment>.env`
+and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with
+`POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting).
 
 ```bash
 sops secrets/dev/broker.env    # edit, re-encrypted on save; then commit, release and deploy
@@ -383,20 +387,24 @@ key changes.
 
 ### Settings
 
-What differs between environments and isn't secret is in `config/<environment>.env`: the names Caddy serves
-(`AUTH_HOST`, `SSO_HOST`, `LOGS_HOST`, `METRICS_HOST` and the bare `APEX_HOST`, which redirects to `AUTH_HOST`), the
-Spotify redirect URI and the sender of authentik's emails. The environment's deploy bundle carries its file as
-`settings.env`, which `deploy.sh` installs next to `docker-compose.yml` and the services that need it list in their
-`env_file`, so one image and one compose file serve every environment. Each name needs an A record to its
-environment's host before Caddy can get a certificate for it, and the Spotify redirect URI has to be registered in the
+What differs between environments and isn't secret is in `config/<environment>.env`: the names the labels route
+(`AUTH_HOST` for the settings site, `TAUTH_HOST` for Tinyauth, `ID_HOST` for Pocket ID, `LOGS_HOST`, `METRICS_HOST` and
+the bare `APEX_HOST`, which redirects to `AUTH_HOST`), `POCKET_ID_URL`, whether this environment runs its own edge
+(`EDGE_OWNED`) and the Spotify redirect URI. The environment's deploy bundle carries its file as `settings.env`, which
+`deploy.sh` installs next to `docker-compose.yml`, lists in the services' `env_file` and copies into `.env`, where
+Compose fills the names into the labels. One image and one compose file serve every environment. Each name needs an
+A record to its environment's edge before Caddy can get a certificate for it (`infra/cloudflare`), and the Spotify redirect URI has to be registered in the
 Spotify app. A test fails if the environments' files don't set the same things.
 
 ## Operations
 
 ### Backups
 
-`/opt/auth-broker/data/` (the SQLite database) and the `authentik_db` volume (every user and passkey) are
-the only state worth backing up. Caddy's certificates are in the `caddy_data` volume: never remove it
+`/opt/auth-broker/data/` (the SQLite database) and the `pocket_id_data` volume (every user and passkey) are
+the only state worth backing up. `deploy.sh` tars Pocket ID's volume into `/opt/auth-broker/backups/` before each edge
+deploy (the newest 5 are kept); copy that folder off the host, since one disk failure takes both. To restore, stop
+`pocket-id`, extract a tarball into the volume (`docker run --rm -v pocket_id_data:/data -v "$PWD/backups:/backup"
+alpine tar -xzf /backup/<file> -C /data`) and start it again. Caddy's certificates are in the `caddy_data` volume: never remove it
 (`docker compose down -v` would), or Caddy re-requests every certificate and hits Let's Encrypt's rate limits.
 
 ### Logs
@@ -404,12 +412,12 @@ the only state worth backing up. Caddy's certificates are in the `caddy_data` vo
 Fluent Bit tails every container's log and ships it to VictoriaLogs, which keeps a week. The broker posts the
 screens' logs there itself (`service=countdown-esp32`, `host=<device id>`). Our own services write JSON lines with
 `level` and `_msg`; every record gets `service` (for containers, the container name) and `host`. Browse at
-`https://logs.nikolaivorkinn.com/select/vmui` (authentik admins only), e.g. `{service="countdown-server"}`.
+`https://logs.nikolaivorkinn.com/select/vmui` (Pocket ID group `admins` only), e.g. `{service="countdown-server"}`.
 
 ### Metrics
 
 VictoriaMetrics keeps a month of pushed metrics: the screens' (via the broker), and the render pool's OTLP
-metrics and the host's (via Fluent Bit). Browse at `https://metrics.nikolaivorkinn.com/vmui/` (admins only). Its
+metrics and the host's (via Fluent Bit). Browse at `https://metrics.nikolaivorkinn.com/vmui/` (group `admins` only). Its
 Dashboards tab shows `victoria-metrics/dashboards/` (one, **Screens**, per screen and for the render pool); try a query
 in vmui before changing one, as CI checks every query parses. The ingest paths on both hosts take
 `Authorization: Bearer <LOGS_INGEST_TOKEN>`.
@@ -424,21 +432,47 @@ on the next settings save or broker restart; run `flask config publish` to resto
 docker exec -it redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli'
 ```
 
-### Email
+### The edge
 
-authentik sends sign-up confirmations and password-recovery links through [Resend](https://resend.com)'s
-SMTP (settings in `docker-compose.yml`, the API key as `AUTHENTIK_EMAIL__PASSWORD` in `secrets/authentik.env`). The
-domain's SPF and DKIM records must be verified in Resend, or mail lands in spam.
+Each environment has one Caddy, one Tinyauth and one Pocket ID, and every countdown service joins the Docker network
+`edge` that Caddy watches ([caddy-docker-proxy](https://github.com/lucaslorentz/caddy-docker-proxy) builds its
+Caddyfile from the `caddy*` labels of the containers on it). Where each runs:
 
-### authentik
+- **Production** runs all three from `docker-compose.yml` under the profile `edge` (`EDGE_OWNED=true`, which `deploy.sh`
+  turns into `COMPOSE_PROFILES=edge` and a network that compose creates). Caddy reads the labels through a
+  [socket proxy](https://github.com/Tecnativa/docker-socket-proxy) that allows read-only endpoints only; nothing else
+  mounts the Docker socket.
+- **Dev/QA** runs on the home server, on the edge that home-stack runs (`EDGE_OWNED=false`): no profile, and the
+  compose file joins its existing external network `edge`. That Caddy, Tinyauth and Pocket ID must be the ones that
+  define the `tinyauth` snippet (forward auth to `tinyauth:3000`, `/api/auth/caddy`, copying the `Remote-*` headers) and
+  read `tinyauth.apps.*` labels.
 
-authentik's configuration (flows, sign-up, passkey login, Google, the proxy providers) is Terraform in
-[`terraform/`](terraform/README.md). Users and their devices are managed in authentik's UI. New users can only sign up
-from a login that started at `/pair`, and must set up a passkey or authenticator app.
+Tinyauth defines the snippet once, in its own labels (`caddy_0: (tinyauth)`), and a protected route adds
+`import tinyauth`. Its only provider is Pocket ID (auto-redirect, no local users), and every protected app's
+`tinyauth.apps.<app>.oauth.groups` label names the Pocket ID group allowed in: `countdown` for the settings site,
+`admins` for the Victoria UIs. VictoriaLogs and VictoriaMetrics ingest (`/insert/*`, the metrics write paths) stays on
+its bearer-token route with no login. Tinyauth 5.1 refused every OAuth user of an app restricted only by groups
+([tinyauth#1016](https://github.com/steveiliop56/tinyauth/issues/1016)); the pinned 5.2.0 may have fixed it, but the
+OAuth whitelist `/.*/` is still set globally and on each app, so the group is the only rule: **every protected app must
+have a group label**, or any Pocket ID user can open it (a test checks).
+
+**Hostnames are permanent.** Passkeys are bound to Pocket ID's hostname (`id.<domain>`, `ID_HOST`), so changing it
+locks everyone out. Tinyauth is at `tauth.<domain>` (`TAUTH_HOST`).
+
+**First start of an environment's Pocket ID** (it starts empty):
+
+1. Open `https://id.<domain>/setup` and create the admin account with a passkey.
+2. Create the groups `admins` and `countdown`; add yourself to both.
+3. Create an OIDC client for Tinyauth with the callback URL `https://tauth.<domain>/api/oauth/callback/pocketid`; its id
+   and secret go in `secrets/<environment>/tinyauth.env`. Restart Tinyauth.
+4. Create an API key (Settings > Admin > API Keys) and note the `countdown` group's id: they go in
+   `secrets/<environment>/broker.env` as `POCKET_ID_API_KEY` and `POCKET_ID_COUNTDOWN_GROUP_ID`.
+
+`ENCRYPTION_KEY` (`pocket-id.env`) is generated once and never changed.
 
 ### Request tracing
 
-Setting `LOG_REQUEST_HEADERS: "true"` in `docker-compose.yml` makes the broker and Caddy log every
+Setting `LOG_REQUEST_HEADERS: "true"` in `docker-compose.yml` makes the broker log every
 request's headers (never `Authorization` or cookies), for debugging sign-in redirects. Off by default.
 
 ## PR status check

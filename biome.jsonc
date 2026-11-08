@@ -4,7 +4,7 @@
     "files": {
         "ignoreUnknown": true,
         // First-party JS/CSS only. Not the Jinja templates (Biome can't parse Jinja safely), the SVGs, the vendored
-        // third-party code (broker/static/vendor), authentik-assets or the vendor/ submodule (never matched here).
+        // third-party code (broker/static/vendor) or the vendor/ submodule (never matched here).
         "includes": [
             "broker/static/**/*.js",
             "broker/static/**/*.css",

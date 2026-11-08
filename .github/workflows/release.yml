@@ -174,7 +174,7 @@ jobs:
         with: *attest
 
   # The deploy bundles are what the hosts deploy from: this release's
-  # docker-compose.yml, deploy.sh, Authentik's brand assets, that target's
+  # docker-compose.yml, deploy.sh, that target's
   # settings (config/<target>.env) and SOPS-encrypted
   # secrets, attached to the GitHub Release. There is one per target, holding
   # only that target's secrets/<target>/, so a host never gets (or could decrypt)
@@ -206,12 +206,10 @@ jobs:
               continue
             fi
             rm -rf "deploy-$TAG"
-            mkdir -p "deploy-$TAG/secrets" "deploy-$TAG/authentik"
+            mkdir -p "deploy-$TAG/secrets"
             cp docker-compose.yml scripts/deploy.sh "deploy-$TAG/"
             cp "secrets/$target"/*.env "deploy-$TAG/secrets/"
             cp "config/$target.env" "deploy-$TAG/settings.env"
-            mkdir -p "deploy-$TAG/authentik-assets"
-            cp authentik-assets/* "deploy-$TAG/authentik-assets/"
             # Fixed order, times and owners, so a re-run builds the same bytes.
             tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - "deploy-$TAG" \
               | gzip -n > "deploy-$TAG-$target.tar.gz"
@@ -227,11 +225,9 @@ jobs:
 
   # A release deploys to dev/QA only, with no approval (starting the release is
   # the decision). Production is promote.yml's, for a tag that has been through
-  # here. Each target deploys this repo's services and authentik
-  # (deploy-services.yml, deploy-authentik.yml). The services wait for the
-  # images; authentik runs upstream's image, so it only needs the bundle and
-  # can start while the images are still building. A target's environment holds
-  # its host's secrets (DEPLOY_HOST and the rest).
+  # here. The services wait for the images. A target's environment holds its
+  # host's secrets (DEPLOY_HOST and the rest). Dev/QA runs no edge of its own (home-stack's Caddy, Tinyauth and Pocket
+  # ID serve it, so deploy.sh leaves Caddy alone there); production's edge is promote.yml's deploy-edge.
   # Dev/QA's DNS records (infra/cloudflare), planned, and applied after approval if they change, beside the deploys. A
   # release that leaves DNS as it is asks for no approval. If it changes a name or an address, Caddy may ask for a
   # certificate before the record exists and wait a while to retry: restart it after the apply. Production's records
@@ -259,34 +255,4 @@ jobs:
       target: dev
       tag: ${{ needs.tag.outputs.value }}
       bundle_sha256: ${{ fromJSON(needs.package.outputs.sha256).dev }}
-    secrets: inherit
-
-  deploy-authentik-dev:
-    name: authentik (dev-qa)
-    needs: [tag, package]
-    uses: ./.github/workflows/deploy-authentik.yml
-    with:
-      environment: dev-qa
-      target: dev
-      tag: ${{ needs.tag.outputs.value }}
-      bundle_sha256: ${{ fromJSON(needs.package.outputs.sha256).dev }}
-    secrets: inherit
-
-  # authentik's configuration, from this tag's terraform/: a plan, applied after approval only if it changes anything
-  # (see terraform.yml). Terraform reaches authentik through Caddy, so it waits for the services deploy as well as
-  # authentik's: planned beside them, it lost Caddy halfway when Caddy was recreated (connection refused). It still runs
-  # when a service other than authentik failed to deploy, and not when authentik did.
-  terraform-dev:
-    name: terraform (dev-qa)
-    needs: [tag, deploy-authentik-dev, deploy-services-dev]
-    if: ${{ !cancelled() && needs.deploy-authentik-dev.result == 'success' }}
-    permissions:
-      contents: read
-      # The plan job comments on pull requests, so its token asks for this even here.
-      pull-requests: write
-    uses: ./.github/workflows/terraform.yml
-    with:
-      apply: true
-      target: dev
-      tag: ${{ needs.tag.outputs.value }}
     secrets: inherit

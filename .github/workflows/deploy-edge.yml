@@ -1,8 +1,9 @@
-name: Deploy authentik
+name: Deploy edge
 
-# One target's deploy of authentik, called by release.yml (dev/QA) and promote.yml (production). It runs upstream's
-# image, so it needs only the bundle and can start while the images are still building. Its configuration (terraform.yml)
-# is the callers' next job, after the services too, as it reaches authentik through Caddy. See also deploy-services.yml.
+# One target's deploy of the edge services that run upstream's images (the Docker socket proxy, Tinyauth and Pocket ID;
+# Caddy is a release image, in deploy-services.yml). Called by promote.yml for production only: dev/QA's edge is
+# home-stack's. They need only the bundle, so this can start while the images are still building. The pinned
+# versions are in docker-compose.yml.
 on:
   workflow_call:
     inputs:
@@ -27,15 +28,15 @@ permissions:
 
 jobs:
   deploy:
-    name: deploy authentik (${{ inputs.environment }})
+    name: deploy edge (${{ inputs.environment }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     concurrency:
-      group: deploy-${{ inputs.environment }}-authentik-${{ inputs.tag }}
+      group: deploy-${{ inputs.environment }}-edge-${{ inputs.tag }}
       cancel-in-progress: false
     env:
       TAG: ${{ inputs.tag }}
-      SERVICE: authentik
+      SERVICE: edge
       DEPLOY_TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
       BUNDLE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ inputs.tag }}/deploy-${{ inputs.tag }}-${{ inputs.target }}.tar.gz
       BUNDLE_SHA256: ${{ inputs.bundle_sha256 }}
@@ -52,5 +53,5 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
           printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
-      - name: Deploy authentik
+      - name: Deploy edge
         run: ssh -i ~/.ssh/id_deploy "$DEPLOY_TARGET" bash -s -- "$SERVICE" "$TAG" "$BUNDLE_URL" "$BUNDLE_SHA256" < scripts/fetch-release.sh
