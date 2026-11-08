@@ -136,11 +136,21 @@ jobs:
       allow_older_tag: true
     secrets: inherit
 
+  # The secrets, from Vaultwarden to the host, once for both deploys below.
+  fetch-secrets:
+    name: secrets (production)
+    needs: [check, approve]
+    uses: ./.github/workflows/deploy-secrets.yml
+    with:
+      environment: production
+      target: prod
+    secrets: inherit
+
   # Production's edge: the Docker socket proxy, Tinyauth and Pocket ID (upstream's images). Caddy is a service, below,
   # and starts after this so that the socket proxy is there for it.
   deploy-edge:
     name: edge (production)
-    needs: [check, approve]
+    needs: [check, approve, fetch-secrets]
     uses: ./.github/workflows/deploy-edge.yml
     with:
       environment: production
@@ -151,9 +161,10 @@ jobs:
 
   deploy-services:
     name: services (production)
-    needs: [check, approve, deploy-edge]
-    # Even if the edge failed to deploy: the broker and the rest don't depend on it.
-    if: ${{ !cancelled() && needs.approve.result == 'success' }}
+    needs: [check, approve, fetch-secrets, deploy-edge]
+    # Even if the edge failed to deploy: the broker and the rest don't depend on it. But not without the secrets: the
+    # host would have the previous deploy's.
+    if: ${{ !cancelled() && needs.approve.result == 'success' && needs.fetch-secrets.result == 'success' }}
     uses: ./.github/workflows/deploy-services.yml
     with:
       environment: production

@@ -2,7 +2,8 @@ name: Deploy services
 
 # One target's deploy of this repo's own services (Caddy, the broker and its providers, Fluent Bit, VictoriaLogs,
 # VictoriaMetrics, Redis), called by release.yml (dev/QA) and promote.yml (production). See also deploy-edge.yml. Caddy
-# is deployed on production only: deploy.sh leaves it alone where the edge isn't this repo's (dev/QA).
+# is deployed on production only: deploy.sh leaves it alone where the edge isn't this repo's (dev/QA). The target's
+# secrets are on the host already: deploy-secrets.yml puts them there before this is called.
 on:
   workflow_call:
     inputs:
@@ -36,9 +37,8 @@ jobs:
     environment: ${{ inputs.environment }}
     strategy:
       fail-fast: false
-      # Two at a time, in this order, the next starting as one finishes. The
-      # services are independent, so a failure doesn't stop the rest.
-      max-parallel: 2
+      # All at once: the services are independent, so a failure doesn't stop the rest, and deploy.sh serialises what the
+      # host can't do twice at once (image pulls, edits to .env and the compose file).
       matrix:
         include:
           - service: caddy
@@ -82,29 +82,6 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_TOKEN" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-
-      - name: Fetch the secrets from Vaultwarden
-        env:
-          BW_CLIENTID: ${{ secrets.BW_CLIENTID }}
-          BW_CLIENTSECRET: ${{ secrets.BW_CLIENTSECRET }}
-          BW_PASSWORD: ${{ secrets.BW_PASSWORD }}
-          TARGET: ${{ inputs.target }}
-        run: |
-          # From scripts/bitwarden-cli's lockfile, so the exact version and hashes are pinned.
-          npm ci --prefix scripts/bitwarden-cli --ignore-scripts
-          export PATH="$PWD/scripts/bitwarden-cli/node_modules/.bin:$PATH"
-          scripts/fetch-secrets.sh "$TARGET" "$RUNNER_TEMP/secrets"
-          # Into vault-secrets/ on the host, each file moved in whole, as deploy jobs can run at once.
-          tar -C "$RUNNER_TEMP/secrets" -cf - . | ssh -i ~/.ssh/id_deploy "$DEPLOY_TARGET" '
-            set -e
-            umask 077
-            dir="${DEPLOY_DIR:-/opt/auth-broker}"
-            mkdir -p "$dir/vault-secrets"
-            tmp="$(mktemp -d "$dir/.vault-XXXXXX")"
-            tar -xf - -C "$tmp"
-            for f in "$tmp"/*.env; do mv "$f" "$dir/vault-secrets/$(basename "$f")"; done
-            rmdir "$tmp"'
-          rm -rf "$RUNNER_TEMP/secrets"
 
       - name: Deploy ${{ env.SERVICE }}
         run: ssh -i ~/.ssh/id_deploy "$DEPLOY_TARGET" bash -s -- "$SERVICE" "$TAG" "$BUNDLE_URL" "$BUNDLE_SHA256" < scripts/fetch-release.sh
