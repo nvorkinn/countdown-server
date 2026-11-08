@@ -1,8 +1,8 @@
 name: Promote
 
 # Deploys a release that has already been through dev/QA to production, with one approval for all of it. Run it from
-# main (Actions > Promote > Run workflow) with the release's tag. Nothing is built: it deploys the images and the prod
-# deploy bundle that Release made, so production runs exactly what dev/QA did. To roll back, promote an older tag that
+# main (Actions > Promote > Run workflow) with the release's tag. Nothing is built: it deploys the images that Release made,
+# with the tag's docker-compose.yml and config/prod.env, so production runs exactly what dev/QA did. To roll back, promote an older tag that
 # was deployed to dev/QA or to production before.
 on:
   workflow_dispatch:
@@ -33,8 +33,6 @@ jobs:
       deployments: read
       # To find this workflow's earlier successful runs (a rollback to a tag that was promoted before).
       actions: read
-    outputs:
-      sha256: ${{ steps.bundle.outputs.sha256 }}
     env:
       TAG: ${{ inputs.tag }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,13 +54,6 @@ jobs:
           git merge-base --is-ancestor "$sha" origin/main \
             || { echo "::error::$TAG ($sha) is not on main, so it isn't promoted"; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Check the release has a production bundle
-        run: |
-          assets="$(gh release view "$TAG" --json assets --jq '.assets[].name')" \
-            || { echo "::error::No release for $TAG"; exit 1; }
-          grep -qxF "deploy-$TAG-prod.tar.gz" <<< "$assets" \
-            || { echo "::error::$TAG has no production bundle (deploy-$TAG-prod.tar.gz): it was released before config/prod.env existed. Release again."; exit 1; }
 
       # Dev/QA's evidence is a deployment: every job of a Release run that names the dev-qa environment records one on
       # the commit the run started from, which for the Release button is main's head, the tag's commit, not the tag
@@ -99,15 +90,6 @@ jobs:
           echo "::error::$TAG has not been deployed to dev-qa (or promoted before). Release it first: that is the deployment that vouches for it."
           exit 1
 
-      # What the deploy jobs pass to the host, which checks the bundle it downloads against this.
-      - name: Fingerprint the production bundle
-        id: bundle
-        run: |
-          gh release download "$TAG" --pattern "deploy-$TAG-prod.tar.gz" --dir "$RUNNER_TEMP/bundle"
-          sha="$(sha256sum "$RUNNER_TEMP/bundle/deploy-$TAG-prod.tar.gz" | cut -d' ' -f1)"
-          echo "deploy-$TAG-prod.tar.gz: $sha"
-          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
-
   # The one approval for the whole promotion: the environment's reviewers are asked once, here, and the deploys
   # below run in `production` (which holds the host's secrets) with no reviewers of its own.
   approve:
@@ -136,39 +118,14 @@ jobs:
       allow_older_tag: true
     secrets: inherit
 
-  # The secrets, from Vaultwarden to the host, once for both deploys below.
-  fetch-secrets:
-    name: secrets (production)
+  # Production, through the host's Docker daemon (deploy-compose.yml): one job fetches the secrets from Vaultwarden and
+  # deploys the edge (the Docker socket proxy, Tinyauth and Pocket ID, before Caddy, which needs the proxy) and every
+  # service, in the production environment, which holds the host's secrets and has no reviewers of its own.
+  deploy:
+    name: deploy (production)
     needs: [check, approve]
-    uses: ./.github/workflows/deploy-secrets.yml
+    uses: ./.github/workflows/deploy-compose.yml
     with:
       environment: production
-      target: prod
-    secrets: inherit
-
-  # Production's edge: the Docker socket proxy, Tinyauth and Pocket ID (upstream's images). Caddy is a service, below,
-  # and starts after this so that the socket proxy is there for it.
-  deploy-edge:
-    name: edge (production)
-    needs: [check, approve, fetch-secrets]
-    uses: ./.github/workflows/deploy-edge.yml
-    with:
-      environment: production
-      target: prod
       tag: ${{ inputs.tag }}
-      bundle_sha256: ${{ needs.check.outputs.sha256 }}
-    secrets: inherit
-
-  deploy-services:
-    name: services (production)
-    needs: [check, approve, fetch-secrets, deploy-edge]
-    # Even if the edge failed to deploy: the broker and the rest don't depend on it. But not without the secrets: the
-    # host would have the previous deploy's.
-    if: ${{ !cancelled() && needs.approve.result == 'success' && needs.fetch-secrets.result == 'success' }}
-    uses: ./.github/workflows/deploy-services.yml
-    with:
-      environment: production
-      target: prod
-      tag: ${{ inputs.tag }}
-      bundle_sha256: ${{ needs.check.outputs.sha256 }}
     secrets: inherit
