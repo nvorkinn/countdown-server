@@ -396,6 +396,17 @@ key that can edit the secrets), `age-keygen -o /opt/auth-broker/age.key` on each
 that host's in `.sops.yaml`'s rule for its environment, and run `sops updatekeys secrets/<environment>/*.env` whenever a
 key changes.
 
+### Secrets from Vaultwarden
+
+Where an environment has the deploy bot's credentials (the secrets `BW_CLIENTID`, `BW_CLIENTSECRET` and `BW_PASSWORD`), the
+deploy workflows read its secrets from [Vaultwarden](https://vault.nikolaivorkinn.com) instead: `scripts/fetch-secrets.sh`
+logs in as the `deploy-bot` user, which can read only the `countdown-server/<target>` collection, and writes one
+`<name>.env` per file listed in `secrets-map.json`. The workflow copies them to `/opt/auth-broker/vault-secrets/` on
+the host, and `deploy.sh` installs them in place of decrypting the bundle's SOPS file of the same name. Each variable is a
+login item in the collection, named `countdown-server/<target>/<VARIABLE>`, with the value as its password; to add one,
+create the item and add its name to `secrets-map.json` under the file it belongs in. A deploy fails, before it changes
+anything, if Vaultwarden can't be reached or an item is missing. Environments without the credentials still use SOPS.
+
 ### Settings
 
 What differs between environments and isn't secret is in `config/<environment>.env`: the names the labels route

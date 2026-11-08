@@ -1,0 +1,8 @@
+{
+  "name": "bitwarden-cli-for-deploys",
+  "private": true,
+  "description": "Pins the Bitwarden CLI that scripts/fetch-secrets.sh runs in the deploy workflows; installed with npm ci.",
+  "dependencies": {
+    "@bitwarden/cli": "2026.10.0"
+  }
+}
