@@ -167,9 +167,6 @@ if [ "$service" = edge ]; then
     # shellcheck disable=SC2012
     ls -1t backups/pocket-id-*.tar.gz | tail -n +"$((DB_BACKUPS_KEPT + 1))" | xargs -r rm -f
   fi
-  # The login this replaced, gone from hosts that ran it. Its volumes (authentik_db, authentik_media) are left for the
-  # owner to remove once nothing needs them.
-  docker rm --force authentik-server authentik-worker authentik-postgresql >/dev/null 2>&1 || true
 fi
 
 # Another deploy job's cleanup (below) can delete layers this one is still pulling, so pulls hold image.lock too, and
