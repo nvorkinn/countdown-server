@@ -27,6 +27,7 @@ rules:
       - tests.yml
       - release.yml
       - deploy-services.yml
+      - deploy-edge.yml
   ref-version-mismatch:
     ignore:
       # The shared nvorkinn/.github workflows are pinned to a commit on its main branch (no release tags), and the
