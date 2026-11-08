@@ -1,11 +1,17 @@
 name: Deploy compose
 
-# A prototype of deploying through the host's Docker daemon (DOCKER_HOST=ssh://...), run by hand against dev/QA: the
-# secrets are fetched from Vaultwarden as in deploy-secrets.yml, but stay on the runner with the compose file and the
-# settings, and scripts/deploy-context.sh drives the daemon over SSH, instead of fetch-release.sh and deploy.sh running on
-# the host. One job deploys every service (no matrix, so no locks and no max-parallel). Not wired into release.yml yet,
-# and dev/QA only: production's edge, Caddy and Pocket ID backup are still deploy.sh's.
+# Deploys a release to dev/QA through the host's Docker daemon (DOCKER_HOST=ssh://...): the secrets are fetched from
+# Vaultwarden onto the runner and stay there with the compose file and the settings, and scripts/deploy-context.sh drives
+# the daemon over SSH, so nothing is installed or run on the host. One job deploys every service (no matrix, so no locks
+# and no max-parallel). Called by release.yml, and run by hand to deploy or re-deploy a tag. Dev/QA only: production's
+# edge, Caddy and Pocket ID backup are still deploy.sh's (promote.yml with deploy-services.yml and deploy-edge.yml).
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release to deploy to dev/QA, e.g. v1.2.3
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       tag:

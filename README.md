@@ -302,17 +302,17 @@ It builds five images for arm64 (the host is ARM) on an ARM runner, tagged with 
 
 It also attaches a deploy bundle to the release (`docker-compose.yml`, `scripts/deploy.sh`, and the
 environment's settings) for each environment (`deploy-<tag>-dev.tar.gz` and `deploy-<tag>-prod.tar.gz`); the secrets
-aren't in them, the deploy jobs fetch those from Vaultwarden (see Secrets). A release deploys to
-**dev/QA** with no approval: starting the release is the decision. Production is never touched by a release; it gets a
-tag that has been through dev/QA, by promotion (below). Two reusable workflows deploy a target (`deploy-services.yml`
-and `deploy-edge.yml`), each taking an optional approval environment (reviewers) for targets that need one:
+aren't in them, the deploys fetch those from Vaultwarden (see Secrets). A release deploys to
+**dev/QA** with no approval: starting the release is the decision, through the host's Docker daemon (below). Production is
+never touched by a release; it gets a tag that has been through dev/QA, by promotion (below), with two reusable workflows
+that run `deploy.sh` on the host (`deploy-services.yml` and `deploy-edge.yml`):
 
 | Job | Deploys |
 |---|---|
 | services | Caddy, the broker and its providers, Fluent Bit, VictoriaLogs, VictoriaMetrics and Redis, a job each, two at a time |
 | edge | The Docker socket proxy, Tinyauth and Pocket ID, at the versions pinned in `docker-compose.yml`. Production only: where `EDGE_OWNED=false` (dev/QA) this and the Caddy job do nothing |
 
-A job SSHes into the host named by its target environment's secrets (`dev-qa` or `production`) and runs
+For production, a job SSHes into the host named by the `production` environment's secrets and runs
 `scripts/fetch-release.sh`, which downloads the bundle into
 `/opt/auth-broker/releases/<tag>/` (checking its SHA-256, and keeping the newest 5 bundles) and runs its `deploy.sh`.
 That decrypts the secrets, installs the compose file, backs up the database (`data/broker.db.bak-<tag>`, the newest 5
@@ -344,13 +344,15 @@ gone). To roll back dev/QA, release a revert, or re-run the deploy jobs of an ol
 release's workflow run. To deploy by hand, set the versions in `/opt/auth-broker/.env` and run `docker compose up -d`.
 Make compose changes in the repo: each deploy replaces the host's copy.
 
-**Prototype: deploying through the host's Docker daemon.** `Deploy compose` (Actions > Deploy compose > Run workflow, with
-a release tag) deploys that release to dev/QA without running anything on the host: it fetches the secrets from Vaultwarden
+**Dev/QA: deploying through the host's Docker daemon.** `deploy-compose.yml` (a release's `deploy (dev-qa)` job, or Actions >
+Deploy compose > Run workflow with a release tag) deploys that release to dev/QA without running anything on the host: it
+fetches the secrets from Vaultwarden
 onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the same path as on the host, so
 `./data` means the same on both), and `scripts/deploy-context.sh` runs `docker compose` against the host with
-`DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It is
-not part of a release yet and does not do what production needs (the edge, Pocket ID's backup, recreating Caddy only when it
-changed); see the script's header.
+`DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It does
+not yet do what production needs (the edge, Pocket ID's backup, recreating Caddy only when it changed; see the script's
+header), so production still uses `deploy.sh`. The first time it ran on a host that `deploy.sh` had set up it recreated every
+container once, and left them alone after that.
 
 **One-time setup** in the repository's settings:
 
