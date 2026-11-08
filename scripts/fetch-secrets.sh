@@ -29,7 +29,15 @@ mkdir "$out"
 count=0
 while IFS=$'\t' read -r file key item; do
   # `bw get` fails when the item is missing or the name matches more than one.
-  value="$(bw get password "$item")"
+  if ! value="$(bw get password "$item" 2>&1)"; then
+    # Names only, never values: what this user can see, to tell a missing item from a missing membership or collection.
+    {
+      echo "Can't read $item: $value"
+      echo "This user sees $(bw list organizations | jq length) organizations, collections [$(bw list collections | jq -r '[.[].name] | join(", ")')]"
+      echo "and $(bw list items | jq length) items; those matching ${item##*/}: [$(bw list items --search "${item##*/}" | jq -r '[.[].name] | join(", ")')]"
+    } >&2
+    exit 1
+  fi
   if [ -z "$value" ]; then echo "Empty value for $item" >&2; exit 1; fi
   # Keep the value out of the job's log, should something print it.
   while IFS= read -r line; do [ -n "$line" ] && echo "::add-mask::$line"; done <<< "$value"
