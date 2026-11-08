@@ -1,5 +1,5 @@
 # Shared by the images this repo releases (ghcr.io/nvorkinn/countdown-server*),
-# each pinned to a release tag in .env by deploy.sh.
+# each pinned to a release tag in .env by deploy-context.sh.
 x-release-image: &release-image
   pull_policy: always
   restart: unless-stopped
@@ -32,7 +32,7 @@ x-victoria-urls: &victoria-urls
 # The routes and access rules are labels: caddy-docker-proxy turns each `caddy*` label into Caddyfile, and Tinyauth reads
 # each `tinyauth.apps.*` label as the access rule of the app (the hostname in its config.domain; the subdomain must match
 # the container's name otherwise, so every app here sets the domain). The hostnames come from config/<environment>.env,
-# which deploy.sh copies into .env for Compose to fill in.
+# which deploy-context.sh copies into .env for Compose to fill in.
 #
 # Two ways to run the edge (Caddy, Tinyauth, Pocket ID), told apart by two settings (config/<environment>.env):
 # - prod owns it: the `edge` profile starts them here, and the network `edge` is created by this file;
@@ -56,7 +56,7 @@ services:
     command: ["gunicorn", "--bind", "0.0.0.0:5000", "wsgi:app"]
     volumes:
       - ./data:/app/data
-    # Fetched from Vaultwarden by the deploy workflow and installed by deploy.sh, as are the other services' env_files.
+    # Fetched from Vaultwarden by the deploy workflow, as are the other services' env_files.
     env_file:
       - broker.env
       - redis.env
@@ -344,7 +344,7 @@ services:
       # certificate, and Let's Encrypt rate-limits repeated issuance.
       - caddy_data:/data
       - caddy_config:/config
-    # Up means taking connections on 443. deploy.sh's `--wait` holds the deploy job until then.
+    # Up means taking connections on 443. deploy-context.sh's `--wait` holds the deploy job until then.
     healthcheck:
       test: ["CMD", "nc", "-z", "-w", "3", "127.0.0.1", "443"]
       interval: 10s
@@ -391,7 +391,7 @@ services:
 
   # Pocket ID: the passkey-only identity provider, at ID_HOST. Its hostname is permanent: passkeys are bound to it, so
   # changing it locks everyone out. ENCRYPTION_KEY is in Vaultwarden (pocket-id.env in secrets-map.json). The pocket_id_data
-  # volume (SQLite database, keys, uploads) holds every user and passkey: deploy.sh backs it up before each edge
+  # volume (SQLite database, keys, uploads) holds every user and passkey: deploy-context.sh backs it up before each
   # deploy; copy those off the host.
   pocket-id:
     image: ghcr.io/pocket-id/pocket-id:v2.19.2

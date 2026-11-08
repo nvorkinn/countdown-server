@@ -62,7 +62,7 @@ jobs:
   # Tests builds its own images. An infra image whose folder (and this
   # workflow) hasn't changed since the previous release isn't rebuilt: that
   # release's image gets this tag too, so its digest stays the same and the
-  # deploy leaves the running container alone (deploy.sh). The broker's image is
+  # deploy leaves the running container alone (deploy-context.sh). The broker's image is
   # always built, as it bakes in the code.
   images:
     name: image ${{ matrix.image }}
@@ -81,7 +81,7 @@ jobs:
           - image: countdown-server
             context: .
             platforms: linux/amd64,linux/arm64
-          # Production only (deploy.sh leaves Caddy alone on dev/QA, where home-stack runs it), and compiling it
+          # Production only (dev/QA's Caddy is home-stack's, so the profile that runs this one is off there), and compiling it
           # under emulation would take long.
           - image: countdown-server-caddy
             context: caddy
@@ -186,52 +186,25 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with: *attest
 
-  # The deploy bundles are what the hosts deploy from: this release's
-  # docker-compose.yml, deploy.sh, that target's
-  # settings (config/<target>.env), attached to the GitHub Release. There is one per target. The secrets aren't in
-  # them: the deploy jobs fetch those from Vaultwarden. They don't need the images, so they build alongside them.
-  package:
+  # The GitHub Release for the tag. It has no assets: the deploys use the tag's own docker-compose.yml and config/.
+  github-release:
     needs: tag
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      # {"<target>": "<the bundle's SHA-256>", ...}
-      sha256: ${{ steps.bundle.outputs.sha256 }}
     env:
       TAG: ${{ needs.tag.outputs.value }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Build deploy bundles
-        id: bundle
-        run: |
-          shas='{}'
-          for target in dev prod; do
-            rm -rf "deploy-$TAG"
-            mkdir "deploy-$TAG"
-            cp docker-compose.yml scripts/deploy.sh "deploy-$TAG/"
-            cp "config/$target.env" "deploy-$TAG/settings.env"
-            # Fixed order, times and owners, so a re-run builds the same bytes.
-            tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - "deploy-$TAG" \
-              | gzip -n > "deploy-$TAG-$target.tar.gz"
-            sha="$(sha256sum "deploy-$TAG-$target.tar.gz" | cut -d' ' -f1)"
-            shas="$(jq -c --arg target "$target" --arg sha "$sha" '. + {($target): $sha}' <<< "$shas")"
-          done
-          echo "sha256=$shas" >> "$GITHUB_OUTPUT"
-
-      - name: Attach bundles to the release
-        run: |
-          gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG"
-          gh release upload "$TAG" "deploy-$TAG"-*.tar.gz --clobber
+      - name: Create the GitHub Release
+        run: gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG"
 
   # A release deploys to dev/QA only, with no approval (starting the release is
   # the decision). Production is promote.yml's, for a tag that has been through
   # here. The services wait for the images. A target's environment holds its
   # host's secrets (DEPLOY_HOST and the rest). Dev/QA runs no edge of its own (home-stack's Caddy, Tinyauth and Pocket
-  # ID serve it, so deploy.sh leaves Caddy alone there); production's edge is promote.yml's deploy-edge.
+  # ID serve it, so the edge profile is off there); production's edge is promote.yml's, in the same deploy.
   # Dev/QA's DNS records (infra/cloudflare), planned, and applied after approval if they change, beside the deploys. A
   # release that leaves DNS as it is asks for no approval. If it changes a name or an address, Caddy may ask for a
   # certificate before the record exists and wait a while to retry: restart it after the apply. Production's records

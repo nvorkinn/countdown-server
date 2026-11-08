@@ -300,26 +300,15 @@ It builds five images for arm64 (the host is ARM) on an ARM runner, tagged with 
 - `ghcr.io/nvorkinn/countdown-server-victoria-logs`
 - `ghcr.io/nvorkinn/countdown-server-victoria-metrics` (with the vmui dashboards)
 
-It also attaches a deploy bundle to the release (`docker-compose.yml`, `scripts/deploy.sh`, and the
-environment's settings) for each environment (`deploy-<tag>-dev.tar.gz` and `deploy-<tag>-prod.tar.gz`); the secrets
-aren't in them, the deploys fetch those from Vaultwarden (see Secrets). A release deploys to
-**dev/QA** with no approval: starting the release is the decision, through the host's Docker daemon (below). Production is
-never touched by a release; it gets a tag that has been through dev/QA, by promotion (below), with two reusable workflows
-that run `deploy.sh` on the host (`deploy-services.yml` and `deploy-edge.yml`):
-
-| Job | Deploys |
-|---|---|
-| services | Caddy, the broker and its providers, Fluent Bit, VictoriaLogs, VictoriaMetrics and Redis, a job each, two at a time |
-| edge | The Docker socket proxy, Tinyauth and Pocket ID, at the versions pinned in `docker-compose.yml`. Production only: where `EDGE_OWNED=false` (dev/QA) this and the Caddy job do nothing |
-
-For production, a job SSHes into the host named by the `production` environment's secrets and runs
-`scripts/fetch-release.sh`, which downloads the bundle into
-`/opt/auth-broker/releases/<tag>/` (checking its SHA-256, and keeping the newest 5 bundles) and runs its `deploy.sh`.
-That decrypts the secrets, installs the compose file, backs up the database (`data/broker.db.bak-<tag>`, the newest 5
-kept) when deploying the broker, pins the service's `<SERVICE>_VERSION` in `/opt/auth-broker/.env` and recreates it,
-waiting until it runs (and, for Caddy, takes connections on 443). Redis and the edge's upstream services are only recreated if their service changed. Then it removes the service's
-older images, keeping the running one and one other to roll back to, so the host's disk doesn't fill up with a set of
-images per release. Before each edge deploy it also backs up Pocket ID's data (see [Backups](#backups)).
+It also creates the GitHub Release for the tag. A release deploys to **dev/QA** with no approval: starting the release is the
+decision. Production is never touched by a release; it gets a tag that has been through dev/QA, by promotion (below). Both
+are the same deploy, `deploy-compose.yml`, which fetches the secrets from Vaultwarden (see Secrets) and deploys through the
+host's Docker daemon (below): every service, one job. The services are Caddy, the broker and its providers, Fluent Bit,
+VictoriaLogs, VictoriaMetrics and Redis, and where `EDGE_OWNED=true` (production) the edge: the Docker socket proxy,
+Tinyauth and Pocket ID, at the versions pinned in `docker-compose.yml`. Where `EDGE_OWNED=false` (dev/QA) the edge profile is
+off and Caddy is home-stack's. A deploy backs up the database (`data/broker.db.bak-<tag>`, the newest 5 kept) and Pocket ID's
+data (see [Backups](#backups)) first, waits until the containers run (and, for Caddy, take connections on 443), and removes
+the older images of what it deployed, keeping the running one and one other to roll back to.
 
 ### Promoting to production
 
@@ -350,11 +339,9 @@ hand with `production` it only plans: it pulls the images and prints what a depl
 replace and which it would leave alone), changing no container and taking no backup. It fetches the secrets from Vaultwarden
 onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the same path as on the host, so
 `./data` means the same on both), and `scripts/deploy-context.sh` runs `docker compose` against the host with
-`DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. Like
-`deploy.sh` it backs up the database and Pocket ID's data, brings the edge up before Caddy (`depends_on`), and leaves an
-image that didn't change since the last release (the infra images are re-tagged each release) running. The first time it
-runs on a host that `deploy.sh` set up it recreates every container once, and leaves them alone after that. Production
-still uses `deploy.sh` until its first plan has been read.
+`DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It brings
+the edge up before Caddy (`depends_on`), and leaves an image that didn't change since the last release (the infra images are
+re-tagged each release) running. Nothing is installed on the host but Docker.
 
 **One-time setup** in the repository's settings:
 
@@ -395,12 +382,11 @@ Every secret is a login item in [Vaultwarden](https://vault.nikolaivorkinn.com),
 and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with
 `POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting).
 
-Once per release or promotion, `deploy-secrets.yml` (called by `release.yml` and `promote.yml`, before their deploys) runs
-`scripts/fetch-secrets.sh`, which logs in to Vaultwarden as the `deploy-bot` user (it can read only these two
-collections), writes one `<name>.env` per file of `secrets-map.json`'s target and copies them to
-`/opt/auth-broker/vault-secrets/` on the host, where each service's `deploy.sh` installs them next to the compose file. A deploy fails,
-before it changes anything, if Vaultwarden can't be reached or an item is missing. So Vaultwarden has to be up to deploy
-(running services don't need it). The `dev-qa` and `production` environments each need the secrets `BW_CLIENTID`,
+On every deploy, `deploy-compose.yml` runs `scripts/fetch-secrets.sh`, which logs in to Vaultwarden as the `deploy-bot` user (it
+can read only these two collections) and writes one `<name>.env` per file of `secrets-map.json`'s target, on the runner,
+where `deploy-context.sh` stages them next to the compose file for Compose to read as the services' `env_file`s. No
+secrets file is left on the host (the containers get the values as their environment). A deploy fails, before it changes anything, if Vaultwarden can't be reached or an item is
+missing. So Vaultwarden has to be up to deploy (running services don't need it). The `dev-qa` and `production` environments each need the secrets `BW_CLIENTID`,
 `BW_CLIENTSECRET` (the bot's API key) and `BW_PASSWORD` (its master password, which `bw unlock` needs).
 
 The bot always logs in with the device id in `scripts/bitwarden-cli/data.json` (the CLI would otherwise invent a new one each run,
@@ -414,8 +400,8 @@ under the file it belongs in.
 What differs between environments and isn't secret is in `config/<environment>.env`: the names the labels route
 (`AUTH_HOST` for the settings site, `TAUTH_HOST` for Tinyauth, `ID_HOST` for Pocket ID, `LOGS_HOST`, `METRICS_HOST` and
 the bare `APEX_HOST`, which redirects to `AUTH_HOST`), `POCKET_ID_URL`, whether this environment runs its own edge
-(`EDGE_OWNED`) and the Spotify redirect URI. The environment's deploy bundle carries its file as `settings.env`, which
-`deploy.sh` installs next to `docker-compose.yml`, lists in the services' `env_file` and copies into `.env`, where
+(`EDGE_OWNED`) and the Spotify redirect URI. `deploy-context.sh` stages the environment's file as `settings.env`
+next to `docker-compose.yml`, where the services list it in their `env_file`, and copies it into `.env`, where
 Compose fills the names into the labels. One image and one compose file serve every environment. Each name needs an
 A record to its environment's edge before Caddy can get a certificate for it (`infra/cloudflare`), and the Spotify redirect URI has to be registered in the
 Spotify app. A test fails if the environments' files don't set the same things.
@@ -425,7 +411,7 @@ Spotify app. A test fails if the environments' files don't set the same things.
 ### Backups
 
 `/opt/auth-broker/data/` (the SQLite database) and the `pocket_id_data` volume (every user and passkey) are
-the only state worth backing up. `deploy.sh` tars Pocket ID's volume into `/opt/auth-broker/backups/` before each edge
+the only state worth backing up. `deploy-context.sh` tars Pocket ID's volume into `/opt/auth-broker/backups/` before each
 deploy (the newest 5 are kept); copy that folder off the host, since one disk failure takes both. To restore, stop
 `pocket-id`, extract a tarball into the volume (`docker run --rm -v pocket_id_data:/data -v "$PWD/backups:/backup"
 alpine tar -xzf /backup/<file> -C /data`) and start it again. Caddy's certificates are in the `caddy_data` volume: never remove it
@@ -462,7 +448,7 @@ Each environment has one Caddy, one Tinyauth and one Pocket ID, and every countd
 `edge` that Caddy watches ([caddy-docker-proxy](https://github.com/lucaslorentz/caddy-docker-proxy) builds its
 Caddyfile from the `caddy*` labels of the containers on it). Where each runs:
 
-- **Production** runs all three from `docker-compose.yml` under the profile `edge` (`EDGE_OWNED=true`, which `deploy.sh`
+- **Production** runs all three from `docker-compose.yml` under the profile `edge` (`EDGE_OWNED=true`, which `deploy-context.sh`
   turns into `COMPOSE_PROFILES=edge` and a network that compose creates). Caddy reads the labels through a
   [socket proxy](https://github.com/Tecnativa/docker-socket-proxy) that allows read-only endpoints only; nothing else
   mounts the Docker socket.
