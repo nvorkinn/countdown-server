@@ -40,7 +40,7 @@ def test_place_search_requires_a_paired_browser(client):
         response = client.get("/api/places/search?q=london")
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/pair"
+    assert response.headers["Location"] == "/pair/add"
     get.assert_not_called()
 
 

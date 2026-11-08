@@ -263,7 +263,7 @@ def test_pairing_with_a_code_stores_the_config_and_queues_a_render(app, store, n
     with app.app_context():
         code = pairing.issue_code(device_id)
 
-    client.post("/pair", data={"code": code})
+    client.post("/pair/add", data={"code": code})
 
     assert _stored(store, device_id)["device_id"] == device_id
     assert nudges() == [device_id]
@@ -297,7 +297,7 @@ def test_a_code_takes_the_config_out_of_the_store_until_it_is_used(app, store, n
     assert _stored(store, device_id) is None
     assert nudges() == [device_id]
 
-    client.post("/pair", data={"code": code})
+    client.post("/pair/add", data={"code": code})
 
     assert _stored(store, device_id)["pairing_code"] is None
     assert nudges() == [device_id]

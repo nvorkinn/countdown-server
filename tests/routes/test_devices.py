@@ -74,7 +74,7 @@ def test_requesting_new_pairing_code_invalidates_old_one(app, client, register_d
     first = _issue(app, device_id)
     _issue(app, device_id)
 
-    response = client.post("/pair", data={"code": first})
+    response = client.post("/pair/add", data={"code": first})
     assert b"invalid or has expired" in response.data
 
 
@@ -337,7 +337,7 @@ def test_the_config_leaves_glowmarkt_off_without_an_account_the_provider_can_use
 def test_pairing_spends_the_code(app, client, register_device):
     device_id, _secret = register_device()
     code = _issue(app, device_id)
-    assert client.post("/pair", data={"code": code}).status_code == 302
+    assert client.post("/pair/add", data={"code": code}).status_code == 302
 
     with app.app_context():
         assert pairing.live_code(device_id) is None
@@ -349,7 +349,7 @@ def test_a_failed_pairing_attempt_does_not_mark_the_device_paired(app, client, r
     device_id, _secret = register_device()
     _issue(app, device_id)
 
-    client.post("/pair", data={"code": "WRONG1"})
+    client.post("/pair/add", data={"code": "WRONG1"})
 
     with app.app_context():
         assert db.session.get_one(Device, device_id).paired_at is None

@@ -240,8 +240,8 @@ def client(app):
     It sends the header the login proxy sets (see auth.current_user); device API calls ignore it.
     """
     client = app.test_client()
-    client.environ_base["HTTP_X_AUTHENTIK_UID"] = USER
-    client.environ_base["HTTP_X_AUTHENTIK_USERNAME"] = USERNAME
+    client.environ_base["HTTP_REMOTE_SUB"] = USER
+    client.environ_base["HTTP_REMOTE_NAME"] = USERNAME
     return client
 
 
@@ -306,7 +306,7 @@ def paired_client(app, client, register_device):
     with app.app_context():
         code = pairing.issue_code(device_id)
 
-    pair_response = client.post("/pair", data={"code": code})
+    pair_response = client.post("/pair/add", data={"code": code})
     assert pair_response.status_code == 302
 
     return client, device_id, device_secret

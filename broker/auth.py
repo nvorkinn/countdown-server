@@ -271,7 +271,7 @@ def require_paired_user(view: View) -> View:
         owned = [device.device_id for device in user_devices()]
         if requested is None:
             if not owned:
-                return redirect(url_for("pages.pair"))
+                return redirect(url_for("pages.add_screen"))
             g.device_id = owned[0]
         elif requested in owned:
             g.device_id = requested

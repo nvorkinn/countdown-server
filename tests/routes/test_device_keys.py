@@ -106,9 +106,9 @@ def test_a_code_that_hands_the_device_to_someone_else_deletes_the_last_owners_da
     code = cli("code", device_id).output.split(":")[0]
     _provide(store, device_id)
     new_owner = app.test_client()
-    new_owner.environ_base["HTTP_X_AUTHENTIK_UID"] = "someone-else"
+    new_owner.environ_base["HTTP_REMOTE_SUB"] = "someone-else"
 
-    assert new_owner.post("/pair", data={"code": code}).status_code == 302
+    assert new_owner.post("/pair/add", data={"code": code}).status_code == 302
 
     assert _left(store, device_id) == set()
     assert store.exists(config_store.key(device_id))  # paired again: its config is back in the store
@@ -119,7 +119,7 @@ def test_pairing_again_as_the_same_owner_keeps_its_data(store, paired_client, cl
     _provide(store, device_id)
     code = cli("code", device_id).output.split(":")[0]
 
-    assert client.post("/pair", data={"code": code}).status_code == 302
+    assert client.post("/pair/add", data={"code": code}).status_code == 302
 
     assert _left(store, device_id) == EVERYTHING
 

@@ -26,7 +26,7 @@
             --display: "Josefin Sans", "Futura", "Century Gothic", system-ui, sans-serif;
             --body: "Ubuntu", "Segoe UI", system-ui, sans-serif;
             --mono: "Ubuntu Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-            /* The logo's own lettering (authentik-assets/countdown-pill.svg), for the pill the pairing page animates. */
+            /* The logo's own lettering (static/countdown-pill.svg), for the pill the pairing page animates. */
             --logo-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, Inter, "Helvetica Neue", Arial, sans-serif;
         }
 
@@ -1900,7 +1900,7 @@
                     <li><a href="{{ url_for('pages.device_config', device_id=screen.id) }}" class="nav-item{% if screen.current %} current" aria-current="page{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M9 21h6M12 17v4"/></svg>{{ screen.label }}</a></li>
                 {% endfor %}
             </ul>
-            <a href="{{ url_for('pages.pair') }}" class="nav-add{% if adding_screen %} current" aria-current="page{% endif %}">+ Add a screen</a>
+            <a href="{{ url_for('pages.add_screen') }}" class="nav-add{% if adding_screen %} current" aria-current="page{% endif %}">+ Add a screen</a>
         </nav>
         {% if username %}<div class="sidebar-foot"><div class="whoami" title="Signed in as {{ username }}">{{ username }}</div></div>{% endif %}
     </aside>

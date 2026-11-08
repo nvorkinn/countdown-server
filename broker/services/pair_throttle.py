@@ -20,6 +20,8 @@ MAX_FAILURES = 10
 WINDOW_SECONDS = 60.0
 # /register's limit: a device registers once (or once a boot), so a few a minute is plenty.
 REGISTRATIONS_PER_MINUTE = 5
+# The sign-up page's limit: it creates an account in Pocket ID each time it succeeds.
+SIGNUPS_PER_MINUTE = 5
 # Lockouts run 1, 2, 4, ... minutes, capped here; a client that stays quiet this long after
 # its last lockout ends starts again from one minute.
 MAX_LOCKOUT_SECONDS = 60 * 60.0

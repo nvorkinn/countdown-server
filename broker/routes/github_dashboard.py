@@ -1,4 +1,4 @@
-"""The personal GitHub dashboard, for one Authentik user, its actions guarded by a CSRF token."""
+"""The personal GitHub dashboard, for one Pocket ID user, its actions guarded by a CSRF token."""
 
 import functools
 import hmac
@@ -46,7 +46,7 @@ def _serve(view: Callable[..., ResponseReturnValue], user_id: str, kwargs: dict[
 
 
 def dashboard_view(view: Callable[..., ResponseReturnValue]) -> View:
-    """Fail closed unless the dashboard is configured and this is its one allowed Authentik user."""
+    """Fail closed unless the dashboard is configured and this is its one allowed Pocket ID user."""
 
     @functools.wraps(view)
     @require_user_id

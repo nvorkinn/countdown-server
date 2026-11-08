@@ -3,7 +3,7 @@ from flask import Flask
 
 from broker import config
 
-PAGES = ["/pair", "/about"]
+PAGES = ["/pair/add", "/about"]
 
 
 @pytest.mark.parametrize(

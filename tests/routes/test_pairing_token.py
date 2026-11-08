@@ -77,7 +77,7 @@ def test_a_device_with_an_owner_is_not_taken_by_another_user(app, client, regist
     device_id, _ = register_device(SECRET)
     _pair(client)
     other = app.test_client()
-    other.environ_base["HTTP_X_AUTHENTIK_UID"] = "someone-else"
+    other.environ_base["HTTP_REMOTE_SUB"] = "someone-else"
 
     response = _pair(other)
 
@@ -103,14 +103,14 @@ def test_pairing_by_token_needs_the_login_proxy_header(anonymous_client, registe
 
 
 def test_the_pairing_page_carries_the_token_script_and_a_code_fallback(client):
-    page = client.get("/pair").get_data(as_text=True)
+    page = client.get("/pair/add").get_data(as_text=True)
     assert "location.hash" in page
     assert 'name="code"' in page
 
 
 def test_the_pairing_page_passes_on_a_query_token(client):
     token = token_for_secret()
-    assert token in client.get(f"/pair?t={token}").get_data(as_text=True)
+    assert token in client.get(f"/pair/add?t={token}").get_data(as_text=True)
 
 
 def test_devices_registered_without_a_token_column_value_cannot_be_paired_by_token(app, client, register_device):

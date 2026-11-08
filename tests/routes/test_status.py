@@ -52,7 +52,7 @@ def test_status_lists_every_device(app, client, register_device):
     paired_id, paired_secret = register_device()
     with app.app_context():
         code = pairing.issue_code(paired_id)
-    client.post("/pair", data={"code": code})
+    client.post("/pair/add", data={"code": code})
     _poll(client, paired_id, paired_secret)
     new_id, _ = register_device("another-very-long-device-secret")
     with app.app_context():
