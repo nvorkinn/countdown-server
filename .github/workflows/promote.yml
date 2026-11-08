@@ -128,4 +128,5 @@ jobs:
     with:
       environment: production
       tag: ${{ inputs.tag }}
+      approved: true
     secrets: inherit

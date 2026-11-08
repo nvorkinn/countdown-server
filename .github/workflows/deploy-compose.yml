@@ -21,6 +21,10 @@ on:
         description: Pull the images and print what a deploy would do, without changing a container.
         type: boolean
         default: false
+      approved:
+        description: Set by promote.yml, after its approval, to deploy production for real. A run by hand has no such input.
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       environment:
@@ -55,15 +59,16 @@ jobs:
       ENVIRONMENT: ${{ inputs.environment }}
       TARGET: ${{ inputs.environment == 'production' && 'prod' || 'dev' }}
       DRY_RUN: ${{ inputs.dry_run }}
-      EVENT: ${{ github.event_name }}
+      APPROVED: ${{ inputs.approved }}
       DEPLOY_TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
       TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
       TAILSCALE_OAUTH_SECRET: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
     steps:
       - name: Only promote.yml deploys production
-        if: ${{ env.ENVIRONMENT == 'production' && env.EVENT == 'workflow_dispatch' && env.DRY_RUN != 'true' }}
+        # Not the event: in a called workflow that is the caller's, and promote.yml is started by hand too.
+        if: ${{ env.ENVIRONMENT == 'production' && env.DRY_RUN != 'true' && env.APPROVED != 'true' }}
         run: |
-          echo "::error::A run by hand can only plan a production deploy (dry_run); promote.yml deploys it, after approval."
+          echo "::error::Production can only be planned (dry_run) here; promote.yml deploys it, after approval."
           exit 1
 
       # The scripts, from the branch the workflow runs on: an older release doesn't have them.
