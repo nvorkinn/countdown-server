@@ -390,6 +390,9 @@ before it changes anything, if Vaultwarden can't be reached or an item is missin
 (running services don't need it). The `dev-qa` and `production` environments each need the secrets `BW_CLIENTID`,
 `BW_CLIENTSECRET` (the bot's API key) and `BW_PASSWORD` (its master password, which `bw unlock` needs).
 
+The bot always logs in with the device id in `scripts/bitwarden-cli/data.json` (the CLI would otherwise invent a new one each run,
+and Vaultwarden emails every new device).
+
 To change a secret, edit its item in Vaultwarden and deploy; to add one, create the item, add its name to `secrets-map.json`
 under the file it belongs in, and add the variable to the `.example` file.
 
