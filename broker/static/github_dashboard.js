@@ -18,6 +18,8 @@ const FAILED_CHECKS = new Set([
     "action_required",
     "stale",
 ]);
+// What a finished job or run ends in when GitHub's "Re-run failed jobs" runs it again.
+const RERUNNABLE = new Set(["failure", "timed_out", "cancelled"]);
 let discovering = false;
 let pausedUntil = 0;
 // With the GitHub App's webhook, the broker notes what changed and the page asks it every few seconds, re-reading only
@@ -158,14 +160,62 @@ function projectPath(name) {
     return `/github/repositories/${name.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-function checkList(checks) {
+// A PR's failed Actions checks get a Rerun button, unless their workflow run is still going: GitHub waits for that.
+function checkList(checks, project, busyRuns = new Set()) {
     const list = element("ul", undefined, "checks");
     for (const check of checks) {
         const item = element("li", undefined, check.state);
         item.append(link(`${check.name}: ${stateLabel(check.state)}`, check.url));
+        if (project && rerunnableCheck(check) && !busyRuns.has(check.run_id)) {
+            item.append(
+                ...rerunControl(project, `job:${check.job_id}`, "Rerun", "Re-run this job, and the jobs that need it", [
+                    `jobs/${check.job_id}/rerun`,
+                ]),
+            );
+        }
         list.append(item);
     }
     return list;
+}
+
+// A finished GitHub Actions check whose job failed or was cancelled; other apps' checks can't be re-run from here.
+function rerunnableCheck(check) {
+    return !check.pending && RERUNNABLE.has(check.state) && check.job_id > 0 && check.run_id > 0;
+}
+
+// A re-run button and its outcome. `paths` are posted one after another under the project's path, so a PR's
+// "Rerun failed jobs" covers each workflow run that has a failed job.
+function rerunControl(project, key, label, title, paths) {
+    const state = project.reruns.get(key);
+    const button = element("button", state?.busy ? "Starting..." : state?.started ? "Started" : label, "rerun");
+    button.type = "button";
+    button.title = title;
+    button.disabled = !!state?.busy || !!state?.started;
+    button.addEventListener("click", () => rerun(project, key, paths));
+    const parts = [button];
+    if (state?.message) {
+        const message = element("span", state.message, state.started ? "done rerun-note" : "error rerun-note");
+        message.setAttribute("role", state.started ? "status" : "alert");
+        parts.push(message);
+    }
+    return parts;
+}
+
+async function rerun(project, key, paths) {
+    const current = project.reruns.get(key);
+    if (current?.busy || current?.started) return;
+    project.reruns.set(key, { busy: true });
+    renderProject(project);
+    const base = projectPath(project.repo.full_name);
+    try {
+        for (const path of paths) await api(`${base}/${path}`, { method: "POST" });
+        project.reruns.set(key, { started: true, message: "Re-run started." });
+    } catch (error) {
+        project.reruns.set(key, { message: `${error.message} Check GitHub Actions before trying again.` });
+    } finally {
+        project.nextRefresh = 0;
+        renderProject(project);
+    }
 }
 
 // The Claude Code session that opened the PR: claude:// opens it in the Claude app, and the claude.ai link is the
@@ -215,8 +265,26 @@ function renderPull(pr, project) {
     if (counts.length || !pr.checks.length) {
         checks.append(element("p", counts.join(" · ") || "No checks reported yet.", "check-summary"));
     }
+    // GitHub re-runs a run's failed jobs only once the run has finished, so a run with a check still going waits.
+    const busyRuns = new Set(pr.checks.filter(check => check.pending && check.run_id).map(check => check.run_id));
+    const failedRuns = [...new Set(pr.checks.filter(rerunnableCheck).map(check => check.run_id))].filter(
+        id => !busyRuns.has(id),
+    );
+    if (failedRuns.length) {
+        const controls = element("div", undefined, "rerun-controls");
+        controls.append(
+            ...rerunControl(
+                project,
+                `runs:${failedRuns.join(",")}`,
+                "Rerun failed jobs",
+                "Re-run the failed and cancelled jobs of this PR's finished workflow runs",
+                failedRuns.map(id => `runs/${id}/rerun-failed`),
+            ),
+        );
+        checks.append(controls);
+    }
     const attention = pr.checks.filter(check => check.pending || FAILED_CHECKS.has(check.state));
-    checks.append(checkList(attention));
+    checks.append(checkList(attention, project, busyRuns));
     if (completed.length) {
         const details = element("details");
         details.dataset.detailKey = `checks:${row.dataset.key}`;
@@ -531,7 +599,19 @@ function renderWorkflow(run, project) {
             project.finishedMode.set(run.id, collapsed ? "expanded" : "collapsed");
             renderProject(project);
         });
-        heading.append(element("span", `finished ${new Date(run.finished_at).toLocaleTimeString()}`, "muted"), toggle);
+        heading.append(element("span", `finished ${new Date(run.finished_at).toLocaleTimeString()}`, "muted"));
+        if (RERUNNABLE.has(run.conclusion)) {
+            heading.append(
+                ...rerunControl(
+                    project,
+                    `run:${run.id}:${run.attempt}`,
+                    "Rerun failed jobs",
+                    "Re-run this run's failed and cancelled jobs, and the jobs that need them",
+                    [`runs/${run.id}/rerun-failed`],
+                ),
+            );
+        }
+        heading.append(toggle);
         if (collapsed) {
             section.className = "workflow collapsed";
             return section;
@@ -550,6 +630,22 @@ function renderWorkflow(run, project) {
         section.append(toggle);
     }
     section.append(renderGraph(run.nodes, mode));
+    const failedJobs = finished(run) ? run.jobs.filter(job => job.id > 0 && RERUNNABLE.has(job.conclusion)) : [];
+    if (failedJobs.length) {
+        const controls = element("div", undefined, "rerun-controls");
+        for (const job of failedJobs) {
+            controls.append(
+                ...rerunControl(
+                    project,
+                    `job:${job.id}`,
+                    `Rerun ${job.name}`,
+                    "Re-run this job, and the jobs that need it",
+                    [`jobs/${job.id}/rerun`],
+                ),
+            );
+        }
+        section.append(controls);
+    }
     for (const deployment of run.pending_deployments || []) {
         const key = `${run.id}:${run.attempt}:${deployment.id}`;
         const state = project.approvals.get(key);
@@ -995,6 +1091,7 @@ function addProject(repo) {
         partial: null,
         matrixMode: new Map(),
         runRefresh: new Map(),
+        reruns: new Map(),
         finishedMode: new Map(),
         redrawAt: Infinity,
         pool: new Map(),

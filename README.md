@@ -147,7 +147,7 @@ GitHub's Settings → Developer settings → GitHub Apps:
 - **Webhook URL** `https://auth.dev.nikolaivorkinn.com/api/github/webhook`, with a random secret, subscribed to *Pull
   request*, *Pull request review*, *Check run*, *Check suite*, *Status*, *Workflow run*, *Workflow job*, *Deployment
   status* and *Push*.
-- Repository permissions **Actions: read and write** (to promote), **Checks: read**, **Commit statuses: read**, **Pull requests: read and
+- Repository permissions **Actions: read and write** (to promote and re-run failed jobs), **Checks: read**, **Commit statuses: read**, **Pull requests: read and
   write** (for auto-merge), **Deployments: read and write** (to approve) and **Contents: read and write** (for releases
   and merging). After changing them, accept them on the App's installation; GitHub doesn't apply them until you do.
 - Then install it on your account, for the repositories the dashboard should show.

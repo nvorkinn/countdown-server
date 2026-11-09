@@ -218,6 +218,75 @@ def test_pull_checks_include_paginated_checks_and_latest_legacy_statuses(api):
     assert [check["state"] for check in pr["checks"][-2:]] == ["success", "pending"]
 
 
+@pytest.mark.parametrize(
+    ("check", "expected"),
+    [
+        (
+            {"app": {"slug": "github-actions"}, "html_url": "https://github.com/alice/project/actions/runs/5/job/9"},
+            {"run_id": 5, "job_id": 9},
+        ),
+        ({"app": {"slug": "codecov"}, "html_url": "https://github.com/alice/project/actions/runs/5/job/9"}, {}),
+        ({"app": {"slug": "github-actions"}, "html_url": "https://github.com/alice/project/runs/9"}, {}),
+        ({"app": None, "html_url": None}, {}),
+    ],
+)
+def test_only_actions_checks_carry_the_run_and_job_to_rerun(check, expected):
+    assert github._actions_job(check) == expected
+
+
+@responses.activate
+def test_rerun_job_rechecks_the_job_and_its_run_then_reruns_it(api):
+    path = f"{ROOT}/repos/alice/project/actions"
+    responses.get(f"{path}/jobs/9", json={"status": "completed", "conclusion": "failure", "run_id": 5})
+    responses.get(f"{path}/runs/5", json={"status": "completed", "conclusion": "failure"})
+    responses.post(f"{path}/jobs/9/rerun", status=201, json={})
+    api.rerun_job(REPO, 9)
+    assert responses.calls[-1].request.url == f"{path}/jobs/9/rerun"
+
+
+@responses.activate
+@pytest.mark.parametrize(
+    ("job", "run_status", "message"),
+    [
+        ({"status": "completed", "conclusion": "success", "run_id": 5}, "completed", "failed or cancelled"),
+        ({"status": "in_progress", "conclusion": None, "run_id": 5}, "in_progress", "failed or cancelled"),
+        ({"status": "completed", "conclusion": "failure", "run_id": 5}, "in_progress", "whole workflow run"),
+    ],
+)
+def test_rerun_job_refuses_a_passed_or_running_job_or_a_running_run(api, job, run_status, message):
+    path = f"{ROOT}/repos/alice/project/actions"
+    responses.get(f"{path}/jobs/9", json=job)
+    responses.get(f"{path}/runs/5", json={"status": run_status})
+    with pytest.raises(github.DashboardError, match=message):
+        api.rerun_job(REPO, 9)
+    assert all(call.request.method == "GET" for call in responses.calls)
+
+
+@responses.activate
+@pytest.mark.parametrize("conclusion", ["failure", "timed_out", "cancelled"])
+def test_rerun_failed_jobs_reruns_a_finished_failed_run(api, conclusion):
+    path = f"{ROOT}/repos/alice/project/actions/runs/5"
+    responses.get(path, json={"status": "completed", "conclusion": conclusion})
+    responses.post(f"{path}/rerun-failed-jobs", status=201, json={})
+    api.rerun_failed_jobs(REPO, 5)
+    assert responses.calls[-1].request.url == f"{path}/rerun-failed-jobs"
+
+
+@responses.activate
+@pytest.mark.parametrize(
+    ("run", "message"),
+    [
+        ({"status": "in_progress", "conclusion": None}, "only once the workflow run has finished"),
+        ({"status": "completed", "conclusion": "success"}, "no failed jobs"),
+    ],
+)
+def test_rerun_failed_jobs_refuses_a_running_or_passed_run(api, run, message):
+    responses.get(f"{ROOT}/repos/alice/project/actions/runs/5", json=run)
+    with pytest.raises(github.DashboardError, match=message):
+        api.rerun_failed_jobs(REPO, 5)
+    assert all(call.request.method == "GET" for call in responses.calls)
+
+
 def _release_runs(workflows=({"id": 1, "name": "Release"},), **runs):
     """Stand in for Dashboard.pages and .get: open PRs, the repo's workflows, and each workflow's latest runs."""
 
@@ -423,6 +492,7 @@ def test_waiting_workflow_includes_unstarted_nodes_edges_and_job_steps(api):
         json={
             "jobs": [
                 {
+                    "id": 1,
                     "name": "build",
                     "status": "completed",
                     "conclusion": "success",
@@ -457,6 +527,7 @@ def test_waiting_workflow_includes_unstarted_nodes_edges_and_job_steps(api):
     )
     assert result["status"] == "waiting"
     assert [(node["state"], node["needs"]) for node in result["nodes"]] == [("done", []), ("queued", ["build"])]
+    assert result["jobs"][0]["id"] == 1
     assert result["jobs"][0]["steps"][0]["name"] == "Compile"
     assert result["pending_deployments"] == [{"id": 10, "name": "production", "can_approve": True, "wait_timer": 0}]
     assert any(

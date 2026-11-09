@@ -310,3 +310,45 @@ def test_the_privacy_check_applies_to_views_with_and_without_the_user_id(client,
     other = {"Remote-Sub": "someone-else"}
     for path in ("/github/connect", "/github/changes", "/github/repositories", "/github/callback"):
         assert client.get(path, headers=other).status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("path", "method", "argument"),
+    [
+        ("runs/5/rerun-failed", "rerun_failed_jobs", 5),
+        ("jobs/9/rerun", "rerun_job", 9),
+    ],
+)
+def test_reruns_recheck_ownership_and_call_github(client, dashboard, path, method, argument):
+    repo = {"full_name": "alice/project"}
+    dashboard.owned_repository.return_value = repo
+    response = client.post(f"/github/repositories/alice/project/{path}", headers=csrf(client))
+    assert response.status_code == 201
+    dashboard.owned_repository.assert_called_once_with("alice", "project")
+    getattr(dashboard, method).assert_called_once_with(repo, argument)
+
+
+@pytest.mark.parametrize(
+    ("path", "method"), [("runs/5/rerun-failed", "rerun_failed_jobs"), ("jobs/9/rerun", "rerun_job")]
+)
+def test_reruns_require_login_personal_identity_and_csrf(client, anonymous_client, dashboard, path, method):
+    url = f"/github/repositories/alice/project/{path}"
+    assert anonymous_client.post(url).status_code == 401
+    assert client.post(url, headers={"Remote-Sub": "other"}).status_code == 403
+    assert client.post(url).status_code == 403
+    getattr(dashboard, method).assert_not_called()
+
+
+@pytest.mark.parametrize("path", ["runs/0/rerun-failed", "runs/abc/rerun-failed", "jobs/0/rerun", "jobs/-1/rerun"])
+def test_reruns_validate_ids(client, dashboard, path):
+    response = client.post(f"/github/repositories/alice/project/{path}", headers=csrf(client))
+    assert response.status_code in {400, 404}
+    dashboard.rerun_failed_jobs.assert_not_called()
+    dashboard.rerun_job.assert_not_called()
+
+
+def test_a_refused_rerun_says_why(client, dashboard):
+    dashboard.rerun_failed_jobs.side_effect = github.DashboardError("This workflow run has no failed jobs to re-run.")
+    response = client.post("/github/repositories/alice/project/runs/5/rerun-failed", headers=csrf(client))
+    assert response.status_code == 409
+    assert response.json == {"error": "This workflow run has no failed jobs to re-run."}

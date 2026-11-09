@@ -299,3 +299,35 @@ def approve(owner: str, name: str, run_id: str, user_id: str) -> ResponseReturnV
         return jsonify(approved=True)
     finally:
         api.close()
+
+
+@bp.post("/repositories/<owner>/<name>/runs/<run_id>/rerun-failed")
+@dashboard_user_view
+def rerun_failed(owner: str, name: str, run_id: str, user_id: str) -> ResponseReturnValue:
+    """Re-run a finished workflow run's failed jobs, for a request carrying the session's CSRF token."""
+    if not _valid_csrf():
+        return jsonify(error="Invalid action CSRF token. Reload the dashboard."), 403
+    if not run_id.isascii() or not run_id.isdecimal() or int(run_id) <= 0:
+        return jsonify(error="Invalid workflow run ID."), 400
+    api = _dashboard(user_id)
+    try:
+        api.rerun_failed_jobs(api.owned_repository(owner, name), int(run_id))
+        return jsonify(rerun=True), 201
+    finally:
+        api.close()
+
+
+@bp.post("/repositories/<owner>/<name>/jobs/<job_id>/rerun")
+@dashboard_user_view
+def rerun_job(owner: str, name: str, job_id: str, user_id: str) -> ResponseReturnValue:
+    """Re-run one failed job of a finished workflow run, for a request carrying the session's CSRF token."""
+    if not _valid_csrf():
+        return jsonify(error="Invalid action CSRF token. Reload the dashboard."), 403
+    if not job_id.isascii() or not job_id.isdecimal() or int(job_id) <= 0:
+        return jsonify(error="Invalid job ID."), 400
+    api = _dashboard(user_id)
+    try:
+        api.rerun_job(api.owned_repository(owner, name), int(job_id))
+        return jsonify(rerun=True), 201
+    finally:
+        api.close()
