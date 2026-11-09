@@ -13,16 +13,16 @@ The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are 
 
 Edit `host_ips` or `cname_targets` in `variables.tf` (for example, to move production to a new host), or the hostnames in
 `config/<environment>.env`, in a pull request. The workflow (`.github/workflows/cloudflare.yml`) comments the plan of
-both environments on the PR. Nothing is applied when the PR merges. Each environment is applied by its own deploy, with
-its own state (`cloudflare/terraform.tfstate` for dev, `cloudflare/prod/terraform.tfstate` for prod):
+both environments on the PR. Nothing is applied when the PR merges, and releases and promotions leave DNS alone. Each
+environment is applied on its own, with its own state (`cloudflare/terraform.tfstate` for dev,
+`cloudflare/prod/terraform.tfstate` for prod): run **Cloudflare** from the Actions tab on `main`, pick the environment and
+tick *apply*. It plans first, and asks for approval (in `terraform` for dev, `terraform-prod` for production) only if the
+plan changes something; it applies exactly that plan. Without *apply* it only plans, on any ref, which shows drift. A
+failed apply is retried the same way.
 
-- **Release** applies dev's records beside its deploys, after approval in `terraform` if they change;
-- **Promote** applies production's beside its deploys, after approval in `terraform-prod` if they change.
-
-A deploy that leaves its DNS as it is asks for no approval. So to cut a name over to another host: merge the change,
-release, then promote. If a cutover changes a name or an address, Caddy may ask for its certificate before the record
-exists and wait a while to retry, so restart it (`docker restart caddy`) once the apply is done. The *Cloudflare* workflow's *Run workflow* button plans any ref (drift) for one environment, and
-with *apply* ticked applies, on the latest release tag only (how a failed apply is retried).
+To cut a name over to another host: merge the change, apply dev's DNS and production's as each is needed, and deploy
+the release that serves the new name. If a cutover changes a name or an address, Caddy may ask for its certificate
+before the record exists and wait a while to retry, so restart it (`docker restart caddy`) once the apply is done.
 
 ## Setup
 

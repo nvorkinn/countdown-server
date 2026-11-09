@@ -15,8 +15,8 @@
 # The database's pre-migration backup is the app's own (broker/db.py), and the broker's healthcheck is what `--wait`
 # waits on, so no command runs inside a container here.
 #
-# The first deploy to a host that another Compose version set up may recreate its containers once (the config hashes
-# Compose labels them with differ between versions); after that only what changed is recreated.
+# Every release builds all its images, so each deploy recreates every service that runs one (Caddy included: its sites
+# are cut off for a few seconds) and leaves alone only what is upstream's, pinned in docker-compose.yml, and unchanged.
 set -euo pipefail
 
 target="$1"
@@ -92,42 +92,6 @@ fi
 
 retry_lost_lease docker compose pull
 
-# Whether a service runs the image just pulled with the settings it would get now, the tag aside: an infra image that
-# didn't change since the last release is that release's image under the new tag (release.yml), and recreating Caddy
-# for it would cut every site off for a few seconds. Compose's config hash covers the image name, so the hash is worked
-# out with the version pin set back to the running container's tag, and compared with the one Compose labelled the
-# container with. Changed secrets or settings change the hash, so those still recreate.
-unchanged() {
-  local var="$1" service="$2" cid running_ref new_ref hash
-  cid="$(docker compose ps -q "$service")"
-  [ -n "$cid" ] || return 1
-  running_ref="$(docker inspect -f '{{.Config.Image}}' "$cid")"
-  new_ref="$(docker compose config --images "$service")"
-  [ "$(docker inspect -f '{{.Image}}' "$cid")" = "$(docker image inspect -f '{{.Id}}' "$new_ref")" ] || return 1
-  hash="$(env "$var=${running_ref##*:}" docker compose config --hash "$service" | awk '{print $2}')"
-  [ "$hash" = "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$cid")" ]
-}
-
-# The release's images are pinned by a variable each (ghcr.io/nvorkinn/<repo>:${<NAME>_VERSION}); one whose services
-# all run what was just pulled keeps its old tag in .env, so `up` leaves them alone.
-config_json="$(docker compose config --format json)"
-# shellcheck disable=SC2016  # the pattern is a literal ${
-while read -r image_repo var; do
-  services="$(jq -r --arg r "$image_repo:" '.services | to_entries[] | select(.value.image | startswith($r)) | .key' <<< "$config_json")"
-  [ -n "$services" ] || continue
-  all_unchanged=true
-  for service in $services; do
-    unchanged "$var" "$service" || { all_unchanged=false; break; }
-  done
-  if [ "$all_unchanged" = true ]; then
-    first="$(echo "$services" | head -n1)"
-    running_tag="$(docker inspect -f '{{.Config.Image}}' "$(docker compose ps -q "$first")")"
-    running_tag="${running_tag##*:}"
-    sed -i "s/^$var=.*/$var=$running_tag/" .env
-    echo "$(echo "$services" | tr '\n' ' ')already run this image and settings, so left at $running_tag"
-  fi
-done < <(grep -oE 'ghcr\.io/[a-z0-9/_.-]+:\$\{[A-Z_]+_VERSION' docker-compose.yml | sed -E 's/:\$\{/ /' | sort -u)
-
 if [ "$dry_run" = true ]; then
   echo "Dry run: this is what a deploy would do (containers: Recreate = replaced, Running = left alone)"
   docker compose --dry-run up -d --no-build
@@ -135,8 +99,8 @@ if [ "$dry_run" = true ]; then
 fi
 
 # --wait: the step ends once the containers are running, and healthy where they have a healthcheck (Caddy listening on
-# 443), so whatever runs after finds them serving, and a container that won't start fails the deploy. Recreates only
-# what changed; the services start in the order of their depends_on (Caddy after the socket proxy).
+# 443), so whatever runs after finds them serving, and a container that won't start fails the deploy. The services start
+# in the order of their depends_on (Caddy after the socket proxy).
 retry_lost_lease docker compose up -d --wait --wait-timeout 600
 docker compose ps
 

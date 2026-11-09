@@ -77,13 +77,10 @@ jobs:
             return 1
           }
 
-          # dev-qa is the environment's old name, which the releases before the rename were deployed to.
-          for environment in dev dev-qa; do
-            if deployed_to "$environment"; then
-              echo "$TAG ($SHA) was deployed to $environment."
-              exit 0
-            fi
-          done
+          if deployed_to dev; then
+            echo "$TAG ($SHA) was deployed to dev."
+            exit 0
+          fi
           runs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/promote.yml/runs?status=success&per_page=100" \
             --jq '.workflow_runs[] | select(.display_title == "Promote " + env.TAG) | .id')"
           if [ -n "$runs" ]; then
@@ -102,24 +99,6 @@ jobs:
     environment: approve-prod
     steps:
       - run: echo "Approved"
-
-  # Production's DNS records (infra/cloudflare), applied after approval in terraform-prod if they change, beside
-  # the deploys. If it changes a name or an address, Caddy may ask for a certificate before the record exists and wait a
-  # while to retry: restart it after the apply. Dev's are release.yml's.
-  dns:
-    name: dns (prod)
-    needs: [check, approve]
-    # The plan job it calls comments on pull requests, so its token asks for this even here.
-    permissions:
-      contents: read
-      pull-requests: write
-    uses: ./.github/workflows/cloudflare.yml
-    with:
-      apply: true
-      target: prod
-      tag: ${{ inputs.tag }}
-      allow_older_tag: true
-    secrets: inherit
 
   # Production, through the host's Docker daemon (deploy-compose.yml): one job fetches the secrets from Vaultwarden and
   # deploys the edge (the Docker socket proxy, Tinyauth and Pocket ID, before Caddy, which needs the proxy) and every
