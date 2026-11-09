@@ -31,14 +31,28 @@ State lives in an Oracle Cloud Object Storage bucket, through its S3-compatible 
 create a private bucket with versioning on, a customer secret key (Profile > User settings > Customer secret keys) for a
 user that may manage objects in it, and note the Object Storage namespace and the bucket's region. Then add the variables
 `TF_STATE_BUCKET`, `TF_STATE_REGION` (e.g. `eu-frankfurt-1`) and `TF_STATE_ENDPOINT`
-(`https://<namespace>.compat.objectstorage.<region>.oraclecloud.com`), and the key as the secrets `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY`, in the repo's Settings > Secrets and variables > Actions. The workflow sets
-`AWS_REQUEST_CHECKSUM_CALCULATION` and `AWS_RESPONSE_CHECKSUM_VALIDATION` to `when_required`, which Oracle's S3 API needs
-(export both to run Terraform from your own machine). State locking is off, so the workflow's concurrency group keeps
-applies to one at a time. It also needs a Cloudflare API token, `CLOUDFLARE_API_TOKEN`:
+(`https://<namespace>.compat.objectstorage.<region>.oraclecloud.com`) in the repo's Settings > Secrets and variables >
+Actions. The workflow sets `AWS_REQUEST_CHECKSUM_CALCULATION` and `AWS_RESPONSE_CHECKSUM_VALIDATION` to `when_required`,
+which Oracle's S3 API needs (export both to run Terraform from your own machine). State locking is off, so the workflow's
+concurrency group keeps applies to one at a time.
 
-- a repository secret, a **Zone:DNS:Read** token for `nikolaivorkinn.com`, which plans use;
-- a secret of each of the `terraform` (dev) and `terraform-prod` environments, a **Zone:DNS:Edit** token for
-  the same zone, which apply uses.
+**The credentials are in Vaultwarden, not GitHub** (`secrets-map.json` lists them; the shared action
+`nvorkinn/.github/actions/vaultwarden-secrets` reads them into the job's environment), in the collections the deploys'
+bots already read, so no bot or collection is special to this:
 
-(Create them under My Profile > API Tokens > Create Token > Edit zone DNS, limited to the one zone.)
+- `countdown-server/dev`, read by the **dev bot** (its `BW_CLIENTID`, `BW_CLIENTSECRET` and `BW_PASSWORD` are repository
+  secrets, as plans run on any pull request): `CLOUDFLARE_API_TOKEN_READ`, a **Zone:DNS:Read** token, which a plan uses as
+  `CLOUDFLARE_API_TOKEN`, and the state bucket's key, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`;
+- `countdown-server/prod`, read by the **prod bot** (its `BW_*` are secrets of the `terraform` and `terraform-prod`
+  environments, so they are only there once the environment's reviewers have approved): `CLOUDFLARE_API_TOKEN_EDIT`, a
+  **Zone:DNS:Edit** token, which apply uses as `CLOUDFLARE_API_TOKEN`, and the same two state items (one item each, in both
+  collections).
+
+So the write token is readable only with the prod bot's credentials, which only the reviewer-gated `terraform` and
+`terraform-prod` environments, and `prod` (limited to `main` and tags), have: a `dev` job, whose bot can't read
+`countdown-server/prod`, can't get it. (Both environments' DNS is the one zone, so one Edit token serves both.)
+
+Cloudflare has no OIDC federation for its API, so these are API tokens. Make them **account-owned** (Manage Account >
+Account API tokens, which keep working if you leave the organisation), with the single permission **Zone > DNS** (Read or
+Edit) and **Zone Resources** limited to the one zone, `nikolaivorkinn.com`; set an expiry if you will rotate them. To rotate
+one, edit its item in Vaultwarden.

@@ -118,7 +118,7 @@ jobs:
 
       # The shared action: secrets-map.json says what this target needs, and the items are in its collection.
       - name: Fetch the secrets from Vaultwarden
-        uses: nvorkinn/.github/actions/vaultwarden-secrets@1dd1e27d3a48afda7fe22ac98c3087cabfb7db20 # main
+        uses: nvorkinn/.github/actions/vaultwarden-secrets@3a8653ca62d399f406a7f84302a7cb9dae7ec2be # main
         with:
           map: secrets-map.json
           target: ${{ env.TARGET }}

@@ -111,15 +111,12 @@ jobs:
     outputs:
       # Whether the plan changes anything, so a release that leaves DNS as it is asks for no approval.
       changes: ${{ steps.plan.outputs.changes }}
-    # The plan only needs to read, so the repository-level CLOUDFLARE_API_TOKEN can be a Zone:DNS:Read token; apply
-    # gets the terraform (dev) or terraform-prod environment's, which may write.
+    # The plan only needs to read, so its credentials (CLOUDFLARE_API_TOKEN, a Zone:DNS:Read token, and the state
+    # bucket's key) are the plan bot's; apply has the write token, after approval.
     env:
       TF_VAR_environment: ${{ matrix.target }}
       TF_STATE_KEY: ${{ matrix.target == 'prod' && 'cloudflare/prod/terraform.tfstate' || 'cloudflare/terraform.tfstate' }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      HAVE_SECRETS: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.AWS_ACCESS_KEY_ID != '' }}
+      HAVE_SECRETS: ${{ secrets.BW_CLIENTID != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -142,11 +139,28 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
+      # The credentials come from Vaultwarden (infra/cloudflare/secrets-map.json), through the dev bot, whose BW_* are
+      # repository secrets: from countdown-server/dev it reads a Zone:DNS:Read token and the state bucket's key, so a
+      # plan, which runs on any pull request, can't write DNS (the Edit token is only in countdown-server/prod, which
+      # this bot can't read). Skipped, like the plan, where there are no secrets (a fork or Dependabot pull request).
+      - name: Fetch the credentials from Vaultwarden
+        if: env.HAVE_SECRETS == 'true'
+        uses: nvorkinn/.github/actions/vaultwarden-secrets@3a8653ca62d399f406a7f84302a7cb9dae7ec2be # main
+        with:
+          # An absolute path: this workflow's steps run in infra/cloudflare, which the map's path would otherwise be relative to.
+          map: ${{ github.workspace }}/infra/cloudflare/secrets-map.json
+          target: plan
+          collection: countdown-server/dev
+          export-env: "true"
+          bw-clientid: ${{ secrets.BW_CLIENTID }}
+          bw-clientsecret: ${{ secrets.BW_CLIENTSECRET }}
+          bw-password: ${{ secrets.BW_PASSWORD }}
+
       - name: Skip the plan without secrets
         if: env.HAVE_SECRETS != 'true'
         run: |
-          [ "$APPLY" != true ] || { echo "::error::No CLOUDFLARE_API_TOKEN or state credentials, so nothing can be planned or applied"; exit 1; }
-          echo "::notice::No CLOUDFLARE_API_TOKEN or state credentials here (a fork or Dependabot pull request, or not set up yet), so there is no plan."
+          [ "$APPLY" != true ] || { echo "::error::No Vaultwarden credentials (BW_*), so nothing can be planned or applied"; exit 1; }
+          echo "::notice::No Vaultwarden credentials (BW_*) here (a fork or Dependabot pull request, or not set up yet), so there is no plan."
 
       # Plans that won't be applied don't take the state lock. Exit code 2 from -detailed-exitcode means the plan has
       # changes, 0 none.
@@ -217,14 +231,11 @@ jobs:
     concurrency:
       group: cloudflare-apply-${{ inputs.target }}
       cancel-in-progress: false
-    # The environment's secret, which takes precedence over the repository's, so apply can use a token that may write
-    # while plans use one that can only read.
+    # The environment's BW_* secrets take precedence over the repository's, so apply reads a token that may write while
+    # plans read one that can only read.
     env:
       TF_VAR_environment: ${{ inputs.target }}
       TF_STATE_KEY: ${{ inputs.target == 'prod' && 'cloudflare/prod/terraform.tfstate' || 'cloudflare/terraform.tfstate' }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -235,6 +246,21 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
+
+      # The write token, from countdown-server/prod, through the prod bot, whose BW_* are this environment's secrets: they
+      # are only available once the environment's reviewers have approved, which is what gates a DNS change. (Dev's own
+      # bot can't read that collection, so no unapproved job can get the token.) Both targets' DNS is the one zone.
+      - name: Fetch the credentials from Vaultwarden
+        uses: nvorkinn/.github/actions/vaultwarden-secrets@3a8653ca62d399f406a7f84302a7cb9dae7ec2be # main
+        with:
+          # An absolute path: this workflow's steps run in infra/cloudflare, which the map's path would otherwise be relative to.
+          map: ${{ github.workspace }}/infra/cloudflare/secrets-map.json
+          target: apply
+          collection: countdown-server/prod
+          export-env: "true"
+          bw-clientid: ${{ secrets.BW_CLIENTID }}
+          bw-clientsecret: ${{ secrets.BW_CLIENTSECRET }}
+          bw-password: ${{ secrets.BW_PASSWORD }}
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
