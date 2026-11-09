@@ -417,8 +417,9 @@ Spotify app. A test fails if the environments' files don't set the same things.
 The `broker_data` volume (the SQLite database, bound to `/opt/auth-broker/data/` on the host) and the `pocket_id_data` volume
 (every user and passkey) are the only state worth backing up.
 
-The broker copies its database to `data/broker.db.bak-<time>-<revision>` (SQLite's backup API, the newest 5 kept) whenever it
-starts with a migration to run, and not otherwise, so a release that changes the schema leaves the database as it was. It is
+The broker copies its database to `data/broker.db.bak-<revision>` (SQLite's backup API) whenever it starts with a migration
+to run, and not otherwise, so a release that changes the schema leaves the database as it was. That is the only copy: the
+next migration replaces it, and a start that fails and is restarted keeps the copy from before the first try. It is
 on the same disk, so it guards against a bad migration, not a lost one. To go back after one, redeploy the older tag with that
 copy restored over `data/broker.db` (an older image can't read a newer schema).
 

@@ -77,37 +77,35 @@ def _applied_revisions() -> set[str]:
         return set(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
 
 
-# How many pre-migration copies of the database are kept beside it.
-BACKUPS_KEPT = 5
-
-
 def _back_up(applied: set[str]) -> None:
-    """Copy the DB to `broker.db.bak-<time>-<revision it is at>` beside it, keeping the newest BACKUPS_KEPT.
+    """Copy the DB to `broker.db.bak-<revision it is at>` beside it, the only backup there is.
 
-    The way back if a migration, or the release that brings it, turns out wrong: a rollback is a redeploy, and an older
-    image can't read a schema a newer one has changed. SQLite's backup API, so the copy is consistent even while another
-    process writes. It lives on the same disk, so it guards against a bad migration, not a lost disk. A DB with no file
-    yet, or an empty one, has nothing to lose.
+    The way back if a migration turns out wrong, until the next one makes a newer copy: a rollback is a redeploy, and an
+    older image can't read a schema a newer one has changed. SQLite's backup API, so the copy is consistent even while
+    another process writes. A start that fails mid-migration is restarted, and must not replace the copy with the
+    half-migrated DB, so a copy of this revision that exists is kept as it is. It is on the same disk, so it guards
+    against a bad migration, not a lost disk. A DB with no file yet, or an empty one, has nothing to lose.
     """
     path = _db_path()
     if not path.is_file() or path.stat().st_size == 0:
         return
-    revision = "-".join(sorted(applied)) or "unversioned"
-    backup = path.with_name(f"{path.name}.bak-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{revision}")
-    source = sqlite3.connect(path)
-    target = sqlite3.connect(backup)
-    try:
-        source.backup(target)
-    except BaseException:
-        backup.unlink(missing_ok=True)
-        raise
-    finally:
-        target.close()
-        source.close()
-    current_app.logger.info("Backed up the database to %s before migrating it", backup.name)
-    for old in sorted(path.parent.glob(f"{path.name}.bak-*"), key=lambda p: p.stat().st_mtime)[:-BACKUPS_KEPT]:
-        old.unlink()
-        current_app.logger.info("Removed the old backup %s", old.name)
+    backup = path.with_name(f"{path.name}.bak-{'-'.join(sorted(applied)) or 'unversioned'}")
+    if not backup.exists():
+        source = sqlite3.connect(path)
+        target = sqlite3.connect(backup)
+        try:
+            source.backup(target)
+        except BaseException:
+            backup.unlink(missing_ok=True)
+            raise
+        finally:
+            target.close()
+            source.close()
+        current_app.logger.info("Backed up the database to %s before migrating it", backup.name)
+    for other in path.parent.glob(f"{path.name}.bak-*"):
+        if other != backup:
+            other.unlink()
+            current_app.logger.info("Removed the old backup %s", other.name)
 
 
 def upgrade_db() -> None:

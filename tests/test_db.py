@@ -1,5 +1,4 @@
 import logging
-import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -196,7 +195,7 @@ def test_starting_on_a_db_behind_head_first_backs_it_up_at_the_revision_it_was_a
     again = create_app()
 
     (backup,) = _backups(app)
-    assert backup.name.endswith("-0023")
+    assert backup.name.endswith(".bak-0023")
     # The copy is the database as it was before the migration: at 0023, with its data.
     copy = sqlite3.connect(backup)
     assert copy.execute("SELECT version_num FROM alembic_version").fetchall() == [("0023",)]
@@ -226,20 +225,28 @@ def test_starting_on_no_database_makes_no_backup(app, tmp_path, monkeypatch):
         db.engine.dispose()
 
 
-def test_only_the_newest_backups_are_kept(app):
+def test_a_new_backup_replaces_every_older_one(app):
     path = db_module._db_path()
-    for n in range(db_module.BACKUPS_KEPT + 2):
-        old = path.with_name(f"{path.name}.bak-old-{n}")
-        old.write_bytes(b"x")
-        os.utime(old, (1_000 + n, 1_000 + n))
+    for name in ("bak-v1.2.3", "bak-0005"):  # the deploy script's, and an earlier migration's
+        path.with_name(f"{path.name}.{name}").write_bytes(b"old")
     _downgrade_to(app, "0023")
 
     again = create_app()
 
-    names = [b.name for b in _backups(app)]
-    assert len(names) == db_module.BACKUPS_KEPT
-    assert f"{path.name}.bak-old-0" not in names
-    assert any(name.endswith("-0023") for name in names)
+    assert [b.name for b in _backups(app)] == [f"{path.name}.bak-0023"]
+    with again.app_context():
+        db.engine.dispose()
+
+
+def test_a_restarted_failed_migration_keeps_the_backup_from_before_it(app):
+    """Compose restarts a broker that fails mid-migration: the copy must stay the DB as it was before the first try."""
+    path = db_module._db_path()
+    _downgrade_to(app, "0023")
+    path.with_name(f"{path.name}.bak-0023").write_bytes(b"as it was")
+
+    again = create_app()  # the restart
+
+    assert path.with_name(f"{path.name}.bak-0023").read_bytes() == b"as it was"
     with again.app_context():
         db.engine.dispose()
 
