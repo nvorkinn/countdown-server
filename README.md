@@ -306,9 +306,11 @@ are the same deploy, `deploy-compose.yml`, which fetches the secrets from Vaultw
 host's Docker daemon (below): every service, one job. The services are Caddy, the broker and its providers, Fluent Bit,
 VictoriaLogs, VictoriaMetrics and Redis, and where `EDGE_OWNED=true` (production) the edge: the Docker socket proxy,
 Tinyauth and Pocket ID, at the versions pinned in `docker-compose.yml`. Where `EDGE_OWNED=false` (dev) the edge profile is
-off and Caddy is home-stack's. A deploy backs up the database (`data/broker.db.bak-<tag>`, the newest 5 kept) and Pocket ID's
-data (see [Backups](#backups)) first, waits until the containers run (and, for Caddy, take connections on 443), and removes
-the older images of what it deployed, keeping the running one and one other to roll back to.
+off and Caddy is home-stack's. A deploy backs up Pocket ID's
+data (see [Backups](#backups)) first, waits until the containers run and are healthy (the broker answering with its database
+migrated, Caddy taking connections on 443), and then removes every image no container uses, so the previous release's goes.
+Nothing is kept to roll back to: a rollback is a deploy of an older tag, which pulls what it needs. The broker backs up
+its own database, when a start has a migration to run (see [Backups](#backups)).
 
 ### Promoting to production
 
@@ -337,8 +339,8 @@ with an older tag. Make compose changes in the repo: each deploy replaces what r
 Deploy compose > Run workflow with a release tag) deploys that release to dev without running anything on the host. Run by
 hand with `prod` it only plans: it pulls the images and prints what a deploy would do (which containers it would
 replace and which it would leave alone), changing no container and taking no backup. It fetches the secrets from Vaultwarden
-onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the same path as on the host, so
-`./data` means the same on both), and `scripts/deploy-context.sh` runs `docker compose` against the host with
+onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the path the project has always had,
+which keeps Compose's config hashes, and so the running containers, as they were; nothing on the host is read through it), and `scripts/deploy-context.sh` runs `docker compose` against the host with
 `DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It brings
 the edge up before Caddy (`depends_on`), and leaves an image that didn't change since the last release (the infra images are
 re-tagged each release) running. Nothing is installed on the host but Docker.
@@ -412,8 +414,16 @@ Spotify app. A test fails if the environments' files don't set the same things.
 
 ### Backups
 
-`/opt/auth-broker/data/` (the SQLite database) and the `pocket_id_data` volume (every user and passkey) are
-the only state worth backing up. `deploy-context.sh` tars Pocket ID's volume into `/opt/auth-broker/backups/` before each
+The `broker_data` volume (the SQLite database, bound to `/opt/auth-broker/data/` on the host) and the `pocket_id_data` volume
+(every user and passkey) are the only state worth backing up.
+
+The broker copies its database to `data/broker.db.bak-<revision>` (SQLite's backup API) whenever it starts with a migration
+to run, and not otherwise, so a release that changes the schema leaves the database as it was. That is the only copy: the
+next migration replaces it, and a start that fails and is restarted keeps the copy from before the first try. It is
+on the same disk, so it guards against a bad migration, not a lost one. To go back after one, redeploy the older tag with that
+copy restored over `data/broker.db` (an older image can't read a newer schema).
+
+`deploy-context.sh` tars Pocket ID's volume into `/opt/auth-broker/backups/` before each
 deploy (the newest 5 are kept); copy that folder off the host, since one disk failure takes both. To restore, stop
 `pocket-id`, extract a tarball into the volume (`docker run --rm -v pocket_id_data:/data -v "$PWD/backups:/backup"
 alpine tar -xzf /backup/<file> -C /data`) and start it again. Caddy's certificates are in the `caddy_data` volume: never remove it

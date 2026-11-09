@@ -2,6 +2,7 @@
 
 import fcntl
 import os
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, override
@@ -16,8 +17,6 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import TypeDecorator
 
 if TYPE_CHECKING:
-    import sqlite3
-
     from flask import Flask
     from sqlalchemy.engine import Dialect
     from sqlalchemy.pool import ConnectionPoolEntry
@@ -78,18 +77,51 @@ def _applied_revisions() -> set[str]:
         return set(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
 
 
+def _back_up(applied: set[str]) -> None:
+    """Copy the DB to `broker.db.bak-<revision it is at>` beside it, the only backup there is.
+
+    The way back if a migration turns out wrong, until the next one makes a newer copy: a rollback is a redeploy, and an
+    older image can't read a schema a newer one has changed. SQLite's backup API, so the copy is consistent even while
+    another process writes. A start that fails mid-migration is restarted, and must not replace the copy with the
+    half-migrated DB, so a copy of this revision that exists is kept as it is. It is on the same disk, so it guards
+    against a bad migration, not a lost disk. A DB with no file yet, or an empty one, has nothing to lose.
+    """
+    path = _db_path()
+    if not path.is_file() or path.stat().st_size == 0:
+        return
+    backup = path.with_name(f"{path.name}.bak-{'-'.join(sorted(applied)) or 'unversioned'}")
+    if not backup.exists():
+        source = sqlite3.connect(path)
+        target = sqlite3.connect(backup)
+        try:
+            source.backup(target)
+        except BaseException:
+            backup.unlink(missing_ok=True)
+            raise
+        finally:
+            target.close()
+            source.close()
+        current_app.logger.info("Backed up the database to %s before migrating it", backup.name)
+    for other in path.parent.glob(f"{path.name}.bak-*"):
+        if other != backup:
+            other.unlink()
+            current_app.logger.info("Removed the old backup %s", other.name)
+
+
 def upgrade_db() -> None:
     """Bring the DB to the latest revision, under a file lock; needs an app context.
 
     Same as `flask db upgrade`, except it leaves logging alone: env.py's logging setup would silence the app's own
     logger. A DB already at head is left alone, so starting the app (every `flask` command does) logs nothing from
-    Alembic unless a migration actually runs.
+    Alembic unless a migration actually runs, and a copy of the DB is made (_back_up) only when one does.
     """
     with Path(f"{_db_path()}.migrate.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         config = current_app.extensions["migrate"].migrate.get_config()
-        if _applied_revisions() == set(ScriptDirectory.from_config(config).get_heads()):
+        applied = _applied_revisions()
+        if applied == set(ScriptDirectory.from_config(config).get_heads()):
             return
+        _back_up(applied)
         config.attributes["app_startup"] = True
         command.upgrade(config, "head")
 

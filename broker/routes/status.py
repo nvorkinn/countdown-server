@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 from flask import Blueprint, jsonify
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from broker.auth import require_status_token
 from broker.db import db
@@ -19,6 +19,17 @@ bp = Blueprint("status", __name__, url_prefix="/api/status")
 
 def _timestamp(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
+
+
+@bp.get("/health")
+def health() -> ResponseReturnValue:
+    """Say the broker is up and its database is migrated and readable: the container's healthcheck.
+
+    Open to anyone (it is under /api/status, which Caddy doesn't put behind the login), so it says nothing about the
+    data. A missing table (the migration didn't come through) or an unreadable file makes it a 500.
+    """
+    db.session.scalar(select(func.count()).select_from(Device))
+    return jsonify({"status": "ok"})
 
 
 @bp.get("/devices")

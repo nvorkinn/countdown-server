@@ -92,6 +92,11 @@ def compose_services(image: str) -> dict[str, dict]:
     }
 
 
+# The compose file's named volumes this can start a service with, each as a directory in the deploy directory (a bind
+# on the host, like the real one).
+VOLUME_DIRECTORIES = {"broker_data": "./data"}
+
+
 def run_options(name: str, service: dict, deploy_dir: Path) -> list[str]:
     """Return the `docker run` options that start `service` as compose does, with `deploy_dir` as compose's ./."""
     options = ["--detach", "--name", container(name)]
@@ -112,8 +117,9 @@ def run_options(name: str, service: dict, deploy_dir: Path) -> list[str]:
     options += [f"--env={key}={value}" for key, value in pairs]
     for volume in service.get("volumes", []):
         source, _, target = volume.partition(":")
+        source = VOLUME_DIRECTORIES.get(source, source)
         if not source.startswith("./"):
-            msg = f"{name}: can't mount {volume}, only a directory in the deploy directory (./...)"
+            msg = f"{name}: can't mount {volume}, only ./... or one of {sorted(VOLUME_DIRECTORIES)}"
             raise CheckFailedError(msg)
         (deploy_dir / source).mkdir(parents=True, exist_ok=True)
         options += ["--volume", f"{deploy_dir / source}:{target}"]

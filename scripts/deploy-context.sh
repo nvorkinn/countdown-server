@@ -4,11 +4,16 @@
 # images and the data directory are on the host. Used by deploy-compose.yml (release.yml and promote.yml).
 # Usage: deploy-context.sh <target> <tag> <secrets dir>     (target: dev or prod; secrets dir: the vaultwarden-secrets action's output)
 #
-# The project directory is /opt/auth-broker here as well as on the host, so that docker-compose.yml's relative paths
-# (./data) mean the same on both ends, and the project is called auth-broker as the host's containers already are.
+# The project is called auth-broker, as the host's containers already are. Its directory here is /opt/auth-broker too,
+# as it always was: nothing in docker-compose.yml reads the host's filesystem through it any more (the database is the
+# broker_data volume), but Compose labels each container with a hash of its configuration, which includes the paths of
+# the env files, so a different directory would recreate every container once.
 #
 # DRY_RUN=true pulls the images and prints what `docker compose up` would do, but changes no container, backs nothing up
 # and removes no image: to see what a deploy to a host would do before it does it.
+#
+# The database's pre-migration backup is the app's own (broker/db.py), and the broker's healthcheck is what `--wait`
+# waits on, so no command runs inside a container here.
 #
 # The first deploy to a host that another Compose version set up may recreate its containers once (the config hashes
 # Compose labels them with differ between versions); after that only what changed is recreated.
@@ -21,11 +26,12 @@ secrets="$3"
 # The release's compose file and settings: this checkout's unless RELEASE_DIR is another one (the tag being deployed).
 release="${RELEASE_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 dir="${PROJECT_DIR:-/opt/auth-broker}"
-DB_BACKUPS_KEPT=5
-IMAGES_KEPT=2
+BACKUPS_KEPT=5
+# Where Pocket ID's backups go, on the host (the daemon reads this path there, not on the runner).
+host_backups=/opt/auth-broker/backups
 dry_run="${DRY_RUN:-false}"
 
-[ -w "$dir" ] || { echo "$dir must exist here and be writable: the project directory mirrors the host's" >&2; exit 1; }
+[ -w "$dir" ] || { echo "$dir must exist here and be writable: the project directory is kept at the host's path" >&2; exit 1; }
 cd "$dir"
 export COMPOSE_PROJECT_NAME=auth-broker
 
@@ -72,33 +78,16 @@ retry_lost_lease() {
   done
 }
 
-if [ "$dry_run" != true ] && [ "$(docker inspect -f '{{.State.Running}}' countdown-server 2>/dev/null || true)" = true ]; then
-  # SQLite's backup API, so the copy is consistent even mid-write.
-  docker exec countdown-server python -c "
-import sqlite3
-src = sqlite3.connect('/app/data/broker.db')
-src.backup(sqlite3.connect('/app/data/broker.db.bak-$tag'))
-# Keep the newest $DB_BACKUPS_KEPT copies; deleted in here as the container
-# owns them.
-from pathlib import Path
-backups = sorted(Path('/app/data').glob('broker.db.bak-*'), key=lambda p: p.stat().st_mtime)
-for old in backups[:-$DB_BACKUPS_KEPT]:
-    old.unlink()
-    print(f'Removed old backup data/{old.name}')
-"
-  echo "Backed up the database to data/broker.db.bak-$tag"
-fi
-
 if [ "$dry_run" != true ] && [ "$edge_owned" = true ] && docker volume inspect pocket_id_data >/dev/null 2>&1; then
   # Pocket ID's data volume holds every user and passkey, so it is copied before each deploy, whether or not Pocket ID
-  # changes: a tarball in backups/ on the host (the newest $DB_BACKUPS_KEPT are kept). A copy taken mid-write could be
+  # changes: a tarball in backups/ on the host (the newest $BACKUPS_KEPT are kept). A copy taken mid-write could be
   # unreadable; the earlier ones are kept. Copy backups/ off the host as well (see "Backups" in the README).
   backup="pocket-id-$tag-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
-  docker run --rm -v pocket_id_data:/data:ro -v "$dir/backups:/backup" docker.io/library/alpine:3.22 \
+  docker run --rm -v pocket_id_data:/data:ro -v "$host_backups:/backup" docker.io/library/alpine:3.22 \
     tar -czf "/backup/$backup" -C /data .
   echo "Backed up Pocket ID's data to backups/$backup"
-  docker run --rm -v "$dir/backups:/backup" docker.io/library/alpine:3.22 \
-    sh -c "ls -1t /backup/pocket-id-*.tar.gz | tail -n +$((DB_BACKUPS_KEPT + 1)) | xargs -r rm -f"
+  docker run --rm -v "$host_backups:/backup" docker.io/library/alpine:3.22 \
+    sh -c "ls -1t /backup/pocket-id-*.tar.gz | tail -n +$((BACKUPS_KEPT + 1)) | xargs -r rm -f"
 fi
 
 retry_lost_lease docker compose pull
@@ -151,16 +140,6 @@ fi
 retry_lost_lease docker compose up -d --wait --wait-timeout 600
 docker compose ps
 
-# Every release pulls new tags, so drop the older ones of what was just deployed: keep the running tag and the newest
-# other one (to roll back to). `docker image rm` refuses an image a container still uses.
-for image in $(docker compose config --images | sort -u); do
-  repo_name="${image%:*}"
-  docker images "$repo_name" --format '{{.Repository}}:{{.Tag}}' | { grep -vxF "$image" || true; } |
-    tail -n +"$IMAGES_KEPT" | while read -r old; do
-      docker image rm "$old" >/dev/null 2>&1 && echo "Removed old image $old" || true
-    done
-done
-docker image prune -f >/dev/null
-
-# A check that the database came through.
-docker exec countdown-server flask --app wsgi devices list
+# Every release pulls new tags, so drop every image no container uses: the previous release's, and anything else left
+# behind. Nothing is kept to roll back to, as a rollback is a deploy of an older tag, which pulls what it needs.
+docker image prune -af >/dev/null

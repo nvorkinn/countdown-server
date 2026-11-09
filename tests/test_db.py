@@ -175,6 +175,109 @@ def test_starting_on_a_db_behind_head_migrates_it_and_logs_the_migrations(app, c
         db.engine.dispose()
 
 
+def _backups(app):
+    path = db_module._db_path()
+    return sorted(path.parent.glob(f"{path.name}.bak-*"))
+
+
+def _downgrade_to(app, revision):
+    with app.app_context():
+        config = app.extensions["migrate"].migrate.get_config()
+        config.attributes["app_startup"] = True
+        command.downgrade(config, revision)
+        db.engine.dispose()
+
+
+def test_starting_on_a_db_behind_head_first_backs_it_up_at_the_revision_it_was_at(app, register_device):
+    register_device()
+    _downgrade_to(app, "0023")
+
+    again = create_app()
+
+    (backup,) = _backups(app)
+    assert backup.name.endswith(".bak-0023")
+    # The copy is the database as it was before the migration: at 0023, with its data.
+    copy = sqlite3.connect(backup)
+    assert copy.execute("SELECT version_num FROM alembic_version").fetchall() == [("0023",)]
+    assert copy.execute("SELECT count(*) FROM devices").fetchone() == (1,)
+    copy.close()
+    assert _current_revision(again) == _head_revision(again)
+    with again.app_context():
+        db.engine.dispose()
+
+
+def test_starting_on_a_db_at_head_makes_no_backup(app):
+    again = create_app()
+
+    assert _backups(app) == []
+    with again.app_context():
+        db.engine.dispose()
+
+
+def test_starting_on_no_database_makes_no_backup(app, tmp_path, monkeypatch):
+    path = tmp_path / "fresh" / "broker.db"
+    monkeypatch.setenv("BROKER_DB_PATH", str(path))  # the app fixture set the rest of the environment
+
+    fresh = create_app()
+
+    assert list(path.parent.glob("broker.db.bak-*")) == []
+    with fresh.app_context():
+        db.engine.dispose()
+
+
+def test_a_new_backup_replaces_every_older_one(app):
+    path = db_module._db_path()
+    for name in ("bak-v1.2.3", "bak-0005"):  # the deploy script's, and an earlier migration's
+        path.with_name(f"{path.name}.{name}").write_bytes(b"old")
+    _downgrade_to(app, "0023")
+
+    again = create_app()
+
+    assert [b.name for b in _backups(app)] == [f"{path.name}.bak-0023"]
+    with again.app_context():
+        db.engine.dispose()
+
+
+def test_a_restarted_failed_migration_keeps_the_backup_from_before_it(app):
+    """Compose restarts a broker that fails mid-migration: the copy must stay the DB as it was before the first try."""
+    path = db_module._db_path()
+    _downgrade_to(app, "0023")
+    path.with_name(f"{path.name}.bak-0023").write_bytes(b"as it was")
+
+    again = create_app()  # the restart
+
+    assert path.with_name(f"{path.name}.bak-0023").read_bytes() == b"as it was"
+    with again.app_context():
+        db.engine.dispose()
+
+
+class _CannotBackUp:
+    """Stands in for sqlite3 where the database is copied: connections whose backup fails."""
+
+    class OperationalError(Exception):
+        pass
+
+    def connect(self, _path):
+        return self
+
+    def backup(self, _target):
+        raise self.OperationalError("disk full")  # noqa: EM101, TRY003
+
+    def close(self):
+        pass
+
+
+def test_a_failed_backup_stops_the_migration_and_leaves_no_partial_copy(app, monkeypatch):
+    _downgrade_to(app, "0023")
+    monkeypatch.setattr(db_module, "sqlite3", _CannotBackUp())
+
+    with pytest.raises(_CannotBackUp.OperationalError, match="disk full"):
+        create_app()
+
+    assert _backups(app) == []
+    assert _current_revision(app) == "0023"
+
+
 def test_foreign_keys_are_enforced_after_migrating(app):
     with app.app_context():
         db.session.add(
