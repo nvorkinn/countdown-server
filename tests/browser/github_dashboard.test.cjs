@@ -1202,3 +1202,80 @@ test("an expired sign-in stops polling and reloads the page, once the tab is sho
     assert.equal(app.location.reloads, 1);
     assert.equal(app.calls.length, calls);
 });
+
+const reruns = (app, list) => app.ids.get(list).querySelectorAll(".rerun");
+const posts = app => app.calls.filter(call => call.options.method === "POST");
+
+test("a failed release offers Rerun failed jobs and a Rerun per failed job; a passed one offers neither", async () => {
+    const failedJobs = [
+        { id: 31, name: "build", status: "completed", conclusion: "failure", url: "", steps: [] },
+        { id: 32, name: "test", status: "completed", conclusion: "success", url: "", steps: [] },
+        { id: 33, name: "deploy", status: "completed", conclusion: "cancelled", url: "", steps: [] },
+    ];
+    const failed = { ...finishedRelease(7, 100000, "failure"), jobs: failedJobs };
+    const app = await harness({ ...idle, workflows: [failed] });
+    assert.deepEqual(
+        reruns(app, "workflows").map(button => button.textContent),
+        ["Rerun failed jobs", "Rerun build", "Rerun deploy"],
+    );
+    await Promise.all([reruns(app, "workflows")[0].listeners.click(), reruns(app, "workflows")[0].listeners.click()]);
+    assert.equal(posts(app).length, 1);
+    assert.equal(posts(app)[0].url, "/github/repositories/alice/project/runs/7/rerun-failed");
+    assert.equal(posts(app)[0].options.headers["X-CSRF-Token"], "csrf-token");
+    assert.equal(reruns(app, "workflows")[0].textContent, "Started");
+    assert.equal(reruns(app, "workflows")[0].disabled, true);
+    await reruns(app, "workflows")[1].listeners.click();
+    assert.equal(posts(app).at(-1).url, "/github/repositories/alice/project/jobs/31/rerun");
+
+    const passed = await harness({ ...idle, workflows: [finishedRelease(8, 100000)] });
+    assert.equal(reruns(passed, "workflows").length, 0);
+    const running = await harness({ ...idle, active: true, workflows: [{ ...waitingRelease, jobs: failedJobs }] });
+    assert.equal(reruns(running, "workflows").length, 0);
+});
+
+test("a collapsed failed release keeps its Rerun failed jobs button", async () => {
+    const app = await harness({ ...idle, workflows: [finishedRelease(7, 100000 - FINISHED_MS, "failure")] });
+    assert.equal(app.ids.get("workflows").querySelectorAll(".collapsed").length, 1);
+    assert.deepEqual(
+        reruns(app, "workflows").map(button => button.textContent),
+        ["Rerun failed jobs"],
+    );
+});
+
+test("a rerun GitHub refuses shows why and can be tried again", async () => {
+    const app = await harness({ ...idle, workflows: [finishedRelease(7, 100000, "failure")] });
+    app.setFailure({ status: 409, message: "GitHub re-runs failed jobs only once the workflow run has finished." });
+    await reruns(app, "workflows")[0].listeners.click();
+    assert.match(workflowsText(app), /only once the workflow run has finished/);
+    assert.equal(reruns(app, "workflows")[0].disabled, false);
+    assert.equal(reruns(app, "workflows")[0].textContent, "Rerun failed jobs");
+});
+
+test("a PR's failed Actions checks of finished runs have Rerun, and Rerun failed jobs covers each such run", async () => {
+    const pr = {
+        ...active.pulls[0],
+        refresh: false,
+        checks: [
+            { name: "lint", state: "failure", pending: false, run_id: 1, job_id: 11 },
+            { name: "test", state: "timed_out", pending: false, run_id: 2, job_id: 21 },
+            { name: "codeql", state: "failure", pending: false, run_id: 3, job_id: 31 },
+            { name: "codeql-py", state: "in_progress", pending: true, run_id: 3, job_id: 32 },
+            { name: "external", state: "failure", pending: false },
+        ],
+    };
+    const app = await harness({ ...idle, active: true, pulls: [pr] });
+    assert.deepEqual(
+        reruns(app, "pulls").map(button => button.textContent),
+        ["Rerun failed jobs", "Rerun", "Rerun"],
+    );
+    await reruns(app, "pulls")[0].listeners.click();
+    assert.deepEqual(
+        posts(app).map(call => call.url),
+        [
+            "/github/repositories/alice/project/runs/1/rerun-failed",
+            "/github/repositories/alice/project/runs/2/rerun-failed",
+        ],
+    );
+    await reruns(app, "pulls")[2].listeners.click();
+    assert.equal(posts(app).at(-1).url, "/github/repositories/alice/project/jobs/21/rerun");
+});

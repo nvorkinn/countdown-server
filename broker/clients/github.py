@@ -38,6 +38,10 @@ PAGE_SIZE = 100
 FAILED = {"failure", "timed_out", "startup_failure"}
 # Check states that stop a direct merge, as the dashboard's PR list counts them.
 FAILED_CHECKS = {"failure", "timed_out", "cancelled", "error", "startup_failure", "action_required", "stale"}
+# What a finished job or run ends in when GitHub's re-run of its failed jobs runs it again (cancelled jobs included).
+RERUNNABLE = {"failure", "timed_out", "cancelled"}
+# A GitHub Actions check run's page: the check run's ID is its job's ID.
+ACTIONS_JOB_URL = re.compile(r"/actions/runs/(\d+)/job/(\d+)(?:[/?#]|$)")
 ENABLE_AUTO_MERGE = """
 mutation($id: ID!, $method: PullRequestMergeMethod!) {
   enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) { clientMutationId }
@@ -533,6 +537,7 @@ class Dashboard:
                 "state": check.get("conclusion") or check["status"],
                 "pending": check["status"] != "completed",
                 "url": check.get("html_url"),
+                **_actions_job(check),
             }
             for check in check_runs
         ]
@@ -641,6 +646,7 @@ class Dashboard:
             "nodes": workflow_graph.nodes(definitions, jobs, list_jobs=True),
             "jobs": [
                 {
+                    "id": job["id"],
                     "name": job["name"],
                     "status": job["status"],
                     "conclusion": job["conclusion"],
@@ -689,6 +695,30 @@ class Dashboard:
                 "comment": "Approved from the personal GitHub dashboard.",
             },
         )
+
+    def rerun_job(self, repo: dict, job_id: int) -> None:
+        """Re-run one failed or cancelled job of a finished run, with the jobs that need it, as a new attempt."""
+        path = f"/repos/{repo['full_name']}/actions"
+        job = self.get(f"{path}/jobs/{job_id}")
+        if job["status"] != "completed" or job.get("conclusion") not in RERUNNABLE:
+            msg = "Only a failed or cancelled job can be re-run. Refresh the dashboard."
+            raise DashboardError(msg)
+        if self.get(f"{path}/runs/{job['run_id']}")["status"] != "completed":
+            msg = "GitHub re-runs a job only once its whole workflow run has finished. Try again then."
+            raise DashboardError(msg)
+        self.post(f"{path}/jobs/{job_id}/rerun", {})
+
+    def rerun_failed_jobs(self, repo: dict, run_id: int) -> None:
+        """Re-run a finished run's failed and cancelled jobs, with the jobs that need them, as a new attempt."""
+        path = f"/repos/{repo['full_name']}/actions/runs/{run_id}"
+        run = self.get(path)
+        if run["status"] != "completed":
+            msg = "GitHub re-runs failed jobs only once the workflow run has finished. Try again then."
+            raise DashboardError(msg)
+        if run.get("conclusion") not in RERUNNABLE:
+            msg = "This workflow run has no failed jobs to re-run. Refresh the dashboard."
+            raise DashboardError(msg)
+        self.post(f"{path}/rerun-failed-jobs", {})
 
     def publish_release(self, repo: dict) -> dict:
         """Generate notes and immediately publish the next minor release on the default branch."""
@@ -763,6 +793,14 @@ class Dashboard:
         response = self.session.post(f"{API_URL}{path}", json=payload, timeout=TIMEOUT)
         response.raise_for_status()
         return response
+
+
+def _actions_job(check: dict) -> dict:
+    """Return the workflow run and job behind a GitHub Actions check run, for the PR list's Rerun; {} for other apps."""
+    if (check.get("app") or {}).get("slug") != "github-actions":
+        return {}
+    match = ACTIONS_JOB_URL.search(check.get("html_url") or "")
+    return {"run_id": int(match[1]), "job_id": int(match[2])} if match else {}
 
 
 SEMVER = re.compile(

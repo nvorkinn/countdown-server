@@ -591,3 +591,27 @@ summary {
         display: none;
     }
 }
+/* Re-run buttons: one per failed job (PR checks and release jobs) and one for a run's or PR's failed jobs. */
+.rerun {
+    font-size: 10px;
+    padding: 1px 6px;
+}
+.checks .rerun {
+    margin-left: 6px;
+}
+.row-heading .rerun {
+    margin-left: auto;
+}
+.row-heading .rerun ~ .finished-toggle {
+    margin-left: 0;
+}
+.rerun-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0 4px;
+}
+.rerun-note {
+    font-size: 11px;
+}
