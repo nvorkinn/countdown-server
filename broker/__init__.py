@@ -41,7 +41,7 @@ def create_app() -> Flask:
     # Caddy is the only thing that reaches the app (gunicorn is not published; only the reverse proxy shares its
     # network), so trust the one X-Forwarded-For hop it adds: request.remote_addr is then the visitor's IP rather than
     # Caddy's, which the /pair and /register throttles depend on.
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # ty: ignore[invalid-assignment] -- how Flask documents wrapping it
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
     config.load(app)
     db_module.init_app(app)
