@@ -79,5 +79,16 @@ def test_every_service_that_starts_an_app_has_the_variables_it_needs(apps, requi
 def test_the_providers_that_only_read_the_database_mount_it_read_only():
     """So nothing in them can write to it, whatever the code does."""
     apps = _read_only_apps()
-    mounts = {name: [v for v in s.get("volumes", []) if v.startswith("./data:")] for name, s in apps.items()}
-    assert mounts == {name: ["./data:/app/data:ro"] for name in apps}
+    mounts = {name: [v for v in s.get("volumes", []) if v.startswith("broker_data:")] for name, s in apps.items()}
+    assert mounts == {name: ["broker_data:/app/data:ro"] for name in apps}
+
+
+def test_the_database_is_a_named_volume_not_a_path_on_the_runner():
+    """A host path in a mount is read on the runner, which the deploy runs from, so the data would have to be there."""
+    mounts = [v for s in COMPOSE["services"].values() for v in s.get("volumes", [])]
+    assert not [v for v in mounts if v.startswith((".", "/opt"))]
+    assert "broker_data" in COMPOSE["volumes"]
+
+
+def test_the_broker_has_a_healthcheck_so_a_deploy_waits_for_it():
+    assert COMPOSE["services"]["countdown-server"]["healthcheck"]["test"][0] == "CMD"

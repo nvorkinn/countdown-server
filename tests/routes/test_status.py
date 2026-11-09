@@ -28,6 +28,23 @@ def _last_seen(app, device_id):
         return db.session.get_one(Device, device_id).last_seen_at
 
 
+def test_health_is_open_and_says_nothing_about_the_data(client, register_device):
+    register_device()  # something to leak, if it did
+
+    response = client.get("/api/status/health")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "ok"}
+
+
+def test_health_fails_when_the_database_is_not_migrated(client, app):
+    app.config["PROPAGATE_EXCEPTIONS"] = False  # as in production, where an error is a 500, not a raise
+    with app.app_context(), db.engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE devices RENAME TO devices_gone")
+
+    assert client.get("/api/status/health").status_code == 500
+
+
 def test_status_is_off_without_a_token(client):
     assert _status(client).status_code == 404
     assert _status(client, token="").status_code == 404

@@ -129,7 +129,8 @@ jobs:
 
       - name: ${{ inputs.dry_run && 'Plan' || 'Deploy' }} through the host's Docker daemon
         run: |
-          # The project directory is /opt/auth-broker on the runner too, as on the host (see deploy-context.sh).
+          # The project directory is /opt/auth-broker on the runner too, as it always was (see deploy-context.sh); nothing on
+          # the host is read through it.
           sudo install -d -o "$(id -u)" -g "$(id -g)" /opt/auth-broker
           export DOCKER_HOST="ssh://$DEPLOY_TARGET"
           RELEASE_DIR="$PWD/release" scripts/deploy-context.sh "$TARGET" "$TAG" "$RUNNER_TEMP/secrets"

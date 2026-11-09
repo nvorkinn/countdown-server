@@ -55,7 +55,7 @@ services:
     networks: [default, edge]
     command: ["gunicorn", "--bind", "0.0.0.0:5000", "wsgi:app"]
     volumes:
-      - ./data:/app/data
+      - broker_data:/app/data
     # Fetched from Vaultwarden by the deploy workflow, as are the other services' env_files.
     env_file:
       - broker.env
@@ -65,6 +65,18 @@ services:
       <<: [*request-logging, *redis-url, *victoria-urls]
       SESSION_COOKIE_SECURE: "true"
       SESSION_COOKIE_SAMESITE: Lax
+    # Up means serving with the database migrated and readable (the app migrates it as it starts, before gunicorn takes a
+    # request), so the deploy's `--wait` ends only when the broker works. The image has no curl; Python's is enough.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:5000/api/status/health", timeout=4)
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     labels:
       # The settings site. Everything but the screens' API (Bearer secrets), the status endpoint (its own token),
       # GitHub's webhook (signed with its secret), Telegram's webhook (its secret token) and the public /about page
@@ -116,7 +128,7 @@ services:
       tinyauth.apps.countdown.oauth.whitelist: /.*/
 
   # The music provider (broker/providers/music.py): what each screen's Spotify and Apple Music are playing, into
-  # Redis. It starts the broker's app and writes refreshed Spotify tokens back, so ./data is writable here.
+  # Redis. It starts the broker's app and writes refreshed Spotify tokens back, so the data volume is writable here.
   spotify-provider:
     <<: *release-image
     image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
@@ -124,7 +136,7 @@ services:
     logging: *logging
     command: ["python", "-m", "broker.providers.music"]
     volumes:
-      - ./data:/app/data
+      - broker_data:/app/data
     env_file:
       - broker.env
       - redis.env
@@ -134,7 +146,7 @@ services:
 
   # The developer provider (broker/providers/developer.py): each screen's developer panel (GitHub and AI plans) into
   # Redis, and a pace hint while a release runs. It opens the database read-only (loop.read_only_app), so
-  # ./data is mounted :ro.
+  # the data volume is mounted :ro.
   developer-provider:
     <<: *release-image
     image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
@@ -142,7 +154,7 @@ services:
     logging: *logging
     command: ["python", "-m", "broker.providers.developer"]
     volumes:
-      - ./data:/app/data:ro
+      - broker_data:/app/data:ro
     # broker.env for the key that decrypts the GitHub tokens.
     env_file:
       - broker.env
@@ -151,7 +163,7 @@ services:
     stop_grace_period: 30s
 
   # The parcel provider (broker/providers/parcel.py): each screen's active Parcel deliveries into Redis, every 20 minutes
-  # by day. It opens the database read-only (loop.read_only_app), so ./data is mounted :ro.
+  # by day. It opens the database read-only (loop.read_only_app), so the data volume is mounted :ro.
   parcel-provider:
     <<: *release-image
     image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
@@ -159,7 +171,7 @@ services:
     logging: *logging
     command: ["python", "-m", "broker.providers.parcel"]
     volumes:
-      - ./data:/app/data:ro
+      - broker_data:/app/data:ro
     # broker.env for the key that decrypts the Parcel API keys.
     env_file:
       - broker.env
@@ -177,7 +189,7 @@ services:
     logging: *logging
     command: ["python", "-m", "broker.providers.glow"]
     volumes:
-      - ./data:/app/data:ro
+      - broker_data:/app/data:ro
     env_file:
       - broker.env
       - redis.env
@@ -427,6 +439,17 @@ networks:
     internal: true
 
 volumes:
+  # The SQLite database (and its pre-migration copies). A named volume, so no deploy needs the host's directory on the
+  # runner as the project's `./data` did; it is bound to the directory the data was always in, /opt/auth-broker/data,
+  # so nothing is copied and an existing host keeps its database. The directory has to exist (the local driver won't
+  # make it). Back it up from there, not from the volume's own storage.
+  broker_data:
+    name: broker_data
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/auth-broker/data
   # Fixed names so the volumes don't depend on the compose project (directory) name.
   caddy_data:
     name: caddy_data
