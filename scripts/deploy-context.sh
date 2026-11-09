@@ -4,10 +4,10 @@
 # images and the data directory are on the host. Used by deploy-compose.yml (release.yml and promote.yml).
 # Usage: deploy-context.sh <target> <tag> <secrets dir>     (target: dev or prod; secrets dir: the vaultwarden-secrets action's output)
 #
-# The project is called auth-broker, as the host's containers already are. Its directory here is /opt/auth-broker too,
-# as it always was: nothing in docker-compose.yml reads the host's filesystem through it any more (the database is the
-# broker_data volume), but Compose labels each container with a hash of its configuration, which includes the paths of
-# the env files, so a different directory would recreate every container once.
+# The project is called countdown-server. Its directory here is a fixed path, /opt/countdown-server: nothing in
+# docker-compose.yml reads the host's filesystem through it (the database is the broker_data volume), but Compose labels
+# each container with a hash of its configuration, which may include the paths of the env files, so a path that doesn't
+# change keeps a deploy from recreating what it doesn't have to.
 #
 # DRY_RUN=true pulls the images and prints what `docker compose up` would do, but changes no container, backs nothing up
 # and removes no image: to see what a deploy to a host would do before it does it.
@@ -25,7 +25,7 @@ secrets="$3"
 : "${DOCKER_HOST:?}"
 # The release's compose file and settings: this checkout's unless RELEASE_DIR is another one (the tag being deployed).
 release="${RELEASE_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-dir="${PROJECT_DIR:-/opt/auth-broker}"
+dir="${PROJECT_DIR:-/opt/countdown-server}"
 BACKUPS_KEPT=5
 # Where Pocket ID's backups go, on the host (the daemon reads this path there, not on the runner).
 host_backups=/opt/auth-broker/backups
@@ -33,7 +33,7 @@ dry_run="${DRY_RUN:-false}"
 
 [ -w "$dir" ] || { echo "$dir must exist here and be writable: the project directory is kept at the host's path" >&2; exit 1; }
 cd "$dir"
-export COMPOSE_PROJECT_NAME=auth-broker
+export COMPOSE_PROJECT_NAME=countdown-server
 
 # The project: the compose file, this environment's settings and secrets, and the .env Compose fills the compose file
 # from. No secret goes in .env: Compose would copy it into labels, where `docker inspect` shows it. The secrets are in
@@ -96,6 +96,16 @@ if [ "$dry_run" = true ]; then
   echo "Dry run: this is what a deploy would do (containers: Recreate = replaced, Running = left alone)"
   docker compose --dry-run up -d --no-build
   exit 0
+fi
+
+# One-off, from when the project was called auth-broker: its containers have the names this project's would (each has a
+# container_name), so `up` would fail on them. They are taken down here, with their networks and not their volumes (the
+# data, certificates and passkeys are named volumes, and stay), and the new project starts them again. Delete this once
+# every host has been deployed to under the new name.
+old_project=auth-broker
+if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$old_project")" ]; then
+  echo "Taking down the containers of the old project $old_project (their volumes stay)"
+  docker compose --project-name "$old_project" down --remove-orphans
 fi
 
 # --wait: the step ends once the containers are running, and healthy where they have a healthcheck (Caddy listening on
