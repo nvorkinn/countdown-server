@@ -56,56 +56,38 @@ jobs:
           [[ "$tag" =~ ^v[0-9A-Za-z._-]+$ ]] || { echo "Unsupported tag: $tag" >&2; exit 1; }
           echo "value=$tag" >> "$GITHUB_OUTPUT"
 
-  # One build per image, side by side. Each is tagged with the release tag and
-  # latest, for arm64 (production's host is ARM) and amd64 (dev runs on the x86 home server), except Caddy, which
-  # only production deploys and so stays arm64. The runner is ARM, so arm64 is native and amd64 is emulated (QEMU).
-  # Tests builds its own images. An infra image whose folder (and this
-  # workflow) hasn't changed since the previous release isn't rebuilt: that
-  # release's image gets this tag too, so its digest stays the same and the
-  # deploy leaves the running container alone (deploy-context.sh). The broker's image is
-  # always built, as it bakes in the code.
-  images:
-    name: image ${{ matrix.image }}
+  # One build per image and architecture, side by side, each on a runner of its own architecture (no emulation): arm64
+  # for production's host (ARM), amd64 for dev, which runs on the x86 home server. Caddy is built for arm64 only, as only
+  # production deploys it. Each build is pushed by digest, with BuildKit's provenance and SBOM beside it, and the
+  # `images` job below joins the two into the tags. The broker's image is the code; the others are built every release
+  # too, so a release is one tag across all of them.
+  build:
+    name: build ${{ matrix.image }} (${{ matrix.arch }})
     needs: tag
-    runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
-      # For the build provenance attestation: a Sigstore certificate (OIDC) and
-      # storing the attestation.
-      id-token: write
-      attestations: write
     strategy:
       matrix:
         include:
-          - image: countdown-server
-            context: .
-            platforms: linux/amd64,linux/arm64
-          # Production only (dev's Caddy is home-stack's, so the profile that runs this one is off there), and compiling it
-          # under emulation would take long.
-          - image: countdown-server-caddy
-            context: caddy
-            platforms: linux/arm64
-          - image: countdown-server-fluent-bit
-            context: fluent-bit
-            platforms: linux/amd64,linux/arm64
-          - image: countdown-server-victoria-logs
-            context: victoria-logs
-            platforms: linux/amd64,linux/arm64
-          - image: countdown-server-victoria-metrics
-            context: victoria-metrics
-            platforms: linux/amd64,linux/arm64
+          - {image: countdown-server, context: ., arch: amd64, runner: ubuntu-24.04}
+          - {image: countdown-server, context: ., arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: countdown-server-caddy, context: caddy, arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: countdown-server-fluent-bit, context: fluent-bit, arch: amd64, runner: ubuntu-24.04}
+          - {image: countdown-server-fluent-bit, context: fluent-bit, arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: countdown-server-victoria-logs, context: victoria-logs, arch: amd64, runner: ubuntu-24.04}
+          - {image: countdown-server-victoria-logs, context: victoria-logs, arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: countdown-server-victoria-metrics, context: victoria-metrics, arch: amd64, runner: ubuntu-24.04}
+          - {image: countdown-server-victoria-metrics, context: victoria-metrics, arch: arm64, runner: ubuntu-24.04-arm}
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
-      TAG: ${{ needs.tag.outputs.value }}
-      CONTEXT: ${{ matrix.context }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The broker image bakes in vendor/countdown-api; the infra images don't use it.
           submodules: ${{ matrix.context == '.' }}
-          # The infra images compare their folder with the previous release's tag, so they need the history and tags.
-          fetch-depth: ${{ matrix.context == '.' && 1 || 0 }}
+          persist-credentials: false
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
@@ -114,79 +96,80 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Emulation for the amd64 half of the multi-platform builds.
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-        with:
-          platforms: amd64
-
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      # The previous release is the newest vX.Y.Z tag on this commit's history other than this one. Its image is reused
-      # when neither the image's folder nor this workflow changed since, and it is in GHCR. Copying the tags keeps the
-      # same index (attestations included), so its provenance still applies. Otherwise, the build below runs.
-      - name: Reuse the previous release's image if nothing changed
-        id: reuse
-        if: matrix.context != '.'
-        run: |
-          previous="$(git tag --merged HEAD --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | { grep -vxF "$TAG" || true; } | head -1)"
-          if [ -z "$previous" ]; then
-            echo "No earlier release to reuse; building."
-          elif ! git diff --quiet "$previous" HEAD -- "$CONTEXT" .github/workflows/release.yml; then
-            echo "$CONTEXT/ or release.yml changed since $previous; building."
-          elif ! docker buildx imagetools inspect "$IMAGE:$previous" > /dev/null 2>&1; then
-            echo "No $IMAGE:$previous in the registry; building."
-          else
-            docker buildx imagetools create --tag "$IMAGE:$TAG" --tag "$IMAGE:latest" "$IMAGE:$previous"
-            echo "::notice::$CONTEXT/ is unchanged since $previous, so $IMAGE:$TAG is that release's image."
-            echo "reused=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build and push
+      # BuildKit's own attestations are pushed beside the image as extra (unknown/unknown platform) manifests in the
+      # index of this digest; the join below keeps them, so a pull on either host still picks its own platform's image.
+      - name: Build and push by digest
         id: build
-        if: steps.reuse.outputs.reused != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ${{ matrix.context }}
-          push: true
-          platforms: ${{ matrix.platforms }}
-          tags: |
-            ${{ env.IMAGE }}:${{ env.TAG }}
-            ${{ env.IMAGE }}:latest
-          # BuildKit's own attestations, pushed beside the image as extra
-          # (unknown/unknown platform) manifests in the tag's OCI index. A pull
-          # on either host still picks its own platform's image.
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max
           sbom: true
 
-      # GitHub's signed provenance for the digest just pushed (the index's), stored
-      # with the image in GHCR and in GitHub's attestation store. Verify with
-      # `gh attestation verify oci://<image>:<tag> --repo nvorkinn/countdown-server`.
-      # Sigstore's transparency log now and then answers 404 for the entry it has just made ("error fetching tlog
-      # entry"), which failed a whole release, so a failure gets one more try 30 seconds later. A second failure is
-      # real and fails the job.
-      - name: Attest build provenance
-        if: steps.reuse.outputs.reused != 'true'
-        id: attest
-        continue-on-error: true
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with: &attest
-          subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
-          # Storage records need an organization-owned repository (and the artifact-metadata permission).
-          create-storage-record: false
+      - name: Keep the digest for the join
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
 
-      - name: Wait before attesting again
-        if: steps.attest.outcome == 'failure'
-        run: sleep 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # The image last, so the join's pattern below matches this image's and no other's (`*` matches hyphens, and
+          # one image's name begins another's).
+          name: digests-${{ matrix.arch }}-${{ matrix.image }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Attest build provenance (second try)
-        if: steps.attest.outcome == 'failure'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with: *attest
+  # Each image's architectures joined into one multi-platform tag: the release's, and latest.
+  images:
+    name: image ${{ matrix.image }}
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image:
+          - countdown-server
+          - countdown-server-caddy
+          - countdown-server-fluent-bit
+          - countdown-server-victoria-logs
+          - countdown-server-victoria-metrics
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+      TAG: ${{ needs.tag.outputs.value }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digests-*-${{ matrix.image }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
 
-  # The GitHub Release for the tag. It has no assets: the deploys use the tag's own docker-compose.yml and config/.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Tag the join of the architectures
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # shellcheck disable=SC2046  # one argument per digest file
+          docker buildx imagetools create --tag "$IMAGE:$TAG" --tag "$IMAGE:latest" $(printf "$IMAGE@sha256:%s " *)
+          docker buildx imagetools inspect "$IMAGE:$TAG"
+
+  # The GitHub Release for the tag, with the notes GitHub generates from the pull requests merged since the last one. It
+  # has no assets: the deploys use the tag's own docker-compose.yml and config/.
   github-release:
     needs: tag
     runs-on: ubuntu-latest
@@ -198,31 +181,14 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Create the GitHub Release
-        run: gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG"
+        run: gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
 
   # A release deploys to dev only, with no approval (starting the release is
   # the decision). Production is promote.yml's, for a tag that has been through
   # here. The services wait for the images. A target's environment holds its
   # host's secrets (DEPLOY_HOST and the rest). Dev runs no edge of its own (home-stack's Caddy, Tinyauth and Pocket
-  # ID serve it, so the edge profile is off there); production's edge is promote.yml's, in the same deploy.
-  # Dev's DNS records (infra/cloudflare), planned, and applied after approval if they change, beside the deploys. A
-  # release that leaves DNS as it is asks for no approval. If it changes a name or an address, Caddy may ask for a
-  # certificate before the record exists and wait a while to retry: restart it after the apply. Production's records
-  # are promote.yml's.
-  dns:
-    name: dns
-    needs: tag
-    # The plan job it calls comments on pull requests, so its token asks for this even here.
-    permissions:
-      contents: read
-      pull-requests: write
-    uses: ./.github/workflows/cloudflare.yml
-    with:
-      apply: true
-      target: dev
-      tag: ${{ needs.tag.outputs.value }}
-    secrets: inherit
-
+  # ID serve it, so the edge profile is off there); production's edge is promote.yml's, in the same deploy. DNS is not
+  # part of a release: it is applied on its own (cloudflare.yml).
   # Dev, through the host's Docker daemon (deploy-compose.yml): one job fetches the secrets from Vaultwarden and deploys
   # every service once the images are built.
   deploy-dev:

@@ -292,7 +292,8 @@ Each change to a device's pairing also updates its config in Redis and queues a 
 ## Deploying
 
 Run the **Release** workflow from the Actions tab on `main`, picking `patch`, `minor` or `major` (or push a `v*` tag).
-It builds five images for arm64 (the host is ARM) on an ARM runner, tagged with the release and `latest`:
+It builds five images, each on a runner of its own architecture (arm64 for the production host, amd64 for dev's home
+server; Caddy, which only production runs, for arm64 only) and joins them under one tag, the release and `latest`:
 
 - `ghcr.io/nvorkinn/countdown-server` (the broker and the providers)
 - `ghcr.io/nvorkinn/countdown-server-caddy` (caddy-docker-proxy, built with xcaddy)
@@ -300,7 +301,7 @@ It builds five images for arm64 (the host is ARM) on an ARM runner, tagged with 
 - `ghcr.io/nvorkinn/countdown-server-victoria-logs`
 - `ghcr.io/nvorkinn/countdown-server-victoria-metrics` (with the vmui dashboards)
 
-It also creates the GitHub Release for the tag. A release deploys to **dev** with no approval: starting the release is the
+It also creates the GitHub Release for the tag, with generated notes. A release deploys to **dev** with no approval: starting the release is the
 decision. Production is never touched by a release; it gets a tag that has been through dev, by promotion (below). Both
 are the same deploy, `deploy-compose.yml`, which fetches the secrets from Vaultwarden (see Secrets) and deploys through the
 host's Docker daemon (below): every service, one job. The services are Caddy, the broker and its providers, Fluent Bit,
@@ -327,8 +328,8 @@ before anyone is asked if:
 
 Then the `approve-prod` environment's reviewers are asked once for the whole promotion, and `deploy-compose.yml`
 deploys to `prod` as it does to dev, in one job: the edge (the socket proxy, Tinyauth and Pocket ID) and every
-service, the socket proxy up before Caddy (`depends_on`). Pocket ID's data is backed up first, and an image that
-didn't change since the last release is left running. To see what a tag would do before promoting it, run **Deploy compose**
+service, the socket proxy up before Caddy (`depends_on`). Pocket ID's data is backed up first, and every service on a release image is recreated, Caddy's sites
+being cut off for a few seconds. To see what a tag would do before promoting it, run **Deploy compose**
 by hand with `prod`: it only plans. One promotion runs at a time.
 
 To **roll back production,** promote an older tag that was deployed to dev or promoted before; the same checks and
@@ -340,10 +341,10 @@ Deploy compose > Run workflow with a release tag) deploys that release to dev wi
 hand with `prod` it only plans: it pulls the images and prints what a deploy would do (which containers it would
 replace and which it would leave alone), changing no container and taking no backup. It fetches the secrets from Vaultwarden
 onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the path the project has always had,
-which keeps Compose's config hashes, and so the running containers, as they were; nothing on the host is read through it), and `scripts/deploy-context.sh` runs `docker compose` against the host with
+which keeps Compose's config hashes, and so the services pinned upstream (Redis, Tinyauth, Pocket ID), as they were; nothing on the host is read through it), and `scripts/deploy-context.sh` runs `docker compose` against the host with
 `DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It brings
-the edge up before Caddy (`depends_on`), and leaves an image that didn't change since the last release (the infra images are
-re-tagged each release) running. Nothing is installed on the host but Docker.
+the edge up before Caddy (`depends_on`), and recreates every service on a release image, as each release builds them all.
+Nothing is installed on the host but Docker.
 
 **One-time setup** in the repository's settings:
 
@@ -354,7 +355,7 @@ re-tagged each release) running. Nothing is installed on the host but Docker.
     one environment, and a matrix of jobs that named a protected one would ask for approval each, which is why the
     approval is not `prod` itself.)
   - `terraform` and `terraform-prod`, each with yourself as a required reviewer (that's what stops the DNS
-    records in `infra/cloudflare` applying on their own) and a branch rule: see
+    records in `infra/cloudflare` applying on their own: a release or a promotion doesn't touch them) and a branch rule: see
     [infra/cloudflare/README.md](infra/cloudflare/README.md).
 - **Secrets,** in each of `dev` and `prod` (an environment's secret takes precedence over a repository's of
   the same name, so a repository-level copy is only a fallback, and best deleted once every target has its own):

@@ -2,7 +2,7 @@
 # home server in dev/QA (see var.cname_targets). The names come from config/<environment>.env, the file
 # the deploy bundle's settings.env is made from, so DNS and Caddy can't disagree about them. They are DNS-only: the
 # firmware pins Let's Encrypt's roots, so nothing may sit in front of the servers and swap in another CA (see the
-# firmware's README). Dev/QA and production are applied separately (the Release and Promote workflows), each with its
+# firmware's README). Dev and production are applied separately (the Cloudflare workflow, by hand), each with its
 # own state.
 locals {
   settings = { for line in regexall("(?m)^([A-Z][A-Z0-9_]*)=(.*)$", file("${path.module}/../../config/${var.environment}.env")) : line[0] => trimspace(line[1]) }
