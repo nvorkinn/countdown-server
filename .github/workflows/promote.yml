@@ -1,9 +1,9 @@
 name: Promote
 
-# Deploys a release that has already been through dev/QA to production, with one approval for all of it. Run it from
+# Deploys a release that has already been through dev to production, with one approval for all of it. Run it from
 # main (Actions > Promote > Run workflow) with the release's tag. Nothing is built: it deploys the images that Release made,
-# with the tag's docker-compose.yml and config/prod.env, so production runs exactly what dev/QA did. To roll back, promote an older tag that
-# was deployed to dev/QA or to production before.
+# with the tag's docker-compose.yml and config/prod.env, so production runs exactly what dev did. To roll back, promote an older tag that
+# was deployed to dev or to production before.
 on:
   workflow_dispatch:
     inputs:
@@ -55,15 +55,15 @@ jobs:
             || { echo "::error::$TAG ($sha) is not on main, so it isn't promoted"; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      # Dev/QA's evidence is a deployment: every job of a Release run that names the dev-qa environment records one on
+      # Dev's evidence is a deployment: every job of a Release run that names the dev environment records one on
       # the commit the run started from, which for the Release button is main's head, the tag's commit, not the tag
       # (hence looking up by sha, not ref). A deployment's statuses are newest first and end as "inactive" once a
       # later deployment to the environment succeeds, so the question is whether any status was "success". Pull
-      # requests' Terraform plans record dev-qa deployments too, but on their own commits.
+      # requests' Terraform plans record dev deployments too, but on their own commits.
       # Production's evidence can't be a deployment: this workflow runs on main's head, so its deployments are
       # recorded on that, not on the tag's commit. It is an earlier successful run of this workflow for the same
       # tag (see run-name), which is what a rollback to a promoted release is.
-      - name: Check the release was deployed to dev/QA, or promoted before
+      - name: Check the release was deployed to dev, or promoted before
         env:
           SHA: ${{ steps.tag.outputs.sha }}
         run: |
@@ -77,34 +77,37 @@ jobs:
             return 1
           }
 
-          if deployed_to dev-qa; then
-            echo "$TAG ($SHA) was deployed to dev-qa."
-            exit 0
-          fi
+          # dev-qa is the environment's old name, which the releases before the rename were deployed to.
+          for environment in dev dev-qa; do
+            if deployed_to "$environment"; then
+              echo "$TAG ($SHA) was deployed to $environment."
+              exit 0
+            fi
+          done
           runs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/promote.yml/runs?status=success&per_page=100" \
             --jq '.workflow_runs[] | select(.display_title == "Promote " + env.TAG) | .id')"
           if [ -n "$runs" ]; then
             echo "$TAG was promoted to production before (run $(head -1 <<< "$runs")), so this is a rollback."
             exit 0
           fi
-          echo "::error::$TAG has not been deployed to dev-qa (or promoted before). Release it first: that is the deployment that vouches for it."
+          echo "::error::$TAG has not been deployed to dev (or promoted before). Release it first: that is the deployment that vouches for it."
           exit 1
 
   # The one approval for the whole promotion: the environment's reviewers are asked once, here, and the deploys
-  # below run in `production` (which holds the host's secrets) with no reviewers of its own.
+  # below run in `prod` (which holds the host's secrets) with no reviewers of its own.
   approve:
     name: approve production
     needs: check
     runs-on: ubuntu-latest
-    environment: approve-production
+    environment: approve-prod
     steps:
       - run: echo "Approved"
 
-  # Production's DNS records (infra/cloudflare), applied after approval in terraform-production if they change, beside
+  # Production's DNS records (infra/cloudflare), applied after approval in terraform-prod if they change, beside
   # the deploys. If it changes a name or an address, Caddy may ask for a certificate before the record exists and wait a
-  # while to retry: restart it after the apply. Dev/QA's are release.yml's.
+  # while to retry: restart it after the apply. Dev's are release.yml's.
   dns:
-    name: dns (production)
+    name: dns (prod)
     needs: [check, approve]
     # The plan job it calls comments on pull requests, so its token asks for this even here.
     permissions:
@@ -122,11 +125,15 @@ jobs:
   # deploys the edge (the Docker socket proxy, Tinyauth and Pocket ID, before Caddy, which needs the proxy) and every
   # service, in the production environment, which holds the host's secrets and has no reviewers of its own.
   deploy:
-    name: deploy (production)
+    name: deploy (prod)
     needs: [check, approve]
     uses: ./.github/workflows/deploy-compose.yml
+    # The deploy job (below) asks for id-token: write, to join the tailnet with GitHub's OIDC token, so its caller grants it too.
+    permissions:
+      contents: read
+      id-token: write
     with:
-      environment: production
+      environment: prod
       tag: ${{ inputs.tag }}
       approved: true
     secrets: inherit

@@ -723,8 +723,8 @@ function renderPromote(project) {
     button.disabled = project.promoting || !promotion.tag;
     button.textContent = promotion.tag ? `Promote ${promotion.tag}` : "Promote";
     button.title = promotion.tag
-        ? `Deploy ${promotion.tag} to production with the Promote workflow, once approve-production is approved. ` +
-          "It must be deployed to dev-qa already."
+        ? `Deploy ${promotion.tag} to production with the Promote workflow, once approve-prod is approved. ` +
+          "It must be deployed to dev already."
         : "No release to promote yet";
 }
 

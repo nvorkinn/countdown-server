@@ -10,7 +10,7 @@ The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare
 - writes each screen's config and subscriptions to Redis for countdown, and serves each screen the frame the render
   pool drew;
 - runs the shared infrastructure on the host: the edge (Caddy, Tinyauth and Pocket ID; production only), Redis, Fluent
-  Bit, VictoriaLogs and VictoriaMetrics. Production runs on the Oracle Cloud ARM host; dev/QA runs on the home server
+  Bit, VictoriaLogs and VictoriaMetrics. Production runs on the Oracle Cloud ARM host; dev runs on the home server
   (`nikolai-server`), behind [home-stack](https://github.com/nvorkinn/home-stack)'s edge.
 
 It also serves a personal [GitHub dashboard](#github-dashboard) at `/github`.
@@ -135,7 +135,7 @@ with **Approve** buttons for waiting environments), and a **New Release** button
 project with a Promote workflow. It's behind the same login as the rest of the site, and only one user may
 open it.
 
-It runs in dev/QA only, at `https://auth.dev.nikolaivorkinn.com/github`: production's `broker.env` has none of its
+It runs in dev only, at `https://auth.dev.nikolaivorkinn.com/github`: production's `broker.env` has none of its
 settings, so there `/github` answers 503 and the webhook 404. It still drives production, through each project's
 Promote workflow.
 
@@ -197,12 +197,12 @@ passed, and refuses while any are still running or failed.
 **New Release publishes immediately**, with no confirmation: it bumps the minor version of the highest semver release
 (`1.19.0` becomes `1.20.0`, keeping any `v` prefix; `1.0.0` if there are none), generates notes from the previous tag
 and creates the release on the default branch. It's never retried automatically, so after a timeout check GitHub before
-trying again. A release deploys to dev/QA only.
+trying again. A release deploys to dev only.
 
 **Promote** shows for a project with an active `.github/workflows/promote.yml` (this repository and countdown), named
 after its latest release (`Promote v3.1.0`). It starts that workflow on the default branch with the tag, also with no
-confirmation: the workflow's check job refuses a tag that isn't on main or wasn't deployed to dev/QA, and then waits
-for `approve-production`, which shows on the dashboard with an Approve button like a release's. To roll back to an older
+confirmation: the workflow's check job refuses a tag that isn't on main or wasn't deployed to dev, and then waits
+for `approve-prod`, which shows on the dashboard with an Approve button like a release's. To roll back to an older
 tag, run Promote from GitHub Actions.
 
 ## Other endpoints
@@ -300,12 +300,12 @@ It builds five images for arm64 (the host is ARM) on an ARM runner, tagged with 
 - `ghcr.io/nvorkinn/countdown-server-victoria-logs`
 - `ghcr.io/nvorkinn/countdown-server-victoria-metrics` (with the vmui dashboards)
 
-It also creates the GitHub Release for the tag. A release deploys to **dev/QA** with no approval: starting the release is the
-decision. Production is never touched by a release; it gets a tag that has been through dev/QA, by promotion (below). Both
+It also creates the GitHub Release for the tag. A release deploys to **dev** with no approval: starting the release is the
+decision. Production is never touched by a release; it gets a tag that has been through dev, by promotion (below). Both
 are the same deploy, `deploy-compose.yml`, which fetches the secrets from Vaultwarden (see Secrets) and deploys through the
 host's Docker daemon (below): every service, one job. The services are Caddy, the broker and its providers, Fluent Bit,
 VictoriaLogs, VictoriaMetrics and Redis, and where `EDGE_OWNED=true` (production) the edge: the Docker socket proxy,
-Tinyauth and Pocket ID, at the versions pinned in `docker-compose.yml`. Where `EDGE_OWNED=false` (dev/QA) the edge profile is
+Tinyauth and Pocket ID, at the versions pinned in `docker-compose.yml`. Where `EDGE_OWNED=false` (dev) the edge profile is
 off and Caddy is home-stack's. A deploy backs up the database (`data/broker.db.bak-<tag>`, the newest 5 kept) and Pocket ID's
 data (see [Backups](#backups)) first, waits until the containers run (and, for Caddy, take connections on 443), and removes
 the older images of what it deployed, keeping the running one and one other to roll back to.
@@ -314,28 +314,28 @@ the older images of what it deployed, keeping the running one and one other to r
 
 Run the **Promote** workflow from the Actions tab on `main` with the release's tag (`v1.2.3`). It builds nothing: it
 deploys the images that the Release made, with that tag's `docker-compose.yml` and `config/prod.env`: the same tag that ran
-on dev/QA. Its `check` job fails
+on dev. Its `check` job fails
 before anyone is asked if:
 
 - the tag doesn't exist or its commit isn't on `main`;
-- the tag wasn't deployed to dev/QA: a deployment to `dev-qa` recorded on the tag's commit has to have succeeded. (A
+- the tag wasn't deployed to dev: a deployment to `dev` recorded on the tag's commit has to have succeeded. (A
   Release started with the button runs on `main`, so its deployments carry the tag's commit rather than the tag,
   which is why they are looked up by commit.) The one other way through is a tag that an earlier promotion deployed
   to production, which is a rollback.
 
-Then the `approve-production` environment's reviewers are asked once for the whole promotion, and `deploy-compose.yml`
-deploys to `production` as it does to dev/QA, in one job: the edge (the socket proxy, Tinyauth and Pocket ID) and every
+Then the `approve-prod` environment's reviewers are asked once for the whole promotion, and `deploy-compose.yml`
+deploys to `prod` as it does to dev, in one job: the edge (the socket proxy, Tinyauth and Pocket ID) and every
 service, the socket proxy up before Caddy (`depends_on`). Pocket ID's data is backed up first, and an image that
 didn't change since the last release is left running. To see what a tag would do before promoting it, run **Deploy compose**
-by hand with `production`: it only plans. One promotion runs at a time.
+by hand with `prod`: it only plans. One promotion runs at a time.
 
-To **roll back production,** promote an older tag that was deployed to dev/QA or promoted before; the same checks and
-approval apply (the host keeps the previous images). To roll back dev/QA, release a revert, or run **Deploy compose** by hand
+To **roll back production,** promote an older tag that was deployed to dev or promoted before; the same checks and
+approval apply (the host keeps the previous images). To roll back dev, release a revert, or run **Deploy compose** by hand
 with an older tag. Make compose changes in the repo: each deploy replaces what runs on the host.
 
-**Deploying through the host's Docker daemon.** `deploy-compose.yml` (a release's `deploy (dev-qa)` job, or Actions >
-Deploy compose > Run workflow with a release tag) deploys that release to dev/QA without running anything on the host. Run by
-hand with `production` it only plans: it pulls the images and prints what a deploy would do (which containers it would
+**Deploying through the host's Docker daemon.** `deploy-compose.yml` (a release's `deploy (dev)` job, or Actions >
+Deploy compose > Run workflow with a release tag) deploys that release to dev without running anything on the host. Run by
+hand with `prod` it only plans: it pulls the images and prints what a deploy would do (which containers it would
 replace and which it would leave alone), changing no container and taking no backup. It fetches the secrets from Vaultwarden
 onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the same path as on the host, so
 `./data` means the same on both), and `scripts/deploy-context.sh` runs `docker compose` against the host with
@@ -346,24 +346,25 @@ re-tagged each release) running. Nothing is installed on the host but Docker.
 **One-time setup** in the repository's settings:
 
 - **Environments:**
-  - `dev-qa` and `production`, with no reviewers: each only holds its host's secrets. Restrict `production` to
+  - `dev` and `prod`, with no reviewers: each only holds its host's secrets. Restrict `prod` to
     `main` and `v*` tags (deployment branches and tags), so no other branch's workflow can reach production's host.
-  - `approve-production` with yourself as a required reviewer: it is the one gate of a promotion. (A job can name only
+  - `approve-prod` with yourself as a required reviewer: it is the one gate of a promotion. (A job can name only
     one environment, and a matrix of jobs that named a protected one would ask for approval each, which is why the
-    approval is not `production` itself.)
-  - `terraform` and `terraform-production`, each with yourself as a required reviewer (that's what stops the DNS
+    approval is not `prod` itself.)
+  - `terraform` and `terraform-prod`, each with yourself as a required reviewer (that's what stops the DNS
     records in `infra/cloudflare` applying on their own) and a branch rule: see
     [infra/cloudflare/README.md](infra/cloudflare/README.md).
-- **Secrets,** in each of `dev-qa` and `production` (an environment's secret takes precedence over a repository's of
+- **Secrets,** in each of `dev` and `prod` (an environment's secret takes precedence over a repository's of
   the same name, so a repository-level copy is only a fallback, and best deleted once every target has its own):
   `DEPLOY_HOST`, `DEPLOY_USER` (in the `docker` group, owning `/opt/auth-broker/`), `ORACLE_SSH_TOKEN` (a
   private key for that user) and `DEPLOY_SSH_KNOWN_HOSTS` (`ssh-keyscan <host>`), plus the DNS ones in
   [infra/cloudflare/README.md](infra/cloudflare/README.md#setup) and `CODECOV_TOKEN`.
-  - **`dev-qa` is the home server,** `nikolai-server` (`DEPLOY_HOST=nikolai-server.tail7c722e.ts.net`, `DEPLOY_USER=ansible`),
+  - **`dev` is the home server,** `nikolai-server` (`DEPLOY_HOST=nikolai-server.tail7c722e.ts.net`, `DEPLOY_USER=ansible`),
     reachable only over Tailscale. Its deploy jobs first join the tailnet as `tag:ci` (the `tailscale/github-action` step,
-    skipped where `TAILSCALE_OAUTH_CLIENT_ID` is empty, as in `production`), so `dev-qa` also needs the secrets
-    `TAILSCALE_OAUTH_CLIENT_ID` and `TAILSCALE_OAUTH_SECRET` (an OAuth client allowed to create `tag:ci` nodes), and the
-    tailnet's ACL must let `tag:ci` SSH to the server. The host's `/opt/auth-broker/` comes from [server-config](https://github.com/nvorkinn/server-config).
+    skipped where the variable `TAILSCALE_CLIENT_ID` is empty, as in `prod`), so `dev` also needs the variables
+    `TAILSCALE_CLIENT_ID` and `TAILSCALE_AUDIENCE`: a Tailscale federated identity (Settings > Trust credentials >
+    OpenID Connect, issuer GitHub, subject `repo:nvorkinn/countdown-server:environment:dev`, scope `auth_keys` write with
+    `tag:ci`). Neither is secret, and no Tailscale secret is stored anywhere. The tailnet's ACL must let `tag:ci` SSH to the server. The host's `/opt/auth-broker/` comes from [server-config](https://github.com/nvorkinn/server-config).
     Dev has no edge of its own: its containers join home-stack's Docker network `edge` (`EDGE_OWNED=false`), which already runs
     Caddy, Tinyauth (`tauth.nikolaivorkinn.com`) and Pocket ID (`id.nikolaivorkinn.com`). Dev's names (`auth.dev.`, `logs.dev.`,
     `metrics.dev.`, `dev.`) are CNAMEs to `home.nikolaivorkinn.com`; Caddy gets their certificates one by one through its
@@ -382,15 +383,16 @@ two collections is two items, one per environment; an item that several projects
 and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with
 `POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting).
 
-On every deploy, `deploy-compose.yml` runs `scripts/fetch-secrets.sh`, which logs in to Vaultwarden as the `deploy-bot` user (it
+On every deploy, `deploy-compose.yml` runs the shared action `nvorkinn/.github/actions/vaultwarden-secrets`, which logs in to Vaultwarden as the `deploy-bot` user (it
 can read only these two collections) and writes one `<name>.env` per file of `secrets-map.json`'s target, on the runner,
 where `deploy-context.sh` stages them next to the compose file for Compose to read as the services' `env_file`s. No
 secrets file is left on the host (the containers get the values as their environment). A deploy fails, before it changes anything, if Vaultwarden can't be reached or an item is
-missing. So Vaultwarden has to be up to deploy (running services don't need it). The `dev-qa` and `production` environments each need the secrets `BW_CLIENTID`,
+missing. So Vaultwarden has to be up to deploy (running services don't need it). The `dev` and `prod` environments each need the secrets `BW_CLIENTID`,
 `BW_CLIENTSECRET` (the bot's API key) and `BW_PASSWORD` (its master password, which `bw unlock` needs).
 
-The bot always logs in with the device id in `scripts/bitwarden-cli/data.json` (the CLI would otherwise invent a new one each run,
-and Vaultwarden emails every new device).
+The action pins the Bitwarden CLI and always logs in with one fixed device id (the CLI would otherwise invent a new one each
+run, and Vaultwarden emails every new device). The countdown repository fetches its secrets the same way, from its own
+map and its `countdown/<target>` collections.
 
 To change a secret, edit its item in Vaultwarden and deploy; to add one, create the item, add its name to `secrets-map.json`
 under the file it belongs in.
@@ -452,7 +454,7 @@ Caddyfile from the `caddy*` labels of the containers on it). Where each runs:
   turns into `COMPOSE_PROFILES=edge` and a network that compose creates). Caddy reads the labels through a
   [socket proxy](https://github.com/Tecnativa/docker-socket-proxy) that allows read-only endpoints only; nothing else
   mounts the Docker socket.
-- **Dev/QA** runs on the home server, on the edge that home-stack runs (`EDGE_OWNED=false`): no profile, and the
+- **Dev** runs on the home server, on the edge that home-stack runs (`EDGE_OWNED=false`): no profile, and the
   compose file joins its existing external network `edge`. That Caddy, Tinyauth and Pocket ID must be the ones that
   define the `tinyauth` snippet (forward auth to `tinyauth:3000`, `/api/auth/caddy`, copying the `Remote-*` headers) and
   read `tinyauth.apps.*` labels.

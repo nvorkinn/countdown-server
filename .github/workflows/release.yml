@@ -57,7 +57,7 @@ jobs:
           echo "value=$tag" >> "$GITHUB_OUTPUT"
 
   # One build per image, side by side. Each is tagged with the release tag and
-  # latest, for arm64 (production's host is ARM) and amd64 (dev/QA runs on the x86 home server), except Caddy, which
+  # latest, for arm64 (production's host is ARM) and amd64 (dev runs on the x86 home server), except Caddy, which
   # only production deploys and so stays arm64. The runner is ARM, so arm64 is native and amd64 is emulated (QEMU).
   # Tests builds its own images. An infra image whose folder (and this
   # workflow) hasn't changed since the previous release isn't rebuilt: that
@@ -81,7 +81,7 @@ jobs:
           - image: countdown-server
             context: .
             platforms: linux/amd64,linux/arm64
-          # Production only (dev/QA's Caddy is home-stack's, so the profile that runs this one is off there), and compiling it
+          # Production only (dev's Caddy is home-stack's, so the profile that runs this one is off there), and compiling it
           # under emulation would take long.
           - image: countdown-server-caddy
             context: caddy
@@ -200,12 +200,12 @@ jobs:
       - name: Create the GitHub Release
         run: gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG"
 
-  # A release deploys to dev/QA only, with no approval (starting the release is
+  # A release deploys to dev only, with no approval (starting the release is
   # the decision). Production is promote.yml's, for a tag that has been through
   # here. The services wait for the images. A target's environment holds its
-  # host's secrets (DEPLOY_HOST and the rest). Dev/QA runs no edge of its own (home-stack's Caddy, Tinyauth and Pocket
+  # host's secrets (DEPLOY_HOST and the rest). Dev runs no edge of its own (home-stack's Caddy, Tinyauth and Pocket
   # ID serve it, so the edge profile is off there); production's edge is promote.yml's, in the same deploy.
-  # Dev/QA's DNS records (infra/cloudflare), planned, and applied after approval if they change, beside the deploys. A
+  # Dev's DNS records (infra/cloudflare), planned, and applied after approval if they change, beside the deploys. A
   # release that leaves DNS as it is asks for no approval. If it changes a name or an address, Caddy may ask for a
   # certificate before the record exists and wait a while to retry: restart it after the apply. Production's records
   # are promote.yml's.
@@ -223,13 +223,17 @@ jobs:
       tag: ${{ needs.tag.outputs.value }}
     secrets: inherit
 
-  # Dev/QA, through the host's Docker daemon (deploy-compose.yml): one job fetches the secrets from Vaultwarden and deploys
+  # Dev, through the host's Docker daemon (deploy-compose.yml): one job fetches the secrets from Vaultwarden and deploys
   # every service once the images are built.
   deploy-dev:
-    name: deploy (dev-qa)
+    name: deploy (dev)
     needs: [tag, images]
     uses: ./.github/workflows/deploy-compose.yml
+    # The deploy job (below) asks for id-token: write, to join the tailnet with GitHub's OIDC token, so its caller grants it too.
+    permissions:
+      contents: read
+      id-token: write
     with:
-      environment: dev-qa
+      environment: dev
       tag: ${{ needs.tag.outputs.value }}
     secrets: inherit
