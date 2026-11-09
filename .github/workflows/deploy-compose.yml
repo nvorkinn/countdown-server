@@ -129,9 +129,8 @@ jobs:
 
       - name: ${{ inputs.dry_run && 'Plan' || 'Deploy' }} through the host's Docker daemon
         run: |
-          # The project directory is /opt/auth-broker on the runner too, as it always was (see deploy-context.sh); nothing on
-          # the host is read through it.
-          sudo install -d -o "$(id -u)" -g "$(id -g)" /opt/auth-broker
+          # The project directory is a fixed path on the runner (see deploy-context.sh); nothing on the host is read through it.
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /opt/countdown-server
           export DOCKER_HOST="ssh://$DEPLOY_TARGET"
           RELEASE_DIR="$PWD/release" scripts/deploy-context.sh "$TARGET" "$TAG" "$RUNNER_TEMP/secrets"
           rm -rf "$RUNNER_TEMP/secrets"

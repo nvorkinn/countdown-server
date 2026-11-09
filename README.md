@@ -20,8 +20,9 @@ It also serves a personal [GitHub dashboard](#github-dashboard) at `/github`.
 
 ## Services
 
-Everything runs from `docker-compose.yml` on one host, in `/opt/auth-broker/` (the repo's name before it became
-countdown-server). Routes and access rules are Docker labels on the service they belong to, not a separate Caddyfile; see
+Everything runs from `docker-compose.yml` on one host, as the Compose project `countdown-server` (it was `auth-broker`,
+the repo's name before it became countdown-server, which is still the name of the host's directory, `/opt/auth-broker/`).
+Routes and access rules are Docker labels on the service they belong to, not a separate Caddyfile; see
 [The edge](#the-edge).
 
 | Service | What it does |
@@ -340,9 +341,10 @@ with an older tag. Make compose changes in the repo: each deploy replaces what r
 Deploy compose > Run workflow with a release tag) deploys that release to dev without running anything on the host. Run by
 hand with `prod` it only plans: it pulls the images and prints what a deploy would do (which containers it would
 replace and which it would leave alone), changing no container and taking no backup. It fetches the secrets from Vaultwarden
-onto the runner, stages the compose file, settings and `.env` in `/opt/auth-broker` there (the path the project has always had,
-which keeps Compose's config hashes, and so the services pinned upstream (Redis, Tinyauth, Pocket ID), as they were; nothing on the host is read through it), and `scripts/deploy-context.sh` runs `docker compose` against the host with
-`DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It brings
+onto the runner, stages the compose file, settings and `.env` in `/opt/countdown-server` there (a fixed path, so
+Compose's config hashes, and with them the services pinned upstream (Redis, Tinyauth, Pocket ID), don't change between
+deploys; nothing on the host is read through it), and `scripts/deploy-context.sh` runs `docker compose` against the host
+with `DOCKER_HOST=ssh://...`, over one shared SSH connection. One job deploys all the services, so there are no locks. It brings
 the edge up before Caddy (`depends_on`), and recreates every service on a release image, as each release builds them all.
 Nothing is installed on the host but Docker.
 
