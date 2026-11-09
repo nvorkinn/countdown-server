@@ -37,15 +37,20 @@ which Oracle's S3 API needs (export both to run Terraform from your own machine)
 concurrency group keeps applies to one at a time.
 
 **The credentials are in Vaultwarden, not GitHub** (`secrets-map.json` lists them; the shared action
-`nvorkinn/.github/actions/vaultwarden-secrets` reads them into the job's environment). Two collections, each read by
-its own bot, so what a job can do is what its bot can read:
+`nvorkinn/.github/actions/vaultwarden-secrets` reads them into the job's environment), in the collections the deploys'
+bots already read, so no bot or collection is special to this:
 
-- `countdown-server/cloudflare-plan`, read by the **plan bot** (its `BW_CLIENTID`, `BW_CLIENTSECRET` and `BW_PASSWORD` are
-  repository secrets, as plans run on any pull request): `CLOUDFLARE_API_TOKEN`, a **Zone:DNS:Read** token, and
-  `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, the state bucket's key;
-- `countdown-server/cloudflare-apply`, read by the **apply bot** (its `BW_*` are secrets of the `terraform` and
-  `terraform-prod` environments, so they are only there once the environment's reviewers have approved):
-  `CLOUDFLARE_API_TOKEN`, a **Zone:DNS:Edit** token, and the same two state keys (one item each, in both collections).
+- `countdown-server/dev`, read by the **dev bot** (its `BW_CLIENTID`, `BW_CLIENTSECRET` and `BW_PASSWORD` are repository
+  secrets, as plans run on any pull request): `CLOUDFLARE_API_TOKEN_READ`, a **Zone:DNS:Read** token, which a plan uses as
+  `CLOUDFLARE_API_TOKEN`, and the state bucket's key, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`;
+- `countdown-server/prod`, read by the **prod bot** (its `BW_*` are secrets of the `terraform` and `terraform-prod`
+  environments, so they are only there once the environment's reviewers have approved): `CLOUDFLARE_API_TOKEN_EDIT`, a
+  **Zone:DNS:Edit** token, which apply uses as `CLOUDFLARE_API_TOKEN`, and the same two state items (one item each, in both
+  collections).
+
+So the write token is readable only with the prod bot's credentials, which only the reviewer-gated `terraform` and
+`terraform-prod` environments, and `prod` (limited to `main` and tags), have: a `dev` job, whose bot can't read
+`countdown-server/prod`, can't get it. (Both environments' DNS is the one zone, so one Edit token serves both.)
 
 Cloudflare has no OIDC federation for its API, so these are API tokens. Make them **account-owned** (Manage Account >
 Account API tokens, which keep working if you leave the organisation), with the single permission **Zone > DNS** (Read or

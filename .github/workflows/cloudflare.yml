@@ -139,10 +139,10 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      # The credentials come from Vaultwarden (infra/cloudflare/secrets-map.json), through the plan bot whose BW_* are
-      # repository secrets: it reads only countdown-server/cloudflare-plan, a Zone:DNS:Read token and the state bucket's
-      # key, so a plan, which runs on any pull request, can't write DNS. Skipped, like the plan, where there are no
-      # secrets (a fork or Dependabot pull request).
+      # The credentials come from Vaultwarden (infra/cloudflare/secrets-map.json), through the dev bot, whose BW_* are
+      # repository secrets: from countdown-server/dev it reads a Zone:DNS:Read token and the state bucket's key, so a
+      # plan, which runs on any pull request, can't write DNS (the Edit token is only in countdown-server/prod, which
+      # this bot can't read). Skipped, like the plan, where there are no secrets (a fork or Dependabot pull request).
       - name: Fetch the credentials from Vaultwarden
         if: env.HAVE_SECRETS == 'true'
         uses: nvorkinn/.github/actions/vaultwarden-secrets@3a8653ca62d399f406a7f84302a7cb9dae7ec2be # main
@@ -150,7 +150,7 @@ jobs:
           # An absolute path: this workflow's steps run in infra/cloudflare, which the map's path would otherwise be relative to.
           map: ${{ github.workspace }}/infra/cloudflare/secrets-map.json
           target: plan
-          collection: countdown-server/cloudflare-plan
+          collection: countdown-server/dev
           export-env: "true"
           bw-clientid: ${{ secrets.BW_CLIENTID }}
           bw-clientsecret: ${{ secrets.BW_CLIENTSECRET }}
@@ -247,15 +247,16 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      # The write token, from Vaultwarden, through the apply bot whose BW_* are this environment's secrets: they are only
-      # available once the environment's reviewers have approved, which is what gates a DNS change.
+      # The write token, from countdown-server/prod, through the prod bot, whose BW_* are this environment's secrets: they
+      # are only available once the environment's reviewers have approved, which is what gates a DNS change. (Dev's own
+      # bot can't read that collection, so no unapproved job can get the token.) Both targets' DNS is the one zone.
       - name: Fetch the credentials from Vaultwarden
         uses: nvorkinn/.github/actions/vaultwarden-secrets@3a8653ca62d399f406a7f84302a7cb9dae7ec2be # main
         with:
           # An absolute path: this workflow's steps run in infra/cloudflare, which the map's path would otherwise be relative to.
           map: ${{ github.workspace }}/infra/cloudflare/secrets-map.json
           target: apply
-          collection: countdown-server/cloudflare-apply
+          collection: countdown-server/prod
           export-env: "true"
           bw-clientid: ${{ secrets.BW_CLIENTID }}
           bw-clientsecret: ${{ secrets.BW_CLIENTSECRET }}
