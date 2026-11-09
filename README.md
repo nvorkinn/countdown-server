@@ -130,9 +130,9 @@ fields they don't know.
 
 ## GitHub dashboard
 
-`/github` shows every open PR across your repositories, their checks, the release workflows running (as a job graph,
-with **Approve** buttons for waiting environments), and a **New Release** button per project, plus **Promote** for a
-project with a Promote workflow. It's behind the same login as the rest of the site, and only one user may
+`/github` shows every open PR across your repositories, their checks, the release, promote and deploy workflows
+running (as a job graph, with **Approve** buttons for waiting environments), and a **New Release** button per
+project, plus **Promote** for a project with a Promote workflow. It's behind the same login as the rest of the site, and only one user may
 open it.
 
 It runs in dev only, at `https://auth.dev.nikolaivorkinn.com/github`: production's `broker.env` has none of its

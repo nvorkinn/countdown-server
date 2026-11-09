@@ -401,7 +401,8 @@ def test_release_run_reads_one_release_and_nothing_else(api, status, body, found
         ("Tests", False),
         ("CodeQL", False),
         ("Terraform", False),
-        ("Deploy", False),
+        ("Deploy", True),
+        ("Deploy compose", True),
     ],
 )
 def test_only_release_workflows_are_drawn(api, name, shown):

@@ -262,9 +262,9 @@ def _is_release(run: dict) -> bool:
 
 
 def is_release_name(name: str | None) -> bool:
-    """Tell whether a workflow's name makes it a release the dashboard draws: a release, or a promotion of one."""
+    """Tell whether a workflow's name makes it a release the dashboard draws: a release, a promotion or a deploy."""
     name = (name or "").casefold()
-    return "release" in name or "promote" in name
+    return "release" in name or "promote" in name or "deploy" in name
 
 
 def _title(run: dict, repo: dict) -> str:
@@ -671,7 +671,7 @@ class Dashboard:
         path = f"/repos/{repo['full_name']}/actions/runs/{run_id}"
         run = self.get(path)
         if run["status"] == "completed" or not _is_release(run):
-            msg = "Only unfinished release or promote workflows can be approved from this dashboard."
+            msg = "Only unfinished release, promote or deploy workflows can be approved from this dashboard."
             raise DashboardError(msg)
         pending = self.pending_deployments(repo, run_id)
         deployment = next((item for item in pending if item["id"] == environment_id), None)
