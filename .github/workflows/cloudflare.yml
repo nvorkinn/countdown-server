@@ -29,7 +29,7 @@ on:
       apply:
         type: boolean
         default: false
-      # Which environment's records: dev (dev/QA) or prod. Pull requests plan both.
+      # Which environment's records: dev (dev) or prod. Pull requests plan both.
       target:
         type: string
         default: dev
@@ -112,7 +112,7 @@ jobs:
       # Whether the plan changes anything, so a release that leaves DNS as it is asks for no approval.
       changes: ${{ steps.plan.outputs.changes }}
     # The plan only needs to read, so the repository-level CLOUDFLARE_API_TOKEN can be a Zone:DNS:Read token; apply
-    # gets the terraform (dev) or terraform-production environment's, which may write.
+    # gets the terraform (dev) or terraform-prod environment's, which may write.
     env:
       TF_VAR_environment: ${{ matrix.target }}
       TF_STATE_KEY: ${{ matrix.target == 'prod' && 'cloudflare/prod/terraform.tfstate' || 'cloudflare/terraform.tfstate' }}
@@ -204,7 +204,7 @@ jobs:
           path: infra/cloudflare/tfplan
           retention-days: 1
 
-  # Applies exactly the plan above, after approval through the terraform environment's protection rule (terraform-production for prod; DNS decides where
+  # Applies exactly the plan above, after approval through the terraform environment's protection rule (terraform-prod for prod; DNS decides where
   # an environment's names point). If the state changed in between, Terraform rejects the plan as stale and nothing is
   # applied. A plan with no changes skips this, approval included.
   apply:
@@ -212,8 +212,8 @@ jobs:
     if: inputs.apply && needs.plan.outputs.changes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Reviewers and the token that may write: dev/QA's is `terraform`, production's `terraform-production`.
-    environment: ${{ inputs.target == 'prod' && 'terraform-production' || 'terraform' }}
+    # Reviewers and the token that may write: dev's is `terraform`, production's `terraform-prod`.
+    environment: ${{ inputs.target == 'prod' && 'terraform-prod' || 'terraform' }}
     concurrency:
       group: cloudflare-apply-${{ inputs.target }}
       cancel-in-progress: false

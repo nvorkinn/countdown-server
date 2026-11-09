@@ -68,7 +68,7 @@ MAX_FILES = 300
 FIXED_TTL_S = 86400
 # Runs read per release workflow: enough for the latest one and any just before it that hasn't finished.
 RECENT_RELEASES = 5
-# The workflow a project's Promote button runs: it deploys a release that dev-qa has had to production.
+# The workflow a project's Promote button runs: it deploys a release that dev has had to production.
 PROMOTE_WORKFLOW = ".github/workflows/promote.yml"
 RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 
@@ -477,10 +477,10 @@ class Dashboard:
         return {"tag": tag if tag and RELEASE_TAG.fullmatch(tag) else None}
 
     def promote(self, repo: dict, tag: str) -> dict:
-        """Start the Promote workflow on the default branch for a published release; it asks approve-production next.
+        """Start the Promote workflow on the default branch for a published release; it asks approve-prod next.
 
         Nothing is retried, and nothing more is checked here: the workflow's own first job refuses a tag that isn't on
-        the default branch or wasn't deployed to dev-qa, before anyone is asked to approve.
+        the default branch or wasn't deployed to dev, before anyone is asked to approve.
         """
         path = f"/repos/{repo['full_name']}"
         if not RELEASE_TAG.fullmatch(tag):

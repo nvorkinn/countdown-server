@@ -2,7 +2,7 @@
 # Deploys a release to one host from the runner, through the Docker daemon on the host (DOCKER_HOST=ssh://...), without
 # running anything on the host: the compose file, the settings and the secrets are read here, and only containers,
 # images and the data directory are on the host. Used by deploy-compose.yml (release.yml and promote.yml).
-# Usage: deploy-context.sh <target> <tag> <secrets dir>     (target: dev or prod; secrets dir: fetch-secrets.sh's output)
+# Usage: deploy-context.sh <target> <tag> <secrets dir>     (target: dev or prod; secrets dir: the vaultwarden-secrets action's output)
 #
 # The project directory is /opt/auth-broker here as well as on the host, so that docker-compose.yml's relative paths
 # (./data) mean the same on both ends, and the project is called auth-broker as the host's containers already are.

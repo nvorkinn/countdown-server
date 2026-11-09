@@ -3,14 +3,14 @@ name: Deploy compose
 # Deploys a release to a host through its Docker daemon (DOCKER_HOST=ssh://...): the secrets are fetched from Vaultwarden
 # onto the runner and stay there with the compose file and the settings, and scripts/deploy-context.sh drives the daemon
 # over SSH, so nothing is installed or run on the host. One job deploys every service (no matrix, so no locks and no
-# max-parallel). Called by release.yml (dev-qa), and run by hand to deploy or re-deploy a tag to dev-qa. By hand, production
+# max-parallel). Called by release.yml (dev), and run by hand to deploy or re-deploy a tag to dev. By hand, production
 # can only be dry-run: it pulls the images and prints what a deploy would do, changing no container. Production's real
 # deploys are promote.yml's, behind its approval.
 on:
   workflow_call:
     inputs:
       environment:
-        description: The GitHub environment holding the host's DEPLOY_* and BW_* secrets, dev-qa or production.
+        description: The GitHub environment holding the host's DEPLOY_* and BW_* secrets, dev or prod.
         type: string
         required: true
       tag:
@@ -28,16 +28,16 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: dev-qa (deploys) or production (dry run only)
+        description: dev (deploys) or prod (dry run only)
         type: choice
-        options: [dev-qa, production]
-        default: dev-qa
+        options: [dev, prod]
+        default: dev
       tag:
         description: The release to deploy, e.g. v1.2.3
         type: string
         required: true
       dry_run:
-        description: Pull the images and print what a deploy would do, without changing a container (always on for production)
+        description: Pull the images and print what a deploy would do, without changing a container (always on for prod)
         type: boolean
         default: false
 
@@ -51,22 +51,23 @@ jobs:
     timeout-minutes: 20
     # The target's secrets, with no reviewers of its own: promote.yml asks for its one approval before calling this.
     environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write # Tailscale's federated identity, below
     concurrency:
       group: deploy-compose-${{ inputs.environment }}
       cancel-in-progress: false
     env:
       TAG: ${{ inputs.tag }}
       ENVIRONMENT: ${{ inputs.environment }}
-      TARGET: ${{ inputs.environment == 'production' && 'prod' || 'dev' }}
+      TARGET: ${{ inputs.environment }}
       DRY_RUN: ${{ inputs.dry_run }}
       APPROVED: ${{ inputs.approved }}
       DEPLOY_TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
-      TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
-      TAILSCALE_OAUTH_SECRET: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
     steps:
       - name: Only promote.yml deploys production
         # Not the event: in a called workflow that is the caller's, and promote.yml is started by hand too.
-        if: ${{ env.ENVIRONMENT == 'production' && env.DRY_RUN != 'true' && env.APPROVED != 'true' }}
+        if: ${{ env.ENVIRONMENT == 'prod' && env.DRY_RUN != 'true' && env.APPROVED != 'true' }}
         run: |
           echo "::error::Production can only be planned (dry_run) here; promote.yml deploys it, after approval."
           exit 1
@@ -84,11 +85,13 @@ jobs:
           persist-credentials: false
 
       - name: Join the tailnet
-        if: ${{ env.TAILSCALE_OAUTH_CLIENT_ID != '' }}
+        # Only for a host reachable over Tailscale alone (dev, on the home server): the environment's variables are empty
+        # for prod, a public host. Federated identity: GitHub's OIDC token for this job's environment, no secret.
+        if: ${{ vars.TAILSCALE_CLIENT_ID != '' }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
         with:
-          oauth-client-id: ${{ env.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ env.TAILSCALE_OAUTH_SECRET }}
+          oauth-client-id: ${{ vars.TAILSCALE_CLIENT_ID }}
+          audience: ${{ vars.TAILSCALE_AUDIENCE }}
           tags: tag:ci
 
       - name: Set up SSH
@@ -113,15 +116,16 @@ jobs:
           CONFIG
           sed -i 's/^          //' ~/.ssh/config
 
+      # The shared action: secrets-map.json says what this target needs, and the items are in its collection.
       - name: Fetch the secrets from Vaultwarden
-        env:
-          BW_CLIENTID: ${{ secrets.BW_CLIENTID }}
-          BW_CLIENTSECRET: ${{ secrets.BW_CLIENTSECRET }}
-          BW_PASSWORD: ${{ secrets.BW_PASSWORD }}
-        run: |
-          npm ci --prefix scripts/bitwarden-cli --ignore-scripts --no-audit --no-fund --loglevel=error
-          export PATH="$PWD/scripts/bitwarden-cli/node_modules/.bin:$PATH"
-          scripts/fetch-secrets.sh "$TARGET" "$RUNNER_TEMP/secrets"
+        uses: nvorkinn/.github/actions/vaultwarden-secrets@1dd1e27d3a48afda7fe22ac98c3087cabfb7db20 # main
+        with:
+          map: secrets-map.json
+          target: ${{ env.TARGET }}
+          collection: countdown-server/${{ env.TARGET }}
+          bw-clientid: ${{ secrets.BW_CLIENTID }}
+          bw-clientsecret: ${{ secrets.BW_CLIENTSECRET }}
+          bw-password: ${{ secrets.BW_PASSWORD }}
 
       - name: ${{ inputs.dry_run && 'Plan' || 'Deploy' }} through the host's Docker daemon
         run: |
