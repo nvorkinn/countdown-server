@@ -13,7 +13,7 @@ The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare
   Bit, VictoriaLogs and VictoriaMetrics. Production runs on the Oracle Cloud ARM host; dev runs on the home server
   (`nikolai-server`), behind [home-stack](https://github.com/nvorkinn/home-stack)'s edge.
 
-It also serves a personal [GitHub dashboard](#github-dashboard) at `/github`.
+It also serves a personal [GitHub dashboard](#github-dashboard) at `GITHUB_HOST` (`github.countdown.build`).
 
 [docs/architecture.md](docs/architecture.md) shows how the pieces fit together and which secret is which;
 [docs/database.md](docs/database.md) has the tables.
@@ -131,21 +131,25 @@ fields they don't know.
 
 ## GitHub dashboard
 
-`/github` shows every open PR across your repositories, their checks, the release, promote and deploy workflows
+The dashboard shows every open PR across your repositories, their checks, the release, promote and deploy workflows
 running (as a job graph, with **Approve** buttons for waiting environments), and a **New Release** button per
-project, plus **Promote** for a project with a Promote workflow. It's behind the same login as the rest of the site, and only one user may
-open it.
+project, plus **Promote** for a project with a Promote workflow. It's behind the same login as the rest of the site,
+for the `admins` group, and only one user may open it.
 
-It runs in dev only, at `https://auth.countdown.build/github`: production's `broker.env` has none of its
-settings, so there `/github` answers 503 and the webhook 404. It still drives production, through each project's
+It has a name of its own, `GITHUB_HOST` in `config/*.env`, and runs in dev only, at `https://github.countdown.build`:
+production's `broker.env` has none of its settings, so `github.countdown.run` answers 503 and the webhook 404. The
+broker serves it under `/github`, and Caddy rewrites every other path on that name there, so the dashboard is at the
+root and nothing else of the settings site is reachable on it. The settings site redirects its old `/github` paths to
+the new name, keeping the rest of the URL, and still takes the webhook at its old address
+(`/api/github/webhook`, which GitHub won't follow a redirect for), so nothing breaks while the App's URLs are changed. It still drives production, through each project's
 Promote workflow.
 
 It reaches GitHub through a private GitHub App: the dashboard signs you in with it and then acts as you with tokens
 GitHub expires after 8 hours (renewed on their own for 6 months), and its webhook makes the page live. Create it under
 GitHub's Settings → Developer settings → GitHub Apps:
 
-- **Callback URL** `https://auth.countdown.build/github/callback`, with *Expire user authorization tokens* ticked.
-- **Webhook URL** `https://auth.countdown.build/api/github/webhook`, with a random secret, subscribed to *Pull
+- **Callback URL** `https://github.countdown.build/github/callback`, with *Expire user authorization tokens* ticked.
+- **Webhook URL** `https://github.countdown.build/api/github/webhook`, with a random secret, subscribed to *Pull
   request*, *Pull request review*, *Check run*, *Check suite*, *Status*, *Workflow run*, *Workflow job*, *Deployment
   status* and *Push*.
 - Repository permissions **Actions: read and write** (to promote and re-run failed jobs), **Checks: read**, **Commit statuses: read**, **Pull requests: read and

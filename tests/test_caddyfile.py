@@ -43,6 +43,46 @@ def test_dashboard_is_behind_the_login(app):
     assert not any(fnmatchcase(route, pattern) for route in routes for pattern in paths)
 
 
+def _dashboard_routes(app):
+    return [rule.rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("github_dashboard.")]
+
+
+def test_the_dashboards_old_paths_redirect_to_its_own_name(app):
+    """Every /github route of the settings site goes to GITHUB_HOST, keeping the path and query (the OAuth callback)."""
+    labels = _labels("countdown-server")
+    patterns = labels["caddy_0.@github.path"].split()
+    assert labels["caddy_0.redir"] == "@github https://${GITHUB_HOST:?}{uri}"
+    assert _dashboard_routes(app)
+    for route in _dashboard_routes(app):
+        assert any(fnmatchcase(re.sub(r"<[^>]+>", "x", route), pattern) for pattern in patterns), route
+    # Not the webhook: GitHub doesn't follow redirects, so the old address keeps working until the App's URL moves.
+    assert not any(fnmatchcase("/api/github/webhook", pattern) for pattern in patterns)
+
+
+def test_the_dashboards_own_name_is_for_admins_with_only_the_webhook_outside_the_login(app):
+    labels = _labels("countdown-server")
+    assert labels["caddy_2"] == "${GITHUB_HOST:?}"
+    assert labels["tinyauth.apps.github.config.domain"] == "${GITHUB_HOST}"
+    assert labels["tinyauth.apps.github.oauth.groups"] == "admins"
+    assert labels["caddy_2.@webhook.path"] == "/api/github/webhook"
+    assert labels["caddy_2.handle_0"] == "@webhook"
+    assert not any(key.startswith("caddy_2.handle_0.import") for key in labels)
+    assert labels["caddy_2.handle_1.import"] == "countdown_auth"
+    assert [key for key in labels if key.startswith("caddy_2.handle_") and "." not in key.removeprefix("caddy_2.")] == [
+        "caddy_2.handle_0"
+    ]
+
+
+def test_only_the_dashboard_is_reachable_on_its_own_name(app):
+    """Every path but the dashboard's and the static files is rewritten under /github, so no settings page is served."""
+    labels = _labels("countdown-server")
+    kept = labels["caddy_2.@outside.not.path"].split()
+    assert set(kept) == {"/github", "/github/*", "/static/*"}
+    assert labels["caddy_2.handle_1.rewrite"] == "@outside /github{uri}"
+    for route in _dashboard_routes(app):
+        assert any(fnmatchcase(re.sub(r"<[^>]+>", "x", route), pattern) for pattern in kept), route
+
+
 def test_sign_up_is_public_but_adding_a_screen_is_not():
     """/pair is where a visitor registers with Pocket ID; /pair/add and /pair/token need the login."""
     paths = _paths_without_login()
@@ -78,9 +118,10 @@ def test_frame_answers_close_the_connection():
 def test_the_login_headers_are_stripped_from_every_request():
     """The broker trusts them as the signed-in user, so only forward auth may set them."""
     labels = _labels("countdown-server")
-    stripped = {value for key, value in labels.items() if key.startswith("caddy_0.request_header_")}
     snippet = _labels("countdown-tinyauth")["caddy_0.forward_auth.copy_headers"].split()
-    assert {f"-{header}" for header in snippet} <= stripped
+    for site in ("caddy_0", "caddy_2"):  # the settings site and the GitHub dashboard's own name
+        stripped = {value for key, value in labels.items() if key.startswith(f"{site}.request_header_")}
+        assert {f"-{header}" for header in snippet} <= stripped, site
 
 
 def test_only_the_browser_routes_import_the_login():
