@@ -79,14 +79,14 @@ def test_the_login_headers_are_stripped_from_every_request():
     """The broker trusts them as the signed-in user, so only forward auth may set them."""
     labels = _labels("countdown-server")
     stripped = {value for key, value in labels.items() if key.startswith("caddy_0.request_header_")}
-    snippet = _labels("tinyauth")["caddy_0.forward_auth.copy_headers"].split()
+    snippet = _labels("countdown-tinyauth")["caddy_0.forward_auth.copy_headers"].split()
     assert {f"-{header}" for header in snippet} <= stripped
 
 
 def test_only_the_browser_routes_import_the_login():
     labels = _labels("countdown-server")
     assert labels["caddy_0.handle_1"] == "@browser"
-    assert labels["caddy_0.handle_1.import"] == "tinyauth"
+    assert labels["caddy_0.handle_1.import"] == "countdown_auth"
     assert not any(key.startswith(f"caddy_0.handle_{n}.import") for key in labels for n in (0, 2))
 
 
@@ -96,7 +96,7 @@ def test_sign_up_asks_the_login_who_is_calling_but_serves_the_page_either_way():
     prefix = "caddy_0.handle_0.forward_auth"
     assert labels["caddy_0.@pair.path"] == "/pair"
     assert labels["caddy_0.handle_0"] == "@pair"
-    assert labels[prefix] == "tinyauth:3000"
+    assert labels[prefix] == "countdown-tinyauth:3000"
     assert labels[f"{prefix}.uri"] == "/api/auth/caddy"
     assert set(labels[f"{prefix}.copy_headers"].split()) == {
         "Remote-User", "Remote-Name", "Remote-Email", "Remote-Groups", "Remote-Sub"
@@ -135,14 +135,14 @@ def test_the_victoria_uis_are_for_admins_and_only_ingest_skips_the_login():
         # the Caddyfile caddy-docker-proxy logs.
         assert labels["caddy.@ingest.header"] == 'Authorization "Bearer {env.LOGS_INGEST_TOKEN}"'
         assert not any(key.startswith("caddy.handle_0.import") for key in labels)
-        assert labels["caddy.handle_1.import"] == "tinyauth"
+        assert labels["caddy.handle_1.import"] == "countdown_auth"
 
 
 def test_every_protected_route_has_a_group_rule():
     """With the OAuth whitelist open, an app with no group rule would let in any Pocket ID user."""
     for service in SERVICES.values():
         labels = service.get("labels", {})
-        imports = any(key.endswith(".import") and value == "tinyauth" for key, value in labels.items())
+        imports = any(key.endswith(".import") and value == "countdown_auth" for key, value in labels.items())
         apps = {m.group(1) for key in labels if (m := re.match(r"tinyauth\.apps\.([^.]+)\.", key))}
         if imports:
             assert apps

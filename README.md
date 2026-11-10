@@ -4,7 +4,7 @@ The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare
 [countdown](https://github.com/nvorkinn/countdown)'s render pool. It:
 
 - registers screens and pairs each with its owner's login;
-- hosts the settings site at **https://auth.nikolaivorkinn.com**;
+- hosts the settings site at **https://auth.countdown.run**;
 - holds every account a screen's owner links (Spotify, Apple Music, Glowmarkt, GitHub) and runs the providers that use
   them, so no credential leaves the broker;
 - writes each screen's config and subscriptions to Redis for countdown, and serves each screen the frame the render
@@ -136,7 +136,7 @@ running (as a job graph, with **Approve** buttons for waiting environments), and
 project, plus **Promote** for a project with a Promote workflow. It's behind the same login as the rest of the site, and only one user may
 open it.
 
-It runs in dev only, at `https://auth.dev.nikolaivorkinn.com/github`: production's `broker.env` has none of its
+It runs in dev only, at `https://auth.countdown.build/github`: production's `broker.env` has none of its
 settings, so there `/github` answers 503 and the webhook 404. It still drives production, through each project's
 Promote workflow.
 
@@ -144,8 +144,8 @@ It reaches GitHub through a private GitHub App: the dashboard signs you in with 
 GitHub expires after 8 hours (renewed on their own for 6 months), and its webhook makes the page live. Create it under
 GitHub's Settings → Developer settings → GitHub Apps:
 
-- **Callback URL** `https://auth.dev.nikolaivorkinn.com/github/callback`, with *Expire user authorization tokens* ticked.
-- **Webhook URL** `https://auth.dev.nikolaivorkinn.com/api/github/webhook`, with a random secret, subscribed to *Pull
+- **Callback URL** `https://auth.countdown.build/github/callback`, with *Expire user authorization tokens* ticked.
+- **Webhook URL** `https://auth.countdown.build/api/github/webhook`, with a random secret, subscribed to *Pull
   request*, *Pull request review*, *Check run*, *Check suite*, *Status*, *Workflow run*, *Workflow job*, *Deployment
   status* and *Push*.
 - Repository permissions **Actions: read and write** (to promote and re-run failed jobs), **Checks: read**, **Commit statuses: read**, **Pull requests: read and
@@ -185,7 +185,7 @@ point the bot at the site once:
 
 ```sh
 curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-  -d url=https://auth.dev.nikolaivorkinn.com/api/telegram/webhook \
+  -d url=https://auth.countdown.build/api/telegram/webhook \
   -d secret_token="$TELEGRAM_WEBHOOK_SECRET" -d allowed_updates='["callback_query"]'
 ```
 
@@ -215,7 +215,7 @@ tag, run Promote from GitHub Actions.
 
 ```yaml
 rest:
-  - resource: https://auth.nikolaivorkinn.com/api/status/devices
+  - resource: https://auth.countdown.run/api/status/devices
     headers:
       Authorization: !secret auth_broker_status_token   # "Bearer <STATUS_TOKEN>"
     scan_interval: 300
@@ -233,7 +233,7 @@ Python 3.14 and [uv](https://docs.astral.sh/uv/). Clone with the submodule:
 git clone --recurse-submodules https://github.com/nvorkinn/countdown-server.git   # or: git submodule update --init
 uv sync && source .venv/bin/activate
 cp .env.example .env   # fill in Spotify app credentials, FLASK_SECRET_KEY and CREDENTIAL_ENCRYPTION_KEY
-export SPOTIFY_REDIRECT_URI=https://auth.nikolaivorkinn.com/auth/spotify/callback
+export SPOTIFY_REDIRECT_URI=https://auth.countdown.run/auth/spotify/callback
 export $(grep -v '^#' .env | xargs)
 FLASK_DEBUG=1 python wsgi.py
 ```
@@ -370,10 +370,11 @@ Nothing is installed on the host but Docker.
     `TAILSCALE_CLIENT_ID` and `TAILSCALE_AUDIENCE`: a Tailscale federated identity (Settings > Trust credentials >
     OpenID Connect, issuer GitHub, subject `repo:nvorkinn/countdown-server:environment:dev`, scope `auth_keys` write with
     `tag:ci`). Neither is secret, and no Tailscale secret is stored anywhere. The tailnet's ACL must let `tag:ci` SSH to the server. The host's `/opt/auth-broker/` comes from [server-config](https://github.com/nvorkinn/server-config).
-    Dev has no edge of its own: its containers join home-stack's Docker network `edge` (`EDGE_OWNED=false`), which already runs
-    Caddy, Tinyauth (`tauth.nikolaivorkinn.com`) and Pocket ID (`id.nikolaivorkinn.com`). Dev's names (`auth.dev.`, `logs.dev.`,
-    `metrics.dev.`, `dev.`) are CNAMEs to `home.nikolaivorkinn.com`; Caddy gets their certificates one by one through its
-    Cloudflare DNS challenge, as its wildcard covers only `*.nikolaivorkinn.com`.
+    Dev has no reverse proxy of its own: its containers join home-stack's Docker network `edge` (`EDGE_OWNED=false`), whose
+    Caddy serves them. It does run its own Tinyauth (`tauth.countdown.build`) and Pocket ID (`id.countdown.build`), named
+    `countdown-tinyauth` and `countdown-pocket-id` so they don't clash with home-stack's. Dev's names (all in
+    `countdown.build`) are CNAMEs to `home.vorkinn.org`; home-stack's Caddy gets their certificates one by one through its
+    Cloudflare DNS challenge (its token covers every zone in the account).
 - **The host** needs Docker Compose v2 (`sudo apt install docker-compose-v2`), and `curl`.
 - **Before the first promotion,** the `countdown-server/prod` collection in Vaultwarden has to hold the production
   secrets (see Secrets below).
@@ -437,12 +438,12 @@ alpine tar -xzf /backup/<file> -C /data`) and start it again. Caddy's certificat
 Fluent Bit tails every container's log and ships it to VictoriaLogs, which keeps a week. The broker posts the
 screens' logs there itself (`service=countdown-esp32`, `host=<device id>`). Our own services write JSON lines with
 `level` and `_msg`; every record gets `service` (for containers, the container name) and `host`. Browse at
-`https://logs.nikolaivorkinn.com/select/vmui` (Pocket ID group `admins` only), e.g. `{service="countdown-server"}`.
+`https://logs.countdown.run/select/vmui` (Pocket ID group `admins` only), e.g. `{service="countdown-server"}`.
 
 ### Metrics
 
 VictoriaMetrics keeps a month of pushed metrics: the screens' (via the broker), and the render pool's OTLP
-metrics and the host's (via Fluent Bit). Browse at `https://metrics.nikolaivorkinn.com/vmui/` (group `admins` only). Its
+metrics and the host's (via Fluent Bit). Browse at `https://metrics.countdown.run/vmui/` (group `admins` only). Its
 Dashboards tab shows `victoria-metrics/dashboards/` (one, **Screens**, per screen and for the render pool); try a query
 in vmui before changing one, as CI checks every query parses. The ingest paths on both hosts take
 `Authorization: Bearer <LOGS_INGEST_TOKEN>`.

@@ -1,7 +1,10 @@
-variable "zone_id" {
-  type        = string
-  description = "The Cloudflare zone for the domain (not a secret)."
-  default     = "edde009a4040ff9e41b3a880e8ccde41" # nikolaivorkinn.com
+variable "zone_ids" {
+  type        = map(string)
+  description = "Each environment's Cloudflare zone (not secret): its names are all in its own domain. Only var.environment's is used."
+  default = {
+    dev  = "51e522ac998f4d4f8e19c712ae538615" # countdown.build
+    prod = "54af89598886d5e74018778444dddf36" # countdown.run
+  }
 }
 
 variable "environment" {
@@ -25,8 +28,8 @@ variable "host_ips" {
 
 variable "cname_targets" {
   type        = map(string)
-  description = "An environment listed here gets CNAME records to this name instead of A records to host_ips. Dev/QA runs on the home server, whose public IP home-stack's cloudflare-ddns keeps current on home.nikolaivorkinn.com."
+  description = "An environment listed here gets CNAME records to this name instead of A records to host_ips. Dev/QA runs on the home server, whose public IP home-stack's cloudflare-ddns keeps current on *.vorkinn.org."
   default = {
-    dev = "home.nikolaivorkinn.com"
+    dev = "home.vorkinn.org"
   }
 }

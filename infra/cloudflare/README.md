@@ -1,11 +1,12 @@
 # Cloudflare DNS
 
 The records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, `AUTH_HOST`, `TAUTH_HOST`,
-`ID_HOST`, `LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`), for dev and production, in the `nikolaivorkinn.com`
-zone. Production's are A records to its host. Dev/QA runs on the home server, so its are CNAMEs to `home.nikolaivorkinn.com`
-(`cname_targets` in `variables.tf`; home-stack's cloudflare-ddns keeps that name's address current), and `TAUTH_HOST` / `ID_HOST`
-get none where `EDGE_OWNED=false`, as they are home-stack's own names. Explicit records are needed because a wildcard
-doesn't match below an existing name such as `dev.nikolaivorkinn.com`. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
+`ID_HOST`, `LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`), each in its own zone
+(`zone_ids` in `variables.tf`): dev in `countdown.build`, production in `countdown.run`. Production's are A records to its
+host. Dev/QA runs on the home server, so its are CNAMEs to `home.vorkinn.org` (`cname_targets` in `variables.tf`;
+home-stack's cloudflare-ddns keeps `*.vorkinn.org` on the home's address). Every environment runs its own Tinyauth and
+Pocket ID, so `TAUTH_HOST` and `ID_HOST` get records in both. Keep Countdown's names out of `vorkinn.org` and
+`nikolaivorkinn.com`: a record there overrides the zone's wildcard and takes the name from whatever else uses it. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
 
 The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are not managed here.
 
@@ -50,9 +51,9 @@ bots already read, so no bot or collection is special to this:
 
 So the write token is readable only with the prod bot's credentials, which only the reviewer-gated `terraform` and
 `terraform-prod` environments, and `prod` (limited to `main` and tags), have: a `dev` job, whose bot can't read
-`countdown-server/prod`, can't get it. (Both environments' DNS is the one zone, so one Edit token serves both.)
+`countdown-server/prod`, can't get it. (One Edit token serves both environments' zones.)
 
 Cloudflare has no OIDC federation for its API, so these are API tokens. Make them **account-owned** (Manage Account >
 Account API tokens, which keep working if you leave the organisation), with the single permission **Zone > DNS** (Read or
-Edit) and **Zone Resources** limited to the one zone, `nikolaivorkinn.com`; set an expiry if you will rotate them. To rotate
+Edit) and **Zone Resources** covering all zones in the account (so both `countdown.build` and `countdown.run`); set an expiry if you will rotate them. To rotate
 one, edit its item in Vaultwarden.

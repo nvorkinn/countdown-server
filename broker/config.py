@@ -14,7 +14,7 @@ def load(app: Flask) -> None:
     app.secret_key = os.environ["FLASK_SECRET_KEY"]
     app.permanent_session_lifetime = timedelta(days=30)
     # Unset (the default) keeps the session cookie host-only. Set it to a parent domain, e.g.
-    # ".nikolaivorkinn.com", to share the cookie (it carries only the Spotify OAuth state) with sibling subdomains.
+    # ".countdown.run", to share the cookie (it carries only the Spotify OAuth state) with sibling subdomains.
     app.config["SESSION_COOKIE_DOMAIN"] = os.environ.get("SESSION_COOKIE_DOMAIN") or None
 
     # The request header the login proxy (Caddy forward auth to Tinyauth) puts the signed-in user's id in: Tinyauth's
