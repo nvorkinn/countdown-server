@@ -14,7 +14,10 @@ The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are 
 
 Edit `host_ips` or `cname_targets` in `variables.tf` (for example, to move production to a new host), or the hostnames in
 `config/<environment>.env`, in a pull request. The workflow (`.github/workflows/cloudflare.yml`) comments the plan of
-both environments on the PR. Nothing is applied when the PR merges, and releases and promotions leave DNS alone. Each
+both environments on the PR: a table of each record it creates, changes or destroys (type, name and content, before and
+after), with the full plan folded below it as a coloured diff (`plan-summary.sh` writes it). The same table is the run's
+summary, which is what you see when you approve an apply, and a plan that destroys or replaces a record also puts a
+warning at the top of the run. Nothing is applied when the PR merges, and releases and promotions leave DNS alone. Each
 environment is applied on its own, with its own state (`cloudflare/terraform.tfstate` for dev,
 `cloudflare/prod/terraform.tfstate` for prod): run **Cloudflare** from the Actions tab on `main`, pick the environment and
 tick *apply*. It plans first, and asks for approval (in `terraform` for dev, `terraform-prod` for production) only if the
