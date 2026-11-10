@@ -374,7 +374,7 @@ Nothing is installed on the host but Docker.
     Caddy serves them. It does run its own Tinyauth (`tauth.countdown.build`) and Pocket ID (`id.countdown.build`), named
     `countdown-tinyauth` and `countdown-pocket-id` so they don't clash with home-stack's. Dev's names (all in
     `countdown.build`) are CNAMEs to `home.vorkinn.org`; home-stack's Caddy gets their certificates one by one through its
-    Cloudflare DNS challenge, so its Cloudflare token needs Zone:DNS:Edit on `countdown.build`.
+    Cloudflare DNS challenge (its token covers every zone in the account).
 - **The host** needs Docker Compose v2 (`sudo apt install docker-compose-v2`), and `curl`.
 - **Before the first promotion,** the `countdown-server/prod` collection in Vaultwarden has to hold the production
   secrets (see Secrets below).

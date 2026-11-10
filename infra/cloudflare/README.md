@@ -55,5 +55,5 @@ So the write token is readable only with the prod bot's credentials, which only 
 
 Cloudflare has no OIDC federation for its API, so these are API tokens. Make them **account-owned** (Manage Account >
 Account API tokens, which keep working if you leave the organisation), with the single permission **Zone > DNS** (Read or
-Edit) and **Zone Resources** limited to the two zones, `countdown.build` and `countdown.run`; set an expiry if you will rotate them. To rotate
+Edit) and **Zone Resources** covering all zones in the account (so both `countdown.build` and `countdown.run`); set an expiry if you will rotate them. To rotate
 one, edit its item in Vaultwarden.
