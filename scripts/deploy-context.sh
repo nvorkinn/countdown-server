@@ -110,8 +110,10 @@ fi
 
 # --wait: the step ends once the containers are running, and healthy where they have a healthcheck (Caddy listening on
 # 443), so whatever runs after finds them serving, and a container that won't start fails the deploy. The services start
-# in the order of their depends_on (Caddy after the socket proxy).
-retry_lost_lease docker compose up -d --wait --wait-timeout 600
+# in the order of their depends_on (Caddy after the socket proxy). --remove-orphans takes down this project's containers
+# for services the release no longer has: a renamed service (tinyauth -> countdown-tinyauth) would otherwise leave the
+# old one running, and an old and a new Pocket ID would both write to pocket_id_data.
+retry_lost_lease docker compose up -d --wait --wait-timeout 600 --remove-orphans
 docker compose ps
 
 # Every release pulls new tags, so drop every image no container uses: the previous release's, and anything else left
