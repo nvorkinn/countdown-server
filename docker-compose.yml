@@ -34,10 +34,14 @@ x-victoria-urls: &victoria-urls
 # the container's name otherwise, so every app here sets the domain). The hostnames come from config/<environment>.env,
 # which deploy-context.sh copies into .env for Compose to fill in.
 #
-# Two ways to run the edge (Caddy, Tinyauth, Pocket ID), told apart by two settings (config/<environment>.env):
-# - prod owns it: the `edge` profile starts them here, and the network `edge` is created by this file;
-# - dev runs on home-stack's, which is already on the external Docker network `edge`: no profile, and this file only
-#   joins that network. Its Tinyauth must define the same `(tinyauth)` snippet (see tinyauth below).
+# Every environment runs its own login: Tinyauth and Pocket ID (countdown-tinyauth, countdown-pocket-id) at its own
+# TAUTH_HOST and ID_HOST, with users and passkeys of its own. The reverse proxy is the part that differs, told apart by
+# two settings (config/<environment>.env):
+# - prod owns it: the `edge` profile starts Caddy here, and the network `edge` is created by this file;
+# - dev runs behind home-stack's Caddy, which is already on the external Docker network `edge`: no profile, and this
+#   file only joins that network.
+# The services and the snippet are named countdown-* and `(countdown_auth)` because on the home server they share the
+# edge network (and its DNS names) and Caddy's config with home-stack's own `tinyauth`, `pocket-id` and `(tinyauth)`.
 #
 # Tinyauth 5.x denied every OAuth user of an app restricted only by oauth.groups (issue #1016, closed upstream). Until
 # a Tinyauth release is tested without it, the OAuth whitelist `/.*/` is set globally and on each app; the group is the
@@ -107,7 +111,7 @@ services:
       # is sent to the visitor as it is. The headers were stripped above, so nothing a visitor sends is believed.
       caddy_0.@pair.path: /pair
       caddy_0.handle_0: "@pair"
-      caddy_0.handle_0.forward_auth: tinyauth:3000
+      caddy_0.handle_0.forward_auth: countdown-tinyauth:3000
       caddy_0.handle_0.forward_auth.@anonymous.status: 3xx 4xx 5xx
       caddy_0.handle_0.forward_auth.copy_headers: Remote-User Remote-Name Remote-Email Remote-Groups Remote-Sub
       caddy_0.handle_0.forward_auth.handle_response: "@anonymous"
@@ -115,7 +119,7 @@ services:
       caddy_0.handle_0.forward_auth.uri: /api/auth/caddy
       caddy_0.handle_0.reverse_proxy: "{{upstreams 5000}}"
       caddy_0.handle_1: "@browser"
-      caddy_0.handle_1.import: tinyauth
+      caddy_0.handle_1.import: countdown_auth
       caddy_0.handle_1.reverse_proxy: "{{upstreams 5000}}"
       caddy_0.handle_2.reverse_proxy: "{{upstreams 5000}}"
       # The bare domain has nothing of its own: send it to the settings site, keeping the path (so the apex's /about
@@ -274,7 +278,7 @@ services:
       caddy.@ingest.header: Authorization "Bearer {env.LOGS_INGEST_TOKEN}"
       caddy.handle_0: "@ingest"
       caddy.handle_0.reverse_proxy: "{{upstreams 9428}}"
-      caddy.handle_1.import: tinyauth
+      caddy.handle_1.import: countdown_auth
       caddy.handle_1.reverse_proxy: "{{upstreams 9428}}"
       tinyauth.apps.logs.config.domain: ${LOGS_HOST}
       tinyauth.apps.logs.oauth.groups: admins
@@ -299,21 +303,20 @@ services:
       caddy.@ingest.header: Authorization "Bearer {env.LOGS_INGEST_TOKEN}"
       caddy.handle_0: "@ingest"
       caddy.handle_0.reverse_proxy: "{{upstreams 8428}}"
-      caddy.handle_1.import: tinyauth
+      caddy.handle_1.import: countdown_auth
       caddy.handle_1.reverse_proxy: "{{upstreams 8428}}"
       tinyauth.apps.metrics.config.domain: ${METRICS_HOST}
       tinyauth.apps.metrics.oauth.groups: admins
       tinyauth.apps.metrics.oauth.whitelist: /.*/
 
-  # ---- The edge, profile `edge`: prod's own. Dev uses home-stack's (see the top of this file). ----
+  # ---- The login (every environment) and the reverse proxy (profile `edge`: prod's own; dev uses home-stack's). ----
 
   # The only way to the Docker socket, for Caddy (to read the labels) and Tinyauth (to read its apps): read-only
   # endpoints (GET containers, networks, events, ...) and nothing that creates, execs or deletes. A `:ro` mount of the
   # socket would still allow all of that. Reachable only on the `socket` network, which is internal.
   socket-proxy:
     image: docker.io/tecnativa/docker-socket-proxy:v0.5.0
-    container_name: socket-proxy
-    profiles: [edge]
+    container_name: countdown-socket-proxy
     logging: *logging
     restart: unless-stopped
     networks: [socket]
@@ -365,12 +368,11 @@ services:
       start_period: 10s
 
   # Tinyauth: the login in front of the protected routes, with Pocket ID as its only provider (no local users). Upstream's
-  # image, pinned here and bumped by hand. Its labels define the `tinyauth` snippet every protected route imports.
+  # image, pinned here and bumped by hand. Its labels define the `countdown_auth` snippet every protected route imports.
   # the Vaultwarden items for tinyauth.env (secrets-map.json) have the OIDC client's id and secret from Pocket ID.
-  tinyauth:
+  countdown-tinyauth:
     image: ghcr.io/tinyauthapp/tinyauth:v5.2.0
-    container_name: tinyauth
-    profiles: [edge]
+    container_name: countdown-tinyauth
     logging: *logging
     restart: unless-stopped
     networks: [edge, socket]
@@ -394,8 +396,8 @@ services:
     depends_on:
       - socket-proxy
     labels:
-      caddy_0: (tinyauth)
-      caddy_0.forward_auth: tinyauth:3000
+      caddy_0: (countdown_auth)
+      caddy_0.forward_auth: countdown-tinyauth:3000
       caddy_0.forward_auth.uri: /api/auth/caddy
       caddy_0.forward_auth.copy_headers: Remote-User Remote-Email Remote-Name Remote-Groups Remote-Sub
       caddy_1: ${TAUTH_HOST}
@@ -405,10 +407,9 @@ services:
   # changing it locks everyone out. ENCRYPTION_KEY is in Vaultwarden (pocket-id.env in secrets-map.json). The pocket_id_data
   # volume (SQLite database, keys, uploads) holds every user and passkey: deploy-context.sh backs it up before each
   # deploy; copy those off the host.
-  pocket-id:
+  countdown-pocket-id:
     image: ghcr.io/pocket-id/pocket-id:v2.19.2
-    container_name: pocket-id
-    profiles: [edge]
+    container_name: countdown-pocket-id
     logging: *logging
     restart: unless-stopped
     networks: [edge]

@@ -60,3 +60,13 @@ def test_cloudflare_only_reads_settings_the_environments_have():
 def test_only_prod_owns_the_edge():
     assert _settings(CONFIG / "prod.env")["EDGE_OWNED"] == "true"
     assert _settings(CONFIG / "dev.env")["EDGE_OWNED"] == "false"
+
+
+def test_each_environment_serves_only_names_in_its_own_domain():
+    """A Countdown name in a shared zone overrode its wildcard and took the homelab's login (id. and tauth.)."""
+    domains = {"dev": "countdown.build", "prod": "countdown.run"}
+    for environment, domain in domains.items():
+        settings = _settings(CONFIG / f"{environment}.env")
+        for key in ("APEX_HOST", "AUTH_HOST", "TAUTH_HOST", "ID_HOST", "LOGS_HOST", "METRICS_HOST"):
+            host = settings[key]
+            assert host == domain or host.endswith(f".{domain}"), (environment, key, host)

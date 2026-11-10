@@ -12,18 +12,17 @@ locals {
   cname_target = lookup(var.cname_targets, var.environment, null)
 
   # APEX_HOST and www. redirect to AUTH_HOST (config/*.env), but all of them need a record. TAUTH_HOST is Tinyauth and
-  # ID_HOST Pocket ID; where this repo doesn't run them (EDGE_OWNED=false: dev/QA uses home-stack's, which owns their
-  # records) they get none.
-  names = toset(concat(
-    [local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.AUTH_HOST, local.settings.LOGS_HOST, local.settings.METRICS_HOST],
-    local.settings.EDGE_OWNED == "true" ? [local.settings.TAUTH_HOST, local.settings.ID_HOST] : [],
-  ))
+  # ID_HOST Pocket ID, which every environment runs for itself.
+  names = toset([
+    local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.AUTH_HOST, local.settings.LOGS_HOST,
+    local.settings.METRICS_HOST, local.settings.TAUTH_HOST, local.settings.ID_HOST,
+  ])
 }
 
 resource "cloudflare_dns_record" "host" {
   for_each = local.names
 
-  zone_id = var.zone_id
+  zone_id = var.zone_ids[var.environment]
   name    = each.value
   type    = local.cname_target == null ? "A" : "CNAME"
   content = local.cname_target == null ? var.host_ips[var.environment] : local.cname_target

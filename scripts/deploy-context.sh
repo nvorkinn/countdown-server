@@ -78,7 +78,7 @@ retry_lost_lease() {
   done
 }
 
-if [ "$dry_run" != true ] && [ "$edge_owned" = true ] && docker volume inspect pocket_id_data >/dev/null 2>&1; then
+if [ "$dry_run" != true ] && docker volume inspect pocket_id_data >/dev/null 2>&1; then
   # Pocket ID's data volume holds every user and passkey, so it is copied before each deploy, whether or not Pocket ID
   # changes: a tarball in backups/ on the host (the newest $BACKUPS_KEPT are kept). A copy taken mid-write could be
   # unreadable; the earlier ones are kept. Copy backups/ off the host as well (see "Backups" in the README).
