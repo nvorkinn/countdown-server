@@ -2,8 +2,8 @@ variable "zone_ids" {
   type        = map(string)
   description = "Each environment's Cloudflare zone (not secret): its names are all in its own domain. Only var.environment's is used."
   default = {
-    dev  = "TODO_COUNTDOWN_BUILD_ZONE_ID" # countdown.build
-    prod = "TODO_COUNTDOWN_RUN_ZONE_ID"   # countdown.run
+    dev  = "51e522ac998f4d4f8e19c712ae538615" # countdown.build
+    prod = "54af89598886d5e74018778444dddf36" # countdown.run
   }
 }
 
