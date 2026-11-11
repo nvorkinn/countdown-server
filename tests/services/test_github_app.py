@@ -30,7 +30,7 @@ def ctx(app):
     app.config.update(
         GITHUB_APP_CLIENT_ID="Iv1.client", GITHUB_APP_CLIENT_SECRET="shh", GITHUB_APP_WEBHOOK_SECRET="hook"
     )
-    app.extensions["redis"] = app.extensions["redis_events"] = fakeredis.FakeRedis(decode_responses=True)
+    app.extensions["redis"] = fakeredis.FakeRedis(decode_responses=True)
     with app.app_context():
         yield app
 
@@ -174,24 +174,3 @@ def test_installation_changes_ask_for_the_repositories_again():
 def test_repository_changes_ask_for_the_repositories_again():
     payload = REPO | {"action": "renamed"}
     assert github_app.changes_in("repository", payload) == [{"kind": "repositories"}]
-
-
-def test_a_new_connection_starts_at_the_newest_entry_and_gets_what_follows(ctx):
-    assert github_app.latest_change() == "0-0"
-    github_app.record([{"repo": "alice/project", "kind": "repo"}])
-    start = github_app.latest_change()
-    assert start != "0-0"
-    github_app.record([{"repo": "alice/project", "kind": "pull", "id": "4"}, {"repo": "alice/project", "kind": "run"}])
-    after, changes = github_app.wait_for_changes(start, 0.05)
-    assert changes == [{"repo": "alice/project", "kind": "pull", "id": "4"}, {"repo": "alice/project", "kind": "run"}]
-    assert after == github_app.latest_change()
-    assert github_app.wait_for_changes(after, 0.05) == (after, [])
-
-
-def test_an_emptied_stream_is_followed_again_once_it_has_new_entries(ctx):
-    github_app.record([{"repo": "alice/project", "kind": "repo"}])
-    start = github_app.latest_change()
-    ctx.extensions["redis"].delete(github_app.CHANGES)
-    assert github_app.wait_for_changes(start, 0.05) == (start, [])
-    github_app.record([{"repo": "alice/project", "kind": "pull", "id": "4"}])
-    assert github_app.wait_for_changes(start, 0.05)[1] == [{"repo": "alice/project", "kind": "pull", "id": "4"}]

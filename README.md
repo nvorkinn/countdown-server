@@ -168,10 +168,11 @@ GITHUB_APP_WEBHOOK_SECRET=<the webhook secret>
 
 The page shows **Connect GitHub** until you've signed in, and GitHub's tokens never reach the browser. The webhook is
 the one dashboard path outside the login (GitHub can't sign in), so its signature is its only check. It
-doesn't call GitHub: it notes what changed in Redis (`v1:github:changes`), and the page, while its tab is visible,
-keeps a Server-Sent Events connection open (`/github/events`) that pushes those changes as they land. The page re-reads
-only what changed, reads everything whenever it (re)connects, and every 5 minutes in case a delivery was lost. Each
-open page holds one of gunicorn's threads (one process, 8 threads, `gunicorn.conf.py`). Without
+doesn't call GitHub: while the page's tab is visible, the page keeps a Server-Sent Events connection open
+(`/github/events`), and the webhook hands what changed straight to it in memory, without Redis. The page re-reads only
+what changed, reads everything whenever it (re)connects, and every 5 minutes in case a delivery was lost. This needs
+the webhook and the page in one process, so gunicorn runs one worker with 8 threads (`gunicorn.conf.py`), and each
+open page holds one of them. Without
 `GITHUB_APP_WEBHOOK_SECRET` the page reads everything every minute instead.
 
 **Telegram messages** come from the webhook while the page is closed: a release finishing or waiting for approval, a

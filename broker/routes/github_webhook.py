@@ -10,6 +10,8 @@ from broker.services import github_app, github_notify
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
 
+    from broker.services.github_changes import ChangeFeed
+
 bp = Blueprint("github_webhook", __name__)
 
 
@@ -27,7 +29,8 @@ def webhook() -> ResponseReturnValue:
     except ValueError, KeyError, TypeError, AttributeError:
         current_app.logger.warning("GitHub webhook delivery had an unexpected shape")
         return jsonify(error="Unreadable delivery."), 400
-    github_app.record(changes)
+    feed: ChangeFeed = current_app.extensions["github_changes"]
+    feed.publish(changes)
     github_notify.notify(
         request.headers.get("X-GitHub-Delivery", ""), request.headers.get("X-GitHub-Event", ""), payload
     )

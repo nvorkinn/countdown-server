@@ -23,6 +23,7 @@ from .routes import (
     stop_search,
     telegram_webhook,
 )
+from .services.github_changes import ChangeFeed
 from .services.pair_throttle import (
     MAX_REGISTRATION_LOCKOUT_SECONDS,
     REGISTRATIONS_PER_MINUTE,
@@ -67,15 +68,7 @@ def create_app() -> Flask:
         socket_timeout=1,  # a dead Redis can't hang a config save
         socket_connect_timeout=1,
     )
-    # The same Redis for the GitHub dashboard's live connection, which blocks on the webhook's stream between pings
-    # (services/github_app.wait_for_changes), so its reads may take longer than the one-second timeout above.
-    app.extensions["redis_events"] = redis.Redis.from_url(
-        os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0"),
-        password=os.environ.get("REDIS_PASSWORD"),
-        decode_responses=True,
-        socket_timeout=github_dashboard.EVENTS_PING_S + 5,
-        socket_connect_timeout=1,
-    )
+    app.extensions["github_changes"] = ChangeFeed()
     # The same Redis for the screens' frames, which are bytes (services/frame_record.py): redis-py decodes per client,
     # not per call.
     app.extensions["redis_bytes"] = redis.Redis.from_url(

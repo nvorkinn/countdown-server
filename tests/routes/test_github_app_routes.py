@@ -18,7 +18,7 @@ def app_setup(app):
         GITHUB_APP_CLIENT_SECRET="shh",
         GITHUB_APP_WEBHOOK_SECRET="hook",
     )
-    app.extensions["redis"] = app.extensions["redis_events"] = fakeredis.FakeRedis(decode_responses=True)
+    app.extensions["redis"] = fakeredis.FakeRedis(decode_responses=True)
     return app
 
 
@@ -32,13 +32,13 @@ def deliver(client, event, payload, secret="hook"):  # noqa: S107 -- the tests' 
     )
 
 
-def test_a_signed_delivery_is_recorded_without_a_login(app_setup, anonymous_client, client):
-    response = deliver(
-        anonymous_client, "pull_request", {"repository": {"full_name": "alice/p"}, "pull_request": {"number": 4}}
-    )
-    assert response.status_code == 204
-    with app_setup.app_context():
-        assert github_app.wait_for_changes("0-0", 0.05)[1] == [{"repo": "alice/p", "kind": "pull", "id": "4"}]
+def test_a_signed_delivery_is_handed_to_the_open_pages_without_a_login(app_setup, anonymous_client):
+    with app_setup.extensions["github_changes"].listen() as listener:
+        response = deliver(
+            anonymous_client, "pull_request", {"repository": {"full_name": "alice/p"}, "pull_request": {"number": 4}}
+        )
+        assert response.status_code == 204
+        assert listener.wait(0) == [{"repo": "alice/p", "kind": "pull", "id": "4"}]
 
 
 def test_a_signed_delivery_is_passed_on_for_a_notification(app_setup, anonymous_client):
@@ -80,31 +80,37 @@ def test_the_events_stream_holds_notifications_back_while_open(app_setup, client
     response.close()
 
 
-def test_the_events_stream_ends_when_redis_fails(app_setup, client, monkeypatch):
+def test_the_events_stream_stops_listening_once_closed(app_setup, client):
+    feed = app_setup.extensions["github_changes"]
     response, chunks = open_events(client)
     next(chunks)
+    assert feed.listening() == 1
+    response.close()
+    assert feed.listening() == 0
+
+
+def test_the_events_stream_carries_on_without_redis(app_setup, client, monkeypatch):
+    monkeypatch.setattr("broker.routes.github_dashboard.EVENTS_PING_S", 0.05)
     monkeypatch.setattr(
-        "broker.routes.github_dashboard.github_app.wait_for_changes", Mock(side_effect=redis.ConnectionError("down"))
+        "broker.routes.github_dashboard.github_notify.mark_seen", Mock(side_effect=redis.ConnectionError("down"))
     )
-    assert list(chunks) == []
+    response, chunks = open_events(client)
+    assert response.status_code == 200
+    assert [next(chunks), next(chunks)] == [b": connected\n\n", b": ping\n\n"]
     response.close()
 
 
-def test_the_events_stream_is_unavailable_without_redis(app_setup, client, monkeypatch):
-    monkeypatch.setattr(
-        "broker.routes.github_dashboard.github_app.latest_change", Mock(side_effect=redis.ConnectionError("down"))
-    )
-    assert client.get("/github/events").status_code == 503
-
-
 def test_an_unsigned_or_wrongly_signed_delivery_is_refused(app_setup, anonymous_client):
-    payload = {"repository": {"full_name": "alice/p"}}
-    assert deliver(anonymous_client, "push", payload, secret="guess").status_code == 401
-    assert (
-        anonymous_client.post("/api/github/webhook", json=payload, headers={"X-GitHub-Event": "push"}).status_code
-        == 401
-    )
-    assert app_setup.extensions["redis"].xlen(github_app.CHANGES) == 0
+    payload = {"repository": {"full_name": "alice/p"}, "pull_request": {"number": 4}}
+    with app_setup.extensions["github_changes"].listen() as listener:
+        assert deliver(anonymous_client, "pull_request", payload, secret="guess").status_code == 401
+        assert (
+            anonymous_client.post(
+                "/api/github/webhook", json=payload, headers={"X-GitHub-Event": "pull_request"}
+            ).status_code
+            == 401
+        )
+        assert listener.wait(0) == []
 
 
 def test_a_signed_delivery_of_an_unexpected_shape_is_refused(app_setup, anonymous_client):
