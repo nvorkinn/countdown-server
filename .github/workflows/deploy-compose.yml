@@ -1,5 +1,8 @@
 name: Deploy compose
 
+# Shown on the GitHub dashboard among the running releases.
+# dashboard: release
+
 # Deploys a release to a host through its Docker daemon (DOCKER_HOST=ssh://...): the secrets are fetched from Vaultwarden
 # onto the runner and stay there with the compose file and the settings, and scripts/deploy-context.sh drives the daemon
 # over SSH, so nothing is installed or run on the host. One job deploys every service (no matrix, so no locks and no
