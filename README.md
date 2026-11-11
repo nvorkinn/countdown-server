@@ -13,8 +13,6 @@ The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare
   Bit, VictoriaLogs and VictoriaMetrics. Production runs on the Oracle Cloud ARM host; dev runs on the home server
   (`nikolai-server`), behind [home-stack](https://github.com/nvorkinn/home-stack)'s edge.
 
-It also serves a personal [GitHub dashboard](#github-dashboard) at `GITHUB_HOST` (`github.countdown.build`).
-
 [docs/architecture.md](docs/architecture.md) shows how the pieces fit together and which secret is which;
 [docs/database.md](docs/database.md) has the tables.
 
@@ -129,84 +127,6 @@ here as the `vendor/countdown-api` submodule. Its fixtures are what both sides' 
 (`git -C vendor/countdown-api checkout <commit>`, `uv lock`). Add fields rather than change them: older readers ignore
 fields they don't know.
 
-## GitHub dashboard
-
-The dashboard shows every open PR across your repositories, their checks, the release, promote and deploy workflows
-running (as a job graph, with **Approve** buttons for waiting environments), and a **New Release** button per
-project, plus **Promote** for a project with a Promote workflow. It's behind the same login as the rest of the site,
-for the `admins` group, and only one user may open it.
-
-It has a name of its own, `GITHUB_HOST` in `config/*.env`, and runs in dev only, at `https://github.countdown.build`:
-production's `broker.env` has none of its settings, so `github.countdown.run` answers 503 and the webhook 404. The
-broker serves it under `/github`, and Caddy rewrites every other path on that name there, so the dashboard is at the
-root and nothing else of the settings site is reachable on it. The settings site redirects its old `/github` paths to
-the new name, keeping the rest of the URL, and still takes the webhook at its old address
-(`/api/github/webhook`, which GitHub won't follow a redirect for), so nothing breaks while the App's URLs are changed. It still drives production, through each project's
-Promote workflow.
-
-It reaches GitHub through a private GitHub App: the dashboard signs you in with it and then acts as you with tokens
-GitHub expires after 8 hours (renewed on their own for 6 months), and its webhook makes the page live. Create it under
-GitHub's Settings → Developer settings → GitHub Apps:
-
-- **Callback URL** `https://github.countdown.build/github/callback`, with *Expire user authorization tokens* ticked.
-- **Webhook URL** `https://github.countdown.build/api/github/webhook`, with a random secret, subscribed to *Pull
-  request*, *Pull request review*, *Check run*, *Check suite*, *Status*, *Workflow run*, *Workflow job*, *Deployment
-  status* and *Push*.
-- Repository permissions **Actions: read and write** (to promote and re-run failed jobs), **Checks: read**, **Commit statuses: read**, **Pull requests: read and
-  write** (for auto-merge), **Deployments: read and write** (to approve) and **Contents: read and write** (for releases
-  and merging). After changing them, accept them on the App's installation; GitHub doesn't apply them until you do.
-- Then install it on your account, for the repositories the dashboard should show.
-
-Enable it by adding these to the `countdown-server/dev` collection in Vaultwarden (and `secrets-map.json`), then release:
-
-```dotenv
-GITHUB_DASHBOARD_USER_ID=<your Remote-Sub>
-GITHUB_APP_CLIENT_ID=<the App's client ID>
-GITHUB_APP_CLIENT_SECRET=<a client secret>
-GITHUB_APP_WEBHOOK_SECRET=<the webhook secret>
-```
-
-The page shows **Connect GitHub** until you've signed in, and GitHub's tokens never reach the browser. The webhook is
-the one dashboard path outside the login (GitHub can't sign in), so its signature is its only check. It
-doesn't call GitHub: while the page's tab is visible, the page keeps a Server-Sent Events connection open
-(`/github/events`), and the webhook hands what changed straight to it in memory. The page re-reads only what changed,
-reads everything whenever it (re)connects, and every 5 minutes in case a delivery was lost. Without
-`GITHUB_APP_WEBHOOK_SECRET` the page reads everything every minute instead.
-
-The dashboard doesn't use Redis at all: GitHub's ETags and answers, which Telegram messages went out, whether the page
-is open, and the token renewal lock all live in the broker's memory (`broker/services/memory_cache.py`), and a restart
-just forgets them. That needs the webhook, the page and Telegram in one process, so gunicorn runs one worker with 8
-threads (`gunicorn.conf.py`), and each open page holds one of them.
-
-**Telegram messages** come from the webhook while the page is closed: a release finishing or waiting for approval, a
-PR's checks failing, changes requested on a PR, and a PR merging. The page's live connection is only open while its
-tab is visible, and it holds messages back for as long as it is (it marks the page seen every 20 seconds, which lasts
-30). Turn them on with a bot from @BotFather and your chat
-with it, in the same `broker.env`:
-
-```dotenv
-TELEGRAM_BOT_TOKEN=<the bot's token>
-TELEGRAM_CHAT_ID=<your chat ID, from the bot's getUpdates after you message it>
-```
-
-A release waiting for approval comes with a **Review in GitHub** button that opens its run, where *Review deployments*
-approves it. Approving happens on GitHub, so Telegram never calls the broker and the bot needs no webhook.
-
-**Auto-merge** needs *Allow auto-merge* turned on in each repository's settings. GitHub only waits when the base
-branch's protection requires checks; where nothing is required, the button merges at once if the PR's checks have all
-passed, and refuses while any are still running or failed.
-
-**New Release publishes immediately**, with no confirmation: it bumps the minor version of the highest semver release
-(`1.19.0` becomes `1.20.0`, keeping any `v` prefix; `1.0.0` if there are none), generates notes from the previous tag
-and creates the release on the default branch. It's never retried automatically, so after a timeout check GitHub before
-trying again. A release deploys to dev only.
-
-**Promote** shows for a project with an active `.github/workflows/promote.yml` (this repository and countdown), named
-after its latest release (`Promote v3.1.0`). It starts that workflow on the default branch with the tag, also with no
-confirmation: the workflow's check job refuses a tag that isn't on main or wasn't deployed to dev, and then waits
-for `approve-prod`, which shows on the dashboard with an Approve button like a release's. To roll back to an older
-tag, run Promote from GitHub Actions.
-
 ## Other endpoints
 
 - **`GET /about`** is a public page about the display (no login), with pictures in `broker/static/display/`.
@@ -254,11 +174,11 @@ python scripts/simulate_device.py --token    # prints the /pair URL instead
 uv run python -m pytest --cov=broker
 ruff check . && ruff format --check .
 uv run ty check
-npx @biomejs/biome@2.6.3 check --write .   # the dashboard's JS and CSS; biome.jsonc has the version and scope
+npx @biomejs/biome@2.6.3 check --write .   # the pages' JS and CSS; biome.jsonc has the version and scope
 ```
 
 External APIs are mocked and Redis is fakeredis. The render queue's script tests also run against a real
-`redis-server` when one is installed. `node --test tests/browser/*.test.cjs` tests the GitHub dashboard's JavaScript.
+`redis-server` when one is installed. `node --test tests/browser/*.test.cjs` tests the pages' JavaScript.
 
 **Schema changes.** Edit `broker/models.py`, then generate a migration and read it before committing (autogenerate
 misses renames and never backfills data):

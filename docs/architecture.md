@@ -91,10 +91,8 @@ broker to trust them. The broker has no user table: the Pocket ID user id is sto
 | **GitHub token** | the owner, on the account page | `github_tokens`, encrypted | A read-only fine-grained PAT, used only by the developer provider. |
 | **`CREDENTIAL_ENCRYPTION_KEY`** | operator | Vaultwarden (`broker.env`) | The Fernet key for the encrypted columns. Changing it makes them unreadable. |
 | **App keys** | operator | Vaultwarden (`broker.env`) | Spotify client id and secret, the MusicKit key (signs Apple developer tokens), `TFL_APP_KEY` (only for the settings page's stop search). |
-| **`FLASK_SECRET_KEY`** | operator | Vaultwarden (`broker.env`) | Signs the session cookie, which holds only the Spotify OAuth state and the GitHub dashboard's CSRF token. |
+| **`FLASK_SECRET_KEY`** | operator | Vaultwarden (`broker.env`) | Signs the session cookie, which holds only the Spotify OAuth state. |
 | **`STATUS_TOKEN`** | operator | Vaultwarden (`broker.env`) | Bearer for `GET /api/status/devices`. |
-| **GitHub App sign-in** | the dashboard's user, through Connect GitHub | `github_app_tokens`, encrypted | Acts as them for 8 hours, renewed for 6 months. The `/github` dashboard's only GitHub access. |
-| **`GITHUB_APP_CLIENT_SECRET`**, **`GITHUB_APP_WEBHOOK_SECRET`** | operator | Vaultwarden (`broker.env`) | The dashboard's GitHub App: signing in, and checking its webhook's signature. |
 | **`POCKET_ID_API_KEY`** | operator | Vaultwarden (`broker.env`) | A Pocket ID admin API key, which the sign-up flow uses to create users and add them to the `countdown` group (`POCKET_ID_COUNTDOWN_GROUP_ID`). |
 | **Tinyauth's Pocket ID client** | operator | Vaultwarden (`tinyauth.env`) | The OIDC client id and secret Pocket ID issued for Tinyauth. |
 | **Pocket ID's `ENCRYPTION_KEY`** | operator | Vaultwarden (`pocket-id.env`) | Encrypts what Pocket ID stores. Never changed after first start. |
