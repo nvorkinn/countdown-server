@@ -95,15 +95,17 @@ class GlowmarktAccount:
 
     def electricity_resource_id(self) -> str:
         """Return the id of the meter's electricity consumption (looked up once), the resource every page reads."""
-        if self.resource_id is None:
-            entities = self._get("/virtualentity")
-            try:
-                resources = entities[0]["resources"]
-                self.resource_id = next(r["resourceId"] for r in resources if r["name"] == "electricity consumption")
-            except (IndexError, KeyError, TypeError, StopIteration) as e:
-                msg = "Glowmarkt has no 'electricity consumption' resource for this account"
-                raise GlowmarktError(msg) from e
-        return self.resource_id
+        if self.resource_id is not None:
+            return self.resource_id
+        entities = self._get("/virtualentity")
+        try:
+            resources = entities[0]["resources"]
+            resource_id: str = next(r["resourceId"] for r in resources if r["name"] == "electricity consumption")
+        except (IndexError, KeyError, TypeError, StopIteration) as e:
+            msg = "Glowmarkt has no 'electricity consumption' resource for this account"
+            raise GlowmarktError(msg) from e
+        self.resource_id = resource_id
+        return resource_id
 
     def readings(self, period: str, start: datetime, end: datetime) -> dict[str, Any]:
         """Return Glowmarkt's answer, as it is, for the kWh used per `period` from `start` to `end` (both local).
