@@ -2,8 +2,7 @@
 
 GitHub's API doesn't give the graph, only the run's jobs and their states. The lines between jobs (`needs:`) come
 from the workflow file at the run's commit, and the jobs not started yet come from it too, so the whole graph shows
-from the run's first minute. A matrix, or a reusable workflow's jobs, is one node with a count (and, when asked, its
-jobs listed so the dashboard can draw them apart).
+from the run's first minute. A matrix, or a reusable workflow's jobs, is one node with a count.
 """
 
 import itertools
@@ -121,11 +120,10 @@ def _rendered(template: str, combos: list[dict]) -> frozenset[str] | None:
     return frozenset(names)
 
 
-def nodes(jobs: list[WorkflowJob], runs: list[dict], *, list_jobs: bool = False) -> list[dict]:
+def nodes(jobs: list[WorkflowJob], runs: list[dict]) -> list[dict]:
     """Return the graph's nodes: each workflow job with the state of its runs (GitHub's jobs), in the file's order.
 
-    A run that matches no job in the file is a node of its own, so nothing that's running goes unseen. With `list_jobs`,
-    a node of several jobs also lists them.
+    A run that matches no job in the file is a node of its own, so nothing that's running goes unseen.
     """
     matched: dict[str, list[dict]] = {job.key: [] for job in jobs}
     left = []
@@ -137,9 +135,6 @@ def nodes(jobs: list[WorkflowJob], runs: list[dict], *, list_jobs: bool = False)
             matched[job.key].append(run)
     found = [_node(job.key, job.label, list(job.needs), matched[job.key], job.size) for job in jobs]
     found += [_node(run["name"], run["name"], [], [run], None) for run in left]
-    if not list_jobs:
-        for node in found:
-            node.pop("jobs", None)
     return found
 
 
@@ -161,7 +156,7 @@ def _node(key: str, name: str, needs: list[str], runs: list[dict], size: int | N
     state = _state(runs)
     if len(runs) < total and state in {"done", "skipped"}:
         state = "running"
-    node = {
+    return {
         "key": key,
         "name": name,
         "state": state,
@@ -169,11 +164,6 @@ def _node(key: str, name: str, needs: list[str], runs: list[dict], size: int | N
         "done": sum(run["status"] == "completed" for run in runs) if counted else None,
         "total": total if counted else None,
     }
-    if counted:
-        # Each job of the node, so the page can draw them apart; those the matrix hasn't started yet are only a count.
-        node["jobs"] = [{"name": run["name"], "state": _state([run])} for run in runs]
-        node["jobs"] += [{"name": f"{name} (not started)", "state": "queued"}] * (total - len(runs))
-    return node
 
 
 def _state(runs: list[dict]) -> str:

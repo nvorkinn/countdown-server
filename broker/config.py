@@ -50,16 +50,6 @@ def load(app: Flask) -> None:
     app.config["CREDENTIAL_ENCRYPTION_KEY"] = os.environ["CREDENTIAL_ENCRYPTION_KEY"]
     # Unset (the default) turns GET /api/status/devices off.
     app.config["STATUS_TOKEN"] = os.environ.get("STATUS_TOKEN", "")
-    # The personal GitHub dashboard is off until its user and its GitHub App's client (services/github_app.py) are set.
-    app.config["GITHUB_DASHBOARD_USER_ID"] = os.environ.get("GITHUB_DASHBOARD_USER_ID", "")
-    # The webhook secret turns on /api/github/webhook; unset, the page polls instead.
-    app.config["GITHUB_APP_CLIENT_ID"] = os.environ.get("GITHUB_APP_CLIENT_ID", "")
-    app.config["GITHUB_APP_CLIENT_SECRET"] = os.environ.get("GITHUB_APP_CLIENT_SECRET", "")
-    app.config["GITHUB_APP_WEBHOOK_SECRET"] = os.environ.get("GITHUB_APP_WEBHOOK_SECRET", "")
-    # The Telegram bot that messages about the webhook's deliveries while the dashboard is closed
-    # (services/github_notify.py). Unset (the default) sends nothing.
-    app.config["TELEGRAM_BOT_TOKEN"] = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    app.config["TELEGRAM_CHAT_ID"] = os.environ.get("TELEGRAM_CHAT_ID", "")
 
     # Which deployment this is (config/<environment>.env sets it). Anything but prod is named in a banner on every page
     # and before each page's title, so the dev site can't be mistaken for the real one.

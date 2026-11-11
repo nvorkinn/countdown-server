@@ -38,17 +38,3 @@ def test_dev_pages_say_so_in_a_banner_and_the_title(app, client, path):
     assert 'class="environment-banner"' in html
     assert "<strong>DEV</strong>" in html
     assert "<title>[DEV] " in html
-
-
-def test_the_github_dashboard_says_so_too(app, client):
-    app.config.update(
-        ENVIRONMENT_LABEL="DEV",
-        GITHUB_DASHBOARD_USER_ID="user-1",
-        GITHUB_APP_CLIENT_ID="Iv1.client",
-        GITHUB_APP_CLIENT_SECRET="shh",
-    )
-
-    html = client.get("/github").get_data(as_text=True)
-
-    assert "<strong>DEV</strong>" in html
-    assert "<title>[DEV] GitHub dashboard</title>" in html

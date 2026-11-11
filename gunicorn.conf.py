@@ -7,14 +7,9 @@ Logs go to stdout as JSON, whatever the command line says about --access-logfile
 # evaluates the hook's annotations, so a name only imported for type checkers makes the broker fail to start.
 from gunicorn.workers.base import Worker  # noqa: TC002
 
-# One process, with threads so a request never waits behind another. It must stay one process: the GitHub dashboard
-# keeps its state in memory (services/github_changes, services/memory_cache), so a second worker's live connections
-# would miss what the first's webhook receives, and the two would cache, renew tokens and send Telegram messages
-# apart. Each live connection holds a thread while its page is open; a long
-# request doesn't trip gthread's worker timeout, which only watches the worker's own loop.
-worker_class = "gthread"
+# One process: the /pair, /register and sign-up throttles (services/pair_throttle.py) count in memory, so a second
+# worker would give every client a second allowance.
 workers = 1
-threads = 8
 
 logger_class = "broker.log_format.GunicornLogger"
 logconfig_dict = {

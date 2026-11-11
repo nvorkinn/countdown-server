@@ -4,7 +4,9 @@ from unittest.mock import Mock, patch
 
 import fakeredis
 import pytest
+import redis
 import requests
+import responses
 
 from broker.clients import github
 
@@ -322,4 +324,63 @@ def test_a_rate_limit_reading_the_workflow_file_is_raised():
     run = {"path": ".github/workflows/release.yml", "head_sha": "abc"}
 
     with patch("requests.Session.get", side_effect=_limited), pytest.raises(requests.HTTPError):
-        github._workflow_jobs(github.Dashboard("github_pat_abc"), REPOS[0], run)
+        github._workflow_jobs(github.Api("github_pat_abc"), REPOS[0], run)
+
+
+@responses.activate
+def test_etags_are_kept_an_hour_and_scoped_to_the_token():
+    cache = fakeredis.FakeRedis()
+    responses.get(f"{github.API_URL}/user", json={"login": "alice"}, headers={"ETag": '"first"'})
+    responses.get(f"{github.API_URL}/user", status=304)
+    responses.get(f"{github.API_URL}/user", json={"login": "bob"}, headers={"ETag": '"other"'})
+    first, second, other = github.Api("alice-pat", cache), github.Api("alice-pat", cache), github.Api("bob-pat", cache)
+    try:
+        assert first.get("/user") == {"login": "alice"}
+        assert second.get("/user") == {"login": "alice"}
+        assert other.get("/user") == {"login": "bob"}
+        assert responses.calls[1].request.headers["If-None-Match"] == '"first"'
+        assert "If-None-Match" not in responses.calls[2].request.headers
+        assert all(0 < cache.ttl(key) <= 3600 for key in cache.scan_iter())
+    finally:
+        for api in (first, second, other):
+            api.close()
+
+
+@responses.activate
+def test_the_etag_cache_never_hides_an_upstream_error():
+    cache = fakeredis.FakeRedis()
+    responses.get(f"{github.API_URL}/user", json={"login": "alice"}, headers={"ETag": '"first"'})
+    responses.get(f"{github.API_URL}/user", status=403)
+    api = github.Api("test-pat", cache)
+    try:
+        api.get("/user")
+        with pytest.raises(requests.HTTPError):
+            api.get("/user")
+    finally:
+        api.close()
+
+
+@responses.activate
+def test_a_redis_that_fails_only_costs_the_cache():
+    cache = Mock()
+    cache.get.side_effect = cache.set.side_effect = redis.RedisError("down")
+    responses.get(f"{github.API_URL}/user", json={"login": "alice"}, headers={"ETag": '"first"'})
+    api = github.Api("test-pat", cache)
+    try:
+        assert api.get("/user") == {"login": "alice"}
+    finally:
+        api.close()
+
+
+@responses.activate
+def test_unexpected_shapes_are_refused():
+    responses.get(f"{github.API_URL}/user", json=[])
+    responses.get(f"{github.API_URL}/user/repos", json={"not": "a list"})
+    api = github.Api("test-pat")
+    try:
+        with pytest.raises(github.UnexpectedResponseError, match="unexpected response shape"):
+            api.get("/user")
+        with pytest.raises(github.UnexpectedResponseError, match="unexpected list response"):
+            api.pages("/user/repos")
+    finally:
+        api.close()
