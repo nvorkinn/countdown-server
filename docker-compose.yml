@@ -83,10 +83,9 @@ services:
       start_period: 60s
     labels:
       # The settings site. Everything but the screens' API (Bearer secrets), the status endpoint (its own token),
-      # GitHub's webhook (signed with its secret), Telegram's webhook (its secret token) and the public /about page
-      # with its pictures needs a Pocket ID login, as a member of `countdown`. The sign-up page (/pair, which sends the
-      # visitor to Pocket ID to register), the static files and the device endpoints are public; /pair/add and
-      # /pair/token are behind the login. /api/stops and /api/places are browser calls.
+      # GitHub's webhook (signed with its secret) and the public /about page with its pictures needs a Pocket ID login,
+      # as a member of `countdown`. The sign-up page (/pair, which sends the visitor to Pocket ID to register), the
+      # static files and the device endpoints are public; /pair/add and /pair/token are behind the login. /api/stops and /api/places are browser calls.
       caddy_0: ${AUTH_HOST:?}
       # The broker trusts the Remote-* headers (set by forward auth) as the signed-in user, so nothing a visitor
       # sends in these may get through: strip them from every request. The X-Authentik-* ones are the headers of the
@@ -108,7 +107,7 @@ services:
       # stays here too (in the list below) until the App's Webhook URL is changed, as GitHub doesn't follow redirects.
       caddy_0.@github.path: /github /github/*
       caddy_0.redir: "@github https://${GITHUB_HOST:?}{uri}"
-      caddy_0.@browser.not.path: /api/frame /api/frame/* /api/devices/* /api/status/* /api/github/webhook /api/telegram/webhook /about /static/* /pair
+      caddy_0.@browser.not.path: /api/frame /api/frame/* /api/devices/* /api/status/* /api/github/webhook /about /static/* /pair
       # /pair is public, but asks Tinyauth who is calling first ("soft" auth): signed in, the broker gets the Remote-*
       # headers and sends the person on to /pair/add, which pairs the screen with no form; otherwise (any 3xx, 4xx or
       # 5xx from Tinyauth) the request carries on with no identity headers and the sign-up form is served. The vars

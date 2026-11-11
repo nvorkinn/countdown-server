@@ -29,7 +29,7 @@ MERGED = {"action": "closed", "repository": REPO, "pull_request": PULL | {"merge
 
 @pytest.fixture
 def ctx(app):
-    app.config.update(TELEGRAM_BOT_TOKEN="123:bot", TELEGRAM_CHAT_ID="42", TELEGRAM_WEBHOOK_SECRET="")
+    app.config.update(TELEGRAM_BOT_TOKEN="123:bot", TELEGRAM_CHAT_ID="42")
     app.extensions["redis"] = fakeredis.FakeRedis(decode_responses=True)
     with app.app_context():
         yield app
@@ -79,14 +79,11 @@ def test_a_finished_release_says_how_it_went_but_other_runs_are_quiet():
     assert github_notify.message("workflow_run", payload | {"workflow_run": run | {"name": "Test"}}) is None
 
 
-def test_a_release_waiting_for_approval_repeats_by_run_not_by_job_and_offers_approval():
+def test_a_release_waiting_for_approval_repeats_by_run_not_by_job_and_links_its_run():
     job = {"workflow_name": "Release", "run_id": 99, "html_url": "https://github.com/job/1"}
     found = github_notify.message("workflow_job", {"action": "waiting", "repository": REPO, "workflow_job": job})
-    assert found == Message(
-        "A release in nvorkinn/countdown is waiting for your approval\nhttps://github.com/job/1",
-        "waiting:99",
-        ("nvorkinn/countdown", 99),
-    )
+    run = "https://github.com/nvorkinn/countdown/actions/runs/99"
+    assert found == Message(f"A release in nvorkinn/countdown is waiting for your approval\n{run}", "waiting:99", run)
 
 
 @responses.activate
@@ -149,88 +146,15 @@ WAITING = {"action": "waiting", "repository": REPO, "workflow_job": JOB}
 
 
 @responses.activate
-def test_a_waiting_release_gets_an_approve_button_only_with_the_webhook(ctx):
+def test_a_waiting_release_gets_a_button_that_opens_its_run(ctx):
     sent = responses.post(SEND, json={"ok": True})
     github_notify.notify("delivery-1", "workflow_job", WAITING)
+    button = sent_json(sent.calls[0])["reply_markup"]["inline_keyboard"][0][0]
+    assert button == {"text": "Review in GitHub", "url": "https://github.com/nvorkinn/countdown/actions/runs/99"}
+
+
+@responses.activate
+def test_other_messages_have_no_button(ctx):
+    sent = responses.post(SEND, json={"ok": True})
+    github_notify.notify("delivery-1", "pull_request", MERGED)
     assert "reply_markup" not in sent_json(sent.calls[0])
-    ctx.config["TELEGRAM_WEBHOOK_SECRET"] = "s3cret"
-    github_notify.notify("delivery-2", "workflow_job", WAITING | {"workflow_job": JOB | {"run_id": 100}})
-    button = sent_json(sent.calls[1])["reply_markup"]["inline_keyboard"][0][0]
-    assert button == {"text": "Approve", "callback_data": "approve:100"}
-    assert ctx.extensions["redis"].get(github_notify.APPROVE.format(100)) == "nvorkinn/countdown"
-
-
-def tap(data="approve:99", user=42):
-    return {
-        "callback_query": {
-            "id": "q1",
-            "from": {"id": user},
-            "data": data,
-            "message": {"message_id": 5, "chat": {"id": 42}, "text": "A release is waiting"},
-        }
-    }
-
-
-class FakeDashboard:
-    def __init__(self, pending):
-        self.pending = pending
-        self.approved = []
-
-    def owned_repository(self, owner, name):
-        return {"full_name": f"{owner}/{name}"}
-
-    def pending_deployments(self, repo, run_id):  # noqa: ARG002
-        return self.pending
-
-    def approve_deployment(self, repo, run_id, environment_id):
-        self.approved.append((repo["full_name"], run_id, environment_id))
-
-
-@pytest.fixture
-def dashboard(ctx, monkeypatch):
-    ctx.config["GITHUB_DASHBOARD_USER_ID"] = "user-1"
-    ctx.extensions["redis"].set(github_notify.APPROVE.format(99), "nvorkinn/countdown")
-    fake = FakeDashboard([{"id": 1, "can_approve": True}, {"id": 2, "can_approve": False}])
-    monkeypatch.setattr(github_notify.github_app, "token", lambda user_id: f"token-for-{user_id}")
-    monkeypatch.setattr(github_notify.github, "Dashboard", lambda _token, _redis: fake)
-    return fake
-
-
-@responses.activate
-def test_a_tap_approves_what_you_may_and_removes_the_button(ctx, dashboard):
-    answered = responses.post(api("answerCallbackQuery"), json={"ok": True})
-    edited = responses.post(api("editMessageText"), json={"ok": True})
-    github_notify.answer(tap())
-    assert dashboard.approved == [("nvorkinn/countdown", 99, 1)]
-    assert sent_json(answered.calls[0])["text"] == "Approved"
-    edit = sent_json(edited.calls[0])
-    assert edit["text"] == "A release is waiting\n\nApproved ✅"
-    assert "reply_markup" not in edit
-    assert not ctx.extensions["redis"].exists(github_notify.APPROVE.format(99))
-
-
-@responses.activate
-def test_a_tap_from_someone_else_approves_nothing(ctx, dashboard):
-    answered = responses.post(api("answerCallbackQuery"), json={"ok": True})
-    github_notify.answer(tap(user=666))
-    assert not dashboard.approved
-    assert sent_json(answered.calls[0])["text"] == "This isn't yours to approve."
-
-
-@responses.activate
-@pytest.mark.parametrize("data", ["approve:12345", "approve:", "deny:99", "approve:../x"])
-def test_a_tap_for_no_waiting_release_approves_nothing(ctx, dashboard, data):
-    answered = responses.post(api("answerCallbackQuery"), json={"ok": True})
-    github_notify.answer(tap(data))
-    assert not dashboard.approved
-    assert sent_json(answered.calls[0])["text"] == "This release isn't waiting."
-
-
-@responses.activate
-def test_a_tap_with_nothing_you_may_approve_keeps_the_button(ctx, dashboard):
-    dashboard.pending = [{"id": 2, "can_approve": False}]
-    answered = responses.post(api("answerCallbackQuery"), json={"ok": True})
-    edited = responses.post(api("editMessageText"), json={"ok": True})
-    github_notify.answer(tap())
-    assert sent_json(answered.calls[0])["text"] == "Nothing in this release is waiting for your approval."
-    assert not edited.calls

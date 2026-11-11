@@ -21,7 +21,6 @@ from .routes import (
     spotify_oauth,
     status,
     stop_search,
-    telegram_webhook,
 )
 from .services.pair_throttle import (
     MAX_REGISTRATION_LOCKOUT_SECONDS,
@@ -83,7 +82,6 @@ def create_app() -> Flask:
     app.register_blueprint(account.bp)
     app.register_blueprint(github_dashboard.bp)
     app.register_blueprint(github_webhook.bp)
-    app.register_blueprint(telegram_webhook.bp)
     app.register_blueprint(stop_search.bp)
     app.register_blueprint(place_search.bp)
     app.register_blueprint(frames.bp)

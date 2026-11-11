@@ -4,9 +4,8 @@ The page reads the change feed every few seconds while its tab is visible (servi
 means its user is already watching and their phone stays quiet. Only what needs attention is sent: a release
 finishing or waiting for approval, a PR's checks failing or changes being requested on it, and a PR merging.
 
-A release waiting for approval gets an Approve button when Telegram's webhook is set up (routes/telegram_webhook.py):
-a tap from the dashboard's chat approves every environment of that run its user may approve, through the dashboard's
-own GitHub client, so it can't do anything the dashboard's Approve button couldn't.
+A release waiting for approval gets a button that opens its run on GitHub, where Review deployments approves it: the
+approval happens in GitHub itself, so the broker holds no part of it.
 
 Calls to Telegram are best-effort: a failure is logged, never raised, so GitHub's and Telegram's deliveries succeed.
 """
@@ -18,7 +17,6 @@ import requests
 from flask import current_app
 
 from broker.clients import github
-from broker.services import github_app
 
 if TYPE_CHECKING:
     from redis import Redis
@@ -33,10 +31,6 @@ SEEN_S = 30
 # GitHub can deliver an event again, and a release waits for approval in one delivery per job.
 SENT = "v1:github:notified:{}"
 SENT_S = 24 * 60 * 60
-# Which repository a waiting run's Approve button is for, since a button's data is limited to 64 bytes. GitHub
-# gives up on a waiting deployment after 30 days.
-APPROVE = "v1:telegram:approve:{}"
-APPROVE_S = 30 * 24 * 60 * 60
 # Conclusions worth a message when a PR's checks finish.
 FAILED = {"failure", "timed_out", "action_required"}
 
@@ -47,8 +41,8 @@ class Message(NamedTuple):
     text: str
     # What makes another delivery a repeat of this one; "" for the delivery itself.
     repeat: str = ""
-    # The release run to offer an Approve button for: its repository and run ID.
-    approve: tuple[str, int] | None = None
+    # A waiting release run's page on GitHub, for a button that opens it.
+    review: str = ""
 
 
 def configured() -> bool:
@@ -106,8 +100,8 @@ def _release_waiting(repo: str, payload: dict) -> Message | None:
     if payload.get("action") != "waiting" or not github.is_release_name(job.get("workflow_name")):
         return None
     run_id = int(job["run_id"])
-    text = f"A release in {repo} is waiting for your approval\n{job['html_url']}"
-    return Message(text, f"waiting:{run_id}", (repo, run_id))
+    run = f"https://github.com/{repo}/actions/runs/{run_id}"
+    return Message(f"A release in {repo} is waiting for your approval\n{run}", f"waiting:{run_id}", run)
 
 
 MESSAGES = {
@@ -138,64 +132,9 @@ def notify(delivery: str, event: str, payload: dict) -> None:
         return
     config = current_app.config
     send = {"chat_id": config["TELEGRAM_CHAT_ID"], "text": found.text, "link_preview_options": {"is_disabled": True}}
-    # Without Telegram's webhook nothing would hear the tap.
-    if found.approve and config["TELEGRAM_WEBHOOK_SECRET"]:
-        repo, run_id = found.approve
-        redis.set(APPROVE.format(run_id), repo, ex=APPROVE_S)
-        send["reply_markup"] = {"inline_keyboard": [[{"text": "Approve", "callback_data": f"approve:{run_id}"}]]}
+    if found.review:
+        send["reply_markup"] = {"inline_keyboard": [[{"text": "Review in GitHub", "url": found.review}]]}
     _telegram("sendMessage", send)
-
-
-def answer(update: dict) -> None:
-    """Act on a tap of an Approve button, if it came from the dashboard's chat, and say how it went."""
-    query = update.get("callback_query")
-    if not isinstance(query, dict):
-        return
-    if str(query["from"]["id"]) != current_app.config["TELEGRAM_CHAT_ID"]:
-        _telegram("answerCallbackQuery", {"callback_query_id": query["id"], "text": "This isn't yours to approve."})
-        return
-    redis: Redis = current_app.extensions["redis"]
-    kind, _, run = str(query.get("data", "")).partition(":")
-    repo = redis.get(APPROVE.format(run)) if kind == "approve" and run.isdecimal() else None
-    if not isinstance(repo, str):
-        _telegram("answerCallbackQuery", {"callback_query_id": query["id"], "text": "This release isn't waiting."})
-        return
-    approved, result = _approve(repo, int(run))
-    _telegram("answerCallbackQuery", {"callback_query_id": query["id"], "text": result})
-    if approved:
-        redis.delete(APPROVE.format(run))
-        sent = query["message"]
-        # Editing the text without a keyboard removes the button.
-        _telegram(
-            "editMessageText",
-            {
-                "chat_id": sent["chat"]["id"],
-                "message_id": sent["message_id"],
-                "text": f"{sent['text']}\n\nApproved ✅",
-                "link_preview_options": {"is_disabled": True},
-            },
-        )
-
-
-def _approve(repo: str, run_id: int) -> tuple[bool, str]:
-    """Approve every environment of the run its user may approve, as the dashboard's user; say how it went."""
-    owner, _, name = repo.partition("/")
-    try:
-        api = github.Dashboard(
-            github_app.token(current_app.config["GITHUB_DASHBOARD_USER_ID"]), current_app.extensions["redis"]
-        )
-        repository = api.owned_repository(owner, name)
-        waiting = [item for item in api.pending_deployments(repository, run_id) if item["can_approve"]]
-        if not waiting:
-            return False, "Nothing in this release is waiting for your approval."
-        for item in waiting:
-            api.approve_deployment(repository, run_id, item["id"])
-    except github.DashboardError as error:
-        return False, error.public_message
-    except requests.RequestException:
-        logger.warning("GitHub didn't answer a Telegram approval")
-        return False, "GitHub didn't answer. Try the dashboard."
-    return True, "Approved"
 
 
 def _telegram(method: str, payload: dict) -> None:

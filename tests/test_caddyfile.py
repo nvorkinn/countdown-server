@@ -99,12 +99,10 @@ def test_only_the_signed_github_webhook_skips_the_login(app):
     ]
 
 
-def test_only_telegrams_webhook_skips_the_login(app):
-    """Telegram can't sign in either, so its webhook checks the secret token it sends."""
-    assert "/api/telegram/webhook" in _paths_without_login()
-    assert [rule.rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("telegram_webhook.")] == [
-        "/api/telegram/webhook"
-    ]
+def test_telegram_has_no_webhook(app):
+    """Approving happens on GitHub, so nothing from Telegram reaches the broker."""
+    assert "/api/telegram/webhook" not in _paths_without_login()
+    assert not any(rule.rule.startswith("/api/telegram") for rule in app.url_map.iter_rules())
 
 
 def test_frame_answers_close_the_connection():
