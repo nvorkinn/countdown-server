@@ -51,6 +51,15 @@ def test_schema_creates_expected_tables(app):
         tables = set(inspect(db.engine).get_table_names())
     assert {"devices", "pairing_codes", "device_config", "spotify_tokens", "glowmarkt_credentials"} <= tables
     assert "frames" not in tables  # the frames are the render pool's, in Redis (0023)
+    assert "github_app_tokens" not in tables  # the GitHub dashboard's sign-in, gone with it (0032)
+
+
+def test_downgrading_past_0032_brings_back_the_dashboards_empty_token_table(app):
+    with app.app_context():
+        downgrade(revision="0031")
+        assert "github_app_tokens" in inspect(db.engine).get_table_names()
+        upgrade()
+        assert "github_app_tokens" not in inspect(db.engine).get_table_names()
 
 
 def _downgrade(revision: str) -> None:

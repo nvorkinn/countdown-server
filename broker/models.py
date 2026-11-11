@@ -345,41 +345,6 @@ class ParcelKey(Model):
         self.key_encrypted = encrypt(plaintext)
 
 
-class GitHubAppToken(Model):
-    """The GitHub dashboard's sign-in through its GitHub App: tokens acting as the dashboard's user, encrypted at rest.
-
-    GitHub issues the access token for 8 hours and the refresh token for 6 months; services/github_app.py renews both
-    shortly before the access token expires. One row, for the one dashboard user.
-    """
-
-    __tablename__ = "github_app_tokens"
-
-    # The Pocket ID user id (auth.current_user) who connected.
-    user_id: Mapped[str] = mapped_column(String, primary_key=True)
-    access_token_encrypted: Mapped[str] = mapped_column(String)
-    refresh_token_encrypted: Mapped[str] = mapped_column(String)
-    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
-    refresh_expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
-
-    @property
-    def access_token(self) -> str:
-        """The access token, decrypted."""
-        return decrypt(self.access_token_encrypted)
-
-    @access_token.setter
-    def access_token(self, plaintext: str) -> None:
-        self.access_token_encrypted = encrypt(plaintext)
-
-    @property
-    def refresh_token(self) -> str:
-        """The refresh token, decrypted."""
-        return decrypt(self.refresh_token_encrypted)
-
-    @refresh_token.setter
-    def refresh_token(self, plaintext: str) -> None:
-        self.refresh_token_encrypted = encrypt(plaintext)
-
-
 class AppleMusicToken(Model):
     """The Apple Music account linked to a user's account: its Music User Token, encrypted at rest.
 
