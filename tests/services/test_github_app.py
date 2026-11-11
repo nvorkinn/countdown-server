@@ -3,7 +3,6 @@ import hmac
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
-import fakeredis
 import pytest
 import responses
 
@@ -30,7 +29,6 @@ def ctx(app):
     app.config.update(
         GITHUB_APP_CLIENT_ID="Iv1.client", GITHUB_APP_CLIENT_SECRET="shh", GITHUB_APP_WEBHOOK_SECRET="hook"
     )
-    app.extensions["redis"] = fakeredis.FakeRedis(decode_responses=True)
     with app.app_context():
         yield app
 
@@ -88,7 +86,7 @@ def test_a_token_about_to_expire_is_renewed_once_under_a_lock(ctx):
     assert parse_qs(_body(renewal.calls[0]))["refresh_token"] == ["ghr_old"]
     assert github_app.token("user-1") == "ghu_new"
     assert len(renewal.calls) == 1
-    assert not ctx.extensions["redis"].exists(github_app.RENEW_LOCK)
+    assert not github_app._renewing.locked()
 
 
 @responses.activate
@@ -112,11 +110,10 @@ def test_a_fresh_token_is_used_as_it_is(ctx):
     assert github_app.token("user-1") == "ghu_old"
 
 
-def test_waiting_on_another_workers_renewal_times_out(ctx, monkeypatch):
+def test_waiting_on_another_requests_renewal_times_out(ctx, monkeypatch):
     stored(timedelta(minutes=1))
-    ctx.extensions["redis"].set(github_app.RENEW_LOCK, "1")
     monkeypatch.setattr(github_app, "RENEW_WAIT_S", 0)
-    with pytest.raises(TimeoutError):
+    with github_app._renewing, pytest.raises(TimeoutError):
         github_app.token("user-1")
 
 

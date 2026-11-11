@@ -2,8 +2,8 @@
 
 The App acts as the signed-in user with user access tokens, so deploy approvals still come from a required reviewer;
 an installation token would act as the App, which no environment lists. GitHub expires the access token after 8 hours
-and the refresh token after 6 months, and a refresh token works once: renewing takes a Redis lock, so two workers
-never spend the same one.
+and the refresh token after 6 months, and a refresh token works once: renewing takes a lock, so two requests never
+spend the same one. The lock is the process's own, as only the broker's one gunicorn process renews (gunicorn.conf.py).
 
 The webhook doesn't call GitHub: changes_in says what a delivery changed, and services/github_changes hands that to
 the open dashboard, which re-reads only those items.
@@ -12,9 +12,8 @@ the open dashboard, which re-reads only those items.
 import hashlib
 import hmac
 import logging
-import time
+import threading
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 import requests
@@ -24,9 +23,6 @@ from broker.clients import github
 from broker.db import db
 from broker.models import GitHubAppToken
 
-if TYPE_CHECKING:
-    from redis import Redis
-
 logger = logging.getLogger(__name__)
 
 AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
@@ -34,10 +30,9 @@ TOKEN_URL = "https://github.com/login/oauth/access_token"  # noqa: S105 -- a URL
 TIMEOUT = 10
 # Renew this long before the access token expires, so no request starts with one about to lapse.
 RENEW_AHEAD = timedelta(minutes=5)
-RENEW_LOCK = "v1:github:app-token-renewal"
-RENEW_LOCK_S = 30
-# How long a worker waits for another's renewal before giving up on this request.
+# How long a request waits for another's renewal before giving up.
 RENEW_WAIT_S = 30
+_renewing = threading.Lock()
 
 
 class NotConnectedError(github.DashboardError):
@@ -71,15 +66,11 @@ def token(user_id: str) -> str:
         raise NotConnectedError
     if datetime.now(UTC) < row.expires_at - RENEW_AHEAD:
         return row.access_token
-    redis: Redis = current_app.extensions["redis"]
-    deadline = time.monotonic() + RENEW_WAIT_S
-    while not redis.set(RENEW_LOCK, "1", nx=True, ex=RENEW_LOCK_S):
-        if time.monotonic() > deadline:
-            msg = "Timed out waiting for another worker to renew the GitHub token."
-            raise TimeoutError(msg)
-        time.sleep(0.2)
+    if not _renewing.acquire(timeout=RENEW_WAIT_S):
+        msg = "Timed out waiting for another request to renew the GitHub token."
+        raise TimeoutError(msg)
     try:
-        # Another worker may have renewed it while this one waited.
+        # Another request may have renewed it while this one waited.
         db.session.expire_all()
         row = db.session.get(GitHubAppToken, user_id)
         if row is None:
@@ -96,7 +87,7 @@ def token(user_id: str) -> str:
             raise
         return _save(user_id, fresh).access_token
     finally:
-        redis.delete(RENEW_LOCK)
+        _renewing.release()
 
 
 def disconnect(user_id: str) -> None:

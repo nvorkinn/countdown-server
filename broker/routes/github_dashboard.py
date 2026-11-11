@@ -8,7 +8,6 @@ import secrets
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
-import redis
 import requests
 from flask import (
     Blueprint,
@@ -85,7 +84,7 @@ def dashboard_user_view(view: Callable[..., ResponseReturnValue]) -> View:
 
 def _dashboard(user_id: str) -> github.Dashboard:
     """Open the GitHub client as the user, through the GitHub App they've connected."""
-    return github.Dashboard(github_app.token(user_id), current_app.extensions["redis"])
+    return github.Dashboard(github_app.token(user_id), current_app.extensions["github_cache"])
 
 
 @bp.errorhandler(json.JSONDecodeError)
@@ -164,7 +163,7 @@ def events() -> ResponseReturnValue:
     back while the page is open. Each open connection holds one of gunicorn's threads (gunicorn.conf.py).
     """
     feed: ChangeFeed = current_app.extensions["github_changes"]
-    _mark_seen()
+    github_notify.mark_seen()
 
     def stream() -> Iterator[str]:
         # Listening starts in here, so a response that's never read leaves nothing behind.
@@ -172,18 +171,10 @@ def events() -> ResponseReturnValue:
             yield ": connected\n\n"  # sends the headers, so the page sees the connection open
             while True:
                 changed = listener.wait(EVENTS_PING_S)
-                _mark_seen()
+                github_notify.mark_seen()
                 yield f"data: {json.dumps(changed)}\n\n" if changed else ": ping\n\n"
 
     return Response(stream_with_context(stream()), mimetype="text/event-stream")
-
-
-def _mark_seen() -> None:
-    """Hold Telegram messages back while the page is open; without Redis they just aren't held back."""
-    try:
-        github_notify.mark_seen()
-    except redis.RedisError as error:
-        current_app.logger.warning("Couldn't note the GitHub dashboard as open: %s", error)
 
 
 @bp.get("/repositories")

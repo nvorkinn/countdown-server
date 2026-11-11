@@ -1,6 +1,5 @@
 import json
 
-import fakeredis
 import pytest
 import responses
 
@@ -30,7 +29,6 @@ MERGED = {"action": "closed", "repository": REPO, "pull_request": PULL | {"merge
 @pytest.fixture
 def ctx(app):
     app.config.update(TELEGRAM_BOT_TOKEN="123:bot", TELEGRAM_CHAT_ID="42")
-    app.extensions["redis"] = fakeredis.FakeRedis(decode_responses=True)
     with app.app_context():
         yield app
 
@@ -102,7 +100,7 @@ def test_nothing_is_sent_while_the_dashboard_is_open(ctx):
     github_notify.mark_seen()
     github_notify.notify("delivery-1", "pull_request", MERGED)
     assert not sent.calls
-    assert 0 < ctx.extensions["redis"].ttl(github_notify.SEEN) <= github_notify.SEEN_S
+    assert ctx.extensions["github_cache"].exists(github_notify.SEEN)
 
 
 @responses.activate

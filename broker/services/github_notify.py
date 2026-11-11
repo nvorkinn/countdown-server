@@ -20,7 +20,7 @@ from flask import current_app
 from broker.clients import github
 
 if TYPE_CHECKING:
-    from redis import Redis
+    from broker.services.memory_cache import MemoryCache
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +54,8 @@ def configured() -> bool:
 
 def mark_seen() -> None:
     """Note that the dashboard is open, which holds messages back for a little while."""
-    redis: Redis = current_app.extensions["redis"]
-    redis.set(SEEN, "1", ex=SEEN_S)
+    cache: MemoryCache = current_app.extensions["github_cache"]
+    cache.set(SEEN, "1", ex=SEEN_S)
 
 
 def message(event: str, payload: dict) -> Message | None:
@@ -125,11 +125,11 @@ def notify(delivery: str, event: str, payload: dict) -> None:
         return
     if found is None:
         return
-    redis: Redis = current_app.extensions["redis"]
-    if redis.exists(SEEN):
+    cache: MemoryCache = current_app.extensions["github_cache"]
+    if cache.exists(SEEN):
         return
     key = found.repeat or delivery
-    if key and not redis.set(SENT.format(key), "1", nx=True, ex=SENT_S):
+    if key and not cache.set(SENT.format(key), "1", nx=True, ex=SENT_S):
         return
     config = current_app.config
     send = {"chat_id": config["TELEGRAM_CHAT_ID"], "text": found.text, "link_preview_options": {"is_disabled": True}}
