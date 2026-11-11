@@ -1,9 +1,8 @@
 import hashlib
 import hmac
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-import fakeredis
 import pytest
 import redis
 
@@ -18,8 +17,19 @@ def app_setup(app):
         GITHUB_APP_CLIENT_SECRET="shh",
         GITHUB_APP_WEBHOOK_SECRET="hook",
     )
-    app.extensions["redis"] = fakeredis.FakeRedis(decode_responses=True)
+    app.extensions["redis"] = NoRedis()
     return app
+
+
+class NoRedis:
+    """A Redis that's down: the dashboard, its webhook and its Telegram messages must not need it."""
+
+    def __getattr__(self, name):
+        def down(*_args, **_kwargs):
+            msg = f"Redis is down ({name})"
+            raise redis.ConnectionError(msg)
+
+        return down
 
 
 def deliver(client, event, payload, secret="hook"):  # noqa: S107 -- the tests' webhook secret
@@ -70,13 +80,13 @@ def test_the_events_stream_pushes_each_change_from_when_it_opened(app_setup, ano
 
 def test_the_events_stream_holds_notifications_back_while_open(app_setup, client, monkeypatch):
     monkeypatch.setattr("broker.routes.github_dashboard.EVENTS_PING_S", 0.05)
-    redis = app_setup.extensions["redis"]
+    cache = app_setup.extensions["github_cache"]
     response, chunks = open_events(client)
-    assert redis.exists(github_notify.SEEN)
+    assert cache.exists(github_notify.SEEN)
     next(chunks)
-    redis.delete(github_notify.SEEN)
+    cache.delete(github_notify.SEEN)
     next(chunks)
-    assert redis.exists(github_notify.SEEN), "each ping marks the page seen again"
+    assert cache.exists(github_notify.SEEN), "each ping marks the page seen again"
     response.close()
 
 
@@ -87,17 +97,6 @@ def test_the_events_stream_stops_listening_once_closed(app_setup, client):
     assert feed.listening() == 1
     response.close()
     assert feed.listening() == 0
-
-
-def test_the_events_stream_carries_on_without_redis(app_setup, client, monkeypatch):
-    monkeypatch.setattr("broker.routes.github_dashboard.EVENTS_PING_S", 0.05)
-    monkeypatch.setattr(
-        "broker.routes.github_dashboard.github_notify.mark_seen", Mock(side_effect=redis.ConnectionError("down"))
-    )
-    response, chunks = open_events(client)
-    assert response.status_code == 200
-    assert [next(chunks), next(chunks)] == [b": connected\n\n", b": ping\n\n"]
-    response.close()
 
 
 def test_an_unsigned_or_wrongly_signed_delivery_is_refused(app_setup, anonymous_client):

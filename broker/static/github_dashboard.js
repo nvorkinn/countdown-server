@@ -1170,9 +1170,9 @@ async function tick() {
 // visibility handler does one on showing the tab, and a reconnect after a dropped connection does one once it opens.
 // An error closes it rather than leaving the browser's own retries to it: an expired sign-in answers with a redirect
 // to another site, which EventSource can't tell apart from a network fault, so repository discovery's fetch, which
-// can, goes first and reloads the page if so. Errors in a row back off, and after EVENTS_GIVE_UP of them the page says so and
-// carries on with the five-minute full reads. A connection only counts as working once it has lasted EVENTS_STEADY_MS,
-// so a broker that accepts and at once drops it (Redis down) still backs off.
+// can, goes first and reloads the page if so. Errors in a row back off, and after EVENTS_GIVE_UP of them the page says
+// so and carries on with the five-minute full reads. A connection only counts as working once it has lasted
+// EVENTS_STEADY_MS, so a broker that accepts and at once drops it still backs off.
 const EVENTS_GIVE_UP = 6;
 const EVENTS_STEADY_MS = 60000;
 let events = null;

@@ -26,6 +26,11 @@ if TYPE_CHECKING:
 
     from redis import Redis
 
+    from broker.services.memory_cache import MemoryCache
+
+    # The dashboard's ETag and answer cache: the broker's MemoryCache, or Redis for the developer provider.
+    type Cache = Redis | MemoryCache
+
 logger = logging.getLogger(__name__)
 
 API_URL = "https://api.github.com"
@@ -77,7 +82,7 @@ PROMOTE_WORKFLOW = ".github/workflows/promote.yml"
 RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
-def summary(token: str, cache: Redis | None = None) -> dict:
+def summary(token: str, cache: Cache | None = None) -> dict:
     """Return the owner's GitHub at a glance, the developer panel's `github`.
 
     Read through the dashboard's ETag `cache` when given, so the calls whose answer hasn't changed since the last poll
@@ -308,7 +313,7 @@ class DashboardError(ValueError):
 class Dashboard:
     """The personal dashboard's GitHub operations, all performed server-side as its signed-in user."""
 
-    def __init__(self, token: str, cache: Redis | None = None) -> None:
+    def __init__(self, token: str, cache: Cache | None = None) -> None:
         """Open a session for one dashboard request."""
         self.session = _session(token)
         self.cache = cache
