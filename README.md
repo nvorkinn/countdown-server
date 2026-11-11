@@ -302,7 +302,7 @@ Nothing is installed on the host but Docker.
 
 ### Secrets
 
-Every secret is a login item in Vaultwarden, named by its bare variable (`REDIS_PASSWORD`)
+Every secret is a login item in [Vaultwarden](https://vault.vorkinn.org), named by its bare variable (`REDIS_PASSWORD`)
 with the value as its password, in the collection `countdown-server/dev` or `countdown-server/prod`. The same name in the
 two collections is two items, one per environment; an item that several projects share is put in each one's collection. `secrets-map.json` says which item fills which variable of which `.env` file (`broker.env`,
 `caddy.env` (the log ingest token), `redis.env` and, where this repo runs the edge, `tinyauth.env` and `pocket-id.env`);
