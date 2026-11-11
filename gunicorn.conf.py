@@ -7,6 +7,14 @@ Logs go to stdout as JSON, whatever the command line says about --access-logfile
 # evaluates the hook's annotations, so a name only imported for type checkers makes the broker fail to start.
 from gunicorn.workers.base import Worker  # noqa: TC002
 
+# One process, so the broker's in-process state (Redis clients, the config resync thread) stays single, with threads so
+# a request never waits behind another: the GitHub dashboard's live updates (routes/github_dashboard.events) hold one
+# thread for as long as its page is open. A long request doesn't trip gthread's worker timeout, which only watches the
+# worker's own loop.
+worker_class = "gthread"
+workers = 1
+threads = 8
+
 logger_class = "broker.log_format.GunicornLogger"
 logconfig_dict = {
     "version": 1,

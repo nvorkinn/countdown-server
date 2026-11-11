@@ -308,7 +308,7 @@ def test_views_that_do_not_use_the_user_run_without_its_id(client, dashboard):
 
 def test_the_privacy_check_applies_to_views_with_and_without_the_user_id(client, dashboard):
     other = {"Remote-Sub": "someone-else"}
-    for path in ("/github/connect", "/github/changes", "/github/repositories", "/github/callback"):
+    for path in ("/github/connect", "/github/events", "/github/repositories", "/github/callback"):
         assert client.get(path, headers=other).status_code == 403
 
 

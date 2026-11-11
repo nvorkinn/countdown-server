@@ -1,10 +1,11 @@
 import hashlib
 import hmac
 import json
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import fakeredis
 import pytest
+import redis
 
 from broker.services import github_app, github_notify
 
@@ -17,7 +18,7 @@ def app_setup(app):
         GITHUB_APP_CLIENT_SECRET="shh",
         GITHUB_APP_WEBHOOK_SECRET="hook",
     )
-    app.extensions["redis"] = fakeredis.FakeRedis(decode_responses=True)
+    app.extensions["redis"] = app.extensions["redis_events"] = fakeredis.FakeRedis(decode_responses=True)
     return app
 
 
@@ -36,8 +37,8 @@ def test_a_signed_delivery_is_recorded_without_a_login(app_setup, anonymous_clie
         anonymous_client, "pull_request", {"repository": {"full_name": "alice/p"}, "pull_request": {"number": 4}}
     )
     assert response.status_code == 204
-    feed = client.get("/github/changes", query_string={"after": "0-0"}).json
-    assert feed["changes"] == [{"repo": "alice/p", "kind": "pull", "id": "4"}]
+    with app_setup.app_context():
+        assert github_app.wait_for_changes("0-0", 0.05)[1] == [{"repo": "alice/p", "kind": "pull", "id": "4"}]
 
 
 def test_a_signed_delivery_is_passed_on_for_a_notification(app_setup, anonymous_client):
@@ -47,9 +48,53 @@ def test_a_signed_delivery_is_passed_on_for_a_notification(app_setup, anonymous_
     notify.assert_called_once_with("", "pull_request", payload)
 
 
-def test_reading_the_feed_holds_notifications_back(app_setup, client):
-    client.get("/github/changes")
-    assert app_setup.extensions["redis"].exists(github_notify.SEEN)
+def open_events(client):
+    """Open the events stream and return its chunks, read one at a time, and the response to close."""
+    response = client.get("/github/events", buffered=False)
+    return response, iter(response.response)
+
+
+def test_the_events_stream_pushes_each_change_from_when_it_opened(app_setup, anonymous_client, client, monkeypatch):
+    monkeypatch.setattr("broker.routes.github_dashboard.EVENTS_PING_S", 0.05)
+    deliver(anonymous_client, "pull_request", {"repository": {"full_name": "alice/p"}, "pull_request": {"number": 1}})
+    response, chunks = open_events(client)
+    assert response.status_code == 200
+    assert response.mimetype == "text/event-stream"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert next(chunks) == b": connected\n\n"
+    assert next(chunks) == b": ping\n\n", "a change from before it opened isn't sent"
+    deliver(anonymous_client, "pull_request", {"repository": {"full_name": "alice/p"}, "pull_request": {"number": 4}})
+    assert json.loads(next(chunks).removeprefix(b"data: ")) == [{"repo": "alice/p", "kind": "pull", "id": "4"}]
+    response.close()
+
+
+def test_the_events_stream_holds_notifications_back_while_open(app_setup, client, monkeypatch):
+    monkeypatch.setattr("broker.routes.github_dashboard.EVENTS_PING_S", 0.05)
+    redis = app_setup.extensions["redis"]
+    response, chunks = open_events(client)
+    assert redis.exists(github_notify.SEEN)
+    next(chunks)
+    redis.delete(github_notify.SEEN)
+    next(chunks)
+    assert redis.exists(github_notify.SEEN), "each ping marks the page seen again"
+    response.close()
+
+
+def test_the_events_stream_ends_when_redis_fails(app_setup, client, monkeypatch):
+    response, chunks = open_events(client)
+    next(chunks)
+    monkeypatch.setattr(
+        "broker.routes.github_dashboard.github_app.wait_for_changes", Mock(side_effect=redis.ConnectionError("down"))
+    )
+    assert list(chunks) == []
+    response.close()
+
+
+def test_the_events_stream_is_unavailable_without_redis(app_setup, client, monkeypatch):
+    monkeypatch.setattr(
+        "broker.routes.github_dashboard.github_app.latest_change", Mock(side_effect=redis.ConnectionError("down"))
+    )
+    assert client.get("/github/events").status_code == 503
 
 
 def test_an_unsigned_or_wrongly_signed_delivery_is_refused(app_setup, anonymous_client):
@@ -69,11 +114,6 @@ def test_a_signed_delivery_of_an_unexpected_shape_is_refused(app_setup, anonymou
 def test_the_webhook_is_off_without_its_secret(app_setup, anonymous_client):
     app_setup.config["GITHUB_APP_WEBHOOK_SECRET"] = ""
     assert deliver(anonymous_client, "push", {}, secret="").status_code == 404
-
-
-def test_the_changes_feed_checks_its_marker(app_setup, client):
-    assert client.get("/github/changes").json == {"last": "0-0", "changes": [], "reset": False}
-    assert client.get("/github/changes", query_string={"after": "nope"}).status_code == 400
 
 
 def test_the_page_offers_to_connect_and_says_webhooks_are_on(app_setup, client):

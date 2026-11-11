@@ -168,13 +168,16 @@ GITHUB_APP_WEBHOOK_SECRET=<the webhook secret>
 
 The page shows **Connect GitHub** until you've signed in, and GitHub's tokens never reach the browser. The webhook is
 the one dashboard path outside the login (GitHub can't sign in), so its signature is its only check. It
-doesn't call GitHub: it notes what changed in Redis (`v1:github:changes`), the page asks for those changes every 5
-seconds and re-reads only them, and reads everything every 5 minutes in case a delivery was lost. Without
+doesn't call GitHub: it notes what changed in Redis (`v1:github:changes`), and the page, while its tab is visible,
+keeps a Server-Sent Events connection open (`/github/events`) that pushes those changes as they land. The page re-reads
+only what changed, reads everything whenever it (re)connects, and every 5 minutes in case a delivery was lost. Each
+open page holds one of gunicorn's threads (one process, 8 threads, `gunicorn.conf.py`). Without
 `GITHUB_APP_WEBHOOK_SECRET` the page reads everything every minute instead.
 
 **Telegram messages** come from the webhook while the page is closed: a release finishing or waiting for approval, a
-PR's checks failing, changes requested on a PR, and a PR merging. The page's change-feed reads only happen while its
-tab is visible, so each one holds messages back for 30 seconds. Turn them on with a bot from @BotFather and your chat
+PR's checks failing, changes requested on a PR, and a PR merging. The page's live connection is only open while its
+tab is visible, and it holds messages back for as long as it is (it marks the page seen every 20 seconds, which lasts
+30). Turn them on with a bot from @BotFather and your chat
 with it, in the same `broker.env`:
 
 ```dotenv

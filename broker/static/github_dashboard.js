@@ -22,10 +22,10 @@ const FAILED_CHECKS = new Set([
 const RERUNNABLE = new Set(["failure", "timed_out", "cancelled"]);
 let discovering = false;
 let pausedUntil = 0;
-// With the GitHub App's webhook, the broker notes what changed and the page asks it every few seconds, re-reading only
-// those items; a full read every five minutes covers a lost delivery. Without it, projects are read in full once a
-// minute, and their running releases and busy PRs join a quick-poll pool, read one by one every few seconds until
-// they finish or stop changing; a full read that finds them changed brings them back. Repository discovery follows the
+// With the GitHub App's webhook, the broker pushes what changed over Server-Sent Events while the tab is visible, and
+// the page re-reads only those items; a full read every five minutes covers a lost delivery. Without it, projects are
+// read in full once a minute, and their running releases and busy PRs join a quick-poll pool, read one by one every
+// few seconds until they finish or stop changing; a full read that finds them changed brings them back. Repository discovery follows the
 // same pace: the webhook's installation events ask for it at once, so it otherwise only catches what they miss.
 const WEBHOOKS = document.querySelector('meta[name="github-webhooks"]')?.content === "on";
 const FULL_POLL_MS = WEBHOOKS ? 300000 : 60000;
@@ -1162,38 +1162,70 @@ async function tick() {
               )
               .sort((a, b) => a.entry.next - b.entry.next)
               .slice(0, Math.max(0, QUICK_IN_FLIGHT - quickInFlight));
-    await Promise.all([
-        ...due.map(refreshProject),
-        ...quick.map(({ project, entry }) => quickPoll(project, entry)),
-        followChanges(),
-    ]);
+    await Promise.all([...due.map(refreshProject), ...quick.map(({ project, entry }) => quickPoll(project, entry))]);
 }
 
-let changesAfter = null;
-let changesAt = 0;
-let readingChanges = false;
+// The broker's live connection, open only while the tab is visible (a hidden tab has no use for it, and each one holds
+// a server thread). It starts at the moment it opens, so whatever changed before then comes from a full read: the
+// visibility handler does one on showing the tab, and a reconnect after a dropped connection does one once it opens.
+// An error closes it rather than leaving the browser's own retries to it: an expired sign-in answers with a redirect
+// to another site, which EventSource can't tell apart from a network fault, so repository discovery's fetch, which
+// can, goes first and reloads the page if so. Errors in a row back off, and after EVENTS_GIVE_UP of them the page says so and
+// carries on with the five-minute full reads. A connection only counts as working once it has lasted EVENTS_STEADY_MS,
+// so a broker that accepts and at once drops it (Redis down) still backs off.
+const EVENTS_GIVE_UP = 6;
+const EVENTS_STEADY_MS = 60000;
+let events = null;
+let eventsFailures = 0;
+let eventsOpenedAt = 0;
+// Whether the next connection to open is a reconnect, which reads everything once it's open.
+let eventsResync = false;
+let eventsRetry = null;
 
-// Asks the broker what the webhook saw change; the first answer only marks where to start.
-async function followChanges() {
-    if (!WEBHOOKS || readingChanges || Date.now() < changesAt) return;
-    readingChanges = true;
-    try {
-        const query = changesAfter === null ? "" : `?after=${encodeURIComponent(changesAfter)}`;
-        const feed = await api(`/github/changes${query}`);
-        const first = changesAfter === null;
-        changesAfter = feed.last;
-        if (feed.reset) {
+function openEvents() {
+    if (!WEBHOOKS || events || eventsRetry || signedOut || document.hidden || eventsFailures >= EVENTS_GIVE_UP) return;
+    const source = new EventSource("/github/events");
+    events = source;
+    source.addEventListener("open", () => {
+        eventsOpenedAt = Date.now();
+        if (eventsResync) {
+            eventsResync = false;
             requestRefresh("all");
-            discover();
-        } else if (!first) {
-            applyChanges(feed.changes);
         }
-    } catch {
-        // The five-minute full reads carry on; the next tick asks again.
-    } finally {
-        readingChanges = false;
-        changesAt = Date.now() + QUICK_POLL_MS;
-    }
+    });
+    source.addEventListener("message", event => {
+        try {
+            applyChanges(JSON.parse(event.data));
+        } catch {
+            // An unreadable message changes nothing; the full reads carry on.
+        }
+    });
+    source.addEventListener("error", () => {
+        closeEvents();
+        if (document.hidden) return;
+        if (eventsOpenedAt && Date.now() - eventsOpenedAt >= EVENTS_STEADY_MS) eventsFailures = 0;
+        eventsOpenedAt = 0;
+        eventsFailures += 1;
+        if (eventsFailures >= EVENTS_GIVE_UP) {
+            errorBanner.textContent = "Live updates stopped. Reload the dashboard to start them again.";
+            errorBanner.hidden = false;
+            return;
+        }
+        const wait = Math.min(30000, 1000 * 2 ** (eventsFailures - 1));
+        eventsRetry = setTimeout(async () => {
+            eventsRetry = null;
+            if (document.hidden) return;
+            // Repository discovery is also the sign-in check: an expired one reloads the page instead.
+            await discover();
+            eventsResync = true;
+            if (!signedOut) openEvents();
+        }, wait);
+    });
+}
+
+function closeEvents() {
+    events?.close();
+    events = null;
 }
 
 // Re-reads each changed PR or release run once, or the section when it's new to the page. A commit is the
@@ -1262,10 +1294,14 @@ document.getElementById("refresh-workflows").addEventListener("click", () => {
     return tick();
 });
 document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-        requestRefresh("all");
-        discover().then(tick);
+    if (document.hidden) {
+        closeEvents();
+        return;
     }
+    // Opened first, so nothing that changes during the full read is missed.
+    openEvents();
+    requestRefresh("all");
+    discover().then(tick);
 });
 // The project picker closes on a click anywhere else, like a select would.
 document.addEventListener("click", event => {
@@ -1273,6 +1309,7 @@ document.addEventListener("click", event => {
     if (picker.open && !picker.contains(event.target)) picker.open = false;
 });
 window.addEventListener("resize", fitGraphs);
+openEvents();
 discover().then(tick);
 setInterval(tick, 1000);
 setInterval(discover, DISCOVER_POLL_MS);

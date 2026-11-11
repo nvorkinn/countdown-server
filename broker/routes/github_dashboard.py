@@ -8,15 +8,26 @@ import secrets
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
+import redis
 import requests
-from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, session
+from flask import (
+    Blueprint,
+    Response,
+    current_app,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    stream_with_context,
+)
 
 from broker.auth import View, require_user_id
 from broker.clients import github
 from broker.services import github_app, github_notify
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from flask.typing import ResponseReturnValue
 
@@ -24,7 +35,9 @@ bp = Blueprint("github_dashboard", __name__, url_prefix="/github")
 REPO_PART = re.compile(r"^[A-Za-z0-9_.-]+$")
 # What a project read may ask for: both halves, or just the one a section's Refresh button needs.
 SECTIONS = {"all", "pulls", "workflows"}
-STREAM_ID = re.compile(r"^\d{1,20}-\d{1,20}$")
+# How often the events stream sends a comment line when nothing changed: well inside the 30 seconds the page's
+# visit holds Telegram messages back for (github_notify.SEEN_S) and any proxy's idle timeout.
+EVENTS_PING_S = 20
 
 
 def _serve(view: Callable[..., ResponseReturnValue], user_id: str, kwargs: dict[str, str]) -> ResponseReturnValue:
@@ -137,18 +150,36 @@ def callback(user_id: str) -> ResponseReturnValue:
     return redirect("/github")
 
 
-@bp.get("/changes")
+@bp.get("/events")
 @dashboard_view
-def changes() -> ResponseReturnValue:
-    """Return what the webhook saw change since the feed entry `after`, read from Redis without calling GitHub.
+def events() -> ResponseReturnValue:
+    """Push what the webhook sees change as Server-Sent Events, each a JSON list of changes, without calling GitHub.
 
-    The page only reads the feed while its tab is visible, so each read also holds Telegram messages back.
+    The page holds this open only while its tab is visible and reads everything each time it connects, so the stream
+    starts from now. A comment line every EVENTS_PING_S keeps the connection from looking idle, finds a closed tab,
+    and holds Telegram messages back while the page is open. It runs until the page closes it or Redis fails; the page
+    then reconnects. Each open connection holds one of gunicorn's threads (gunicorn.conf.py).
     """
-    github_notify.mark_seen()
-    after = request.args.get("after")
-    if after is not None and not STREAM_ID.fullmatch(after):
-        return jsonify(error="Invalid change ID."), 400
-    return jsonify(github_app.changes_after(after))
+    try:
+        github_notify.mark_seen()
+        after = github_app.latest_change()
+    except redis.RedisError as error:
+        current_app.logger.warning("GitHub dashboard events unavailable: %s", error)
+        return jsonify(error="Live updates are unavailable."), 503
+
+    def stream() -> Iterator[str]:
+        nonlocal after
+        yield ": connected\n\n"  # sends the headers, so the page sees the connection open
+        while True:
+            try:
+                after, changed = github_app.wait_for_changes(after, EVENTS_PING_S)
+                github_notify.mark_seen()
+            except redis.RedisError as error:
+                current_app.logger.warning("GitHub dashboard events stopped: %s", error)
+                return
+            yield f"data: {json.dumps(changed)}\n\n" if changed else ": ping\n\n"
+
+    return Response(stream_with_context(stream()), mimetype="text/event-stream")
 
 
 @bp.get("/repositories")

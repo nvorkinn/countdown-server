@@ -30,7 +30,7 @@ def ctx(app):
     app.config.update(
         GITHUB_APP_CLIENT_ID="Iv1.client", GITHUB_APP_CLIENT_SECRET="shh", GITHUB_APP_WEBHOOK_SECRET="hook"
     )
-    app.extensions["redis"] = fakeredis.FakeRedis(decode_responses=True)
+    app.extensions["redis"] = app.extensions["redis_events"] = fakeredis.FakeRedis(decode_responses=True)
     with app.app_context():
         yield app
 
@@ -176,34 +176,22 @@ def test_repository_changes_ask_for_the_repositories_again():
     assert github_app.changes_in("repository", payload) == [{"kind": "repositories"}]
 
 
-def test_the_feed_starts_at_its_newest_entry_and_returns_what_follows(ctx):
+def test_a_new_connection_starts_at_the_newest_entry_and_gets_what_follows(ctx):
+    assert github_app.latest_change() == "0-0"
     github_app.record([{"repo": "alice/project", "kind": "repo"}])
-    start = github_app.changes_after(None)
-    assert start["changes"] == []
+    start = github_app.latest_change()
+    assert start != "0-0"
+    github_app.record([{"repo": "alice/project", "kind": "pull", "id": "4"}, {"repo": "alice/project", "kind": "run"}])
+    after, changes = github_app.wait_for_changes(start, 0.05)
+    assert changes == [{"repo": "alice/project", "kind": "pull", "id": "4"}, {"repo": "alice/project", "kind": "run"}]
+    assert after == github_app.latest_change()
+    assert github_app.wait_for_changes(after, 0.05) == (after, [])
+
+
+def test_an_emptied_stream_is_followed_again_once_it_has_new_entries(ctx):
+    github_app.record([{"repo": "alice/project", "kind": "repo"}])
+    start = github_app.latest_change()
+    ctx.extensions["redis"].delete(github_app.CHANGES)
+    assert github_app.wait_for_changes(start, 0.05) == (start, [])
     github_app.record([{"repo": "alice/project", "kind": "pull", "id": "4"}])
-    feed = github_app.changes_after(start["last"])
-    assert feed["changes"] == [{"repo": "alice/project", "kind": "pull", "id": "4"}]
-    assert feed["reset"] is False
-    assert github_app.changes_after(feed["last"])["changes"] == []
-
-
-def test_an_empty_feed_starts_at_zero(ctx):
-    assert github_app.changes_after(None) == {"last": "0-0", "changes": [], "reset": False}
-    github_app.record([{"repo": "alice/project", "kind": "repo"}])
-    assert len(github_app.changes_after("0-0")["changes"]) == 1
-
-
-def test_a_reader_behind_the_trimmed_feed_or_ahead_of_an_emptied_one_reads_everything(ctx):
-    redis = ctx.extensions["redis"]
-    github_app.record([{"repo": "alice/project", "kind": "repo"}])
-    first = github_app.changes_after(None)["last"]
-    github_app.record([{"repo": "alice/project", "kind": "repo"}] * 3)
-    redis.xtrim(github_app.CHANGES, maxlen=2, approximate=False)
-    assert github_app.changes_after(first) == {
-        "last": redis.xrevrange(github_app.CHANGES)[0][0],
-        "changes": [],
-        "reset": True,
-    }
-    later = github_app.changes_after(None)["last"]
-    redis.delete(github_app.CHANGES)
-    assert github_app.changes_after(later)["reset"] is True
+    assert github_app.wait_for_changes(start, 0.05)[1] == [{"repo": "alice/project", "kind": "pull", "id": "4"}]

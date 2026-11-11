@@ -5,8 +5,9 @@ an installation token would act as the App, which no environment lists. GitHub e
 and the refresh token after 6 months, and a refresh token works once: renewing takes a Redis lock, so two workers
 never spend the same one.
 
-The webhook doesn't call GitHub: it appends what changed to a Redis stream, which the dashboard reads every few
-seconds and answers by re-reading only those items.
+The webhook doesn't call GitHub: it appends what changed to a Redis stream. The open dashboard follows the stream
+through a Server-Sent Events connection (routes/github_dashboard.events) and re-reads only the items named; it reads
+everything whenever it (re)connects, so a change missed while it was away is never needed again.
 """
 
 import hashlib
@@ -39,7 +40,7 @@ RENEW_LOCK_S = 30
 # How long a worker waits for another's renewal before giving up on this request.
 RENEW_WAIT_S = 30
 CHANGES = "v1:github:changes"
-# Enough for a few minutes of a busy CI run; a dashboard further behind is told to read everything.
+# Only the open connection reads the stream, from the moment it opened, so a short tail is plenty.
 CHANGES_KEPT = 2000
 # A read of the feed: each entry's ID and fields.
 type StreamEntries = list[tuple[str, dict[str, str]]]
@@ -185,25 +186,24 @@ def record(changes: list[dict[str, str]]) -> None:
         redis.xadd(CHANGES, {**change}, maxlen=CHANGES_KEPT, approximate=True)
 
 
-def changes_after(after: str | None) -> dict:
-    """Return changes since the feed entry `after`, the newest entry's ID, and whether some were lost."""
+def latest_change() -> str:
+    """Return the stream's newest entry ID, where a new connection starts following it ("0-0" when it's empty)."""
     redis: Redis = current_app.extensions["redis"]
     # The app's client decodes responses, so str; redis-py types them as either, or as None.
     newest = cast("StreamEntries", redis.xrevrange(CHANGES, count=1))
-    last = newest[0][0] if newest else "0-0"
-    if after is None:
-        return {"last": last, "changes": [], "reset": False}
-    oldest = cast("StreamEntries", redis.xrange(CHANGES, count=1))
-    # Trimmed past `after`, or emptied (a Redis restart) so that `after` is ahead of everything.
-    reset = (bool(oldest) and _stream_id(oldest[0][0]) > _stream_id(after) and after != "0-0") or (
-        _stream_id(after) > _stream_id(last)
-    )
-    entries = (
-        cast("StreamEntries", redis.xrange(CHANGES, min=f"({after}", max="+", count=CHANGES_KEPT)) if not reset else []
-    )
-    return {"last": last, "changes": [fields for _, fields in entries], "reset": reset}
+    return newest[0][0] if newest else "0-0"
 
 
-def _stream_id(value: str) -> tuple[int, int]:
-    millis, _, sequence = value.partition("-")
-    return int(millis), int(sequence or 0)
+def wait_for_changes(after: str, block_s: float) -> tuple[str, list[dict[str, str]]]:
+    """Wait up to `block_s` for entries after `after`; return the ID to follow on from and the changes, maybe none.
+
+    This blocks on Redis, so it uses the client kept for that, whose socket timeout outlasts the wait. A stream emptied
+    by a Redis restart starts again with IDs from the clock, past `after`, so nothing is skipped for long.
+    """
+    redis: Redis = current_app.extensions["redis_events"]
+    reply = cast(
+        "list[tuple[str, StreamEntries]]",
+        redis.xread({CHANGES: after}, count=CHANGES_KEPT, block=max(1, int(block_s * 1000))),
+    )
+    entries = reply[0][1] if reply else []
+    return (entries[-1][0] if entries else after), [fields for _, fields in entries]
