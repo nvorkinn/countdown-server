@@ -130,6 +130,27 @@ async function harness(initial = active, repositories = [repo], storage = null, 
         ].map(id => [id, new Element("div")]),
     );
     const intervals = [];
+    const timeouts = [];
+    const sources = [];
+    const documentListeners = {};
+    // Just enough of EventSource: the page's handlers, and whether it closed the connection.
+    class EventSource {
+        constructor(url) {
+            this.url = url;
+            this.listeners = {};
+            this.closed = false;
+            sources.push(this);
+        }
+        addEventListener(name, callback) {
+            this.listeners[name] = callback;
+        }
+        close() {
+            this.closed = true;
+        }
+        emit(name, data) {
+            this.listeners[name]?.(data === undefined ? {} : { data: JSON.stringify(data) });
+        }
+    }
     const document = {
         hidden: false,
         querySelector: selector => ({
@@ -139,10 +160,14 @@ async function harness(initial = active, repositories = [repo], storage = null, 
         createElement: tag => new Element(tag),
         createElementNS: (namespace, tag) => Object.assign(new Element(tag), { namespaceURI: namespace }),
         createTextNode: text => ({ textContent: text }),
-        addEventListener: () => {},
+        addEventListener: (name, callback) => {
+            documentListeners[name] = callback;
+        },
     };
     const context = vm.createContext({
         document,
+        EventSource,
+        setTimeout: (callback, delay) => timeouts.push({ callback, delay }),
         URL,
         location,
         localStorage: storage,
@@ -199,6 +224,16 @@ async function harness(initial = active, repositories = [repo], storage = null, 
         document,
         intervals,
         location,
+        sources,
+        timeouts,
+        // Runs the timers set so far, as if their delays had passed.
+        runTimeouts: async () => {
+            for (const timer of timeouts.splice(0)) await timer.callback();
+        },
+        setHidden: hidden => {
+            document.hidden = hidden;
+            documentListeners.visibilitychange?.();
+        },
         setRedirect: value => {
             redirect = value;
         },
@@ -1088,42 +1123,31 @@ test("skipped jobs count as one card against the size limit", async () => {
     assert.equal(toggle(app).textContent, "Collapse matrix jobs");
 });
 
-test("with the webhook, the page re-reads only what changed and reads everything every five minutes", async () => {
-    let feed = { last: "1-0", changes: [], reset: false };
+test("with the webhook, the page re-reads only what the broker pushes and reads everything every five minutes", async () => {
     const pull = { ...active.pulls[0], sha: "a1" };
     const release = { ...waitingRelease, id: 9 };
-    const app = await harness(
-        url =>
-            url.startsWith("/github/changes") ? feed : { ...idle, active: true, pulls: [pull], workflows: [release] },
-        [repo],
-        null,
-        { webhooks: true },
-    );
-    const feedCalls = () => app.calls.filter(call => call.url.startsWith("/github/changes"));
+    const app = await harness({ ...idle, active: true, pulls: [pull], workflows: [release] }, [repo], null, {
+        webhooks: true,
+    });
+    assert.equal(app.sources.length, 1);
+    const events = app.sources[0];
+    assert.equal(events.url, "/github/events");
+    assert.ok(!app.calls.some(call => call.url.startsWith("/github/changes")), "nothing polls for changes");
     await app.tick();
-    assert.equal(feedCalls()[0].url, "/github/changes", "the first read only marks where to start");
-    feed = {
-        last: "2-0",
-        reset: false,
-        changes: [
-            { repo: "alice/project", kind: "pull", id: "4" },
-            { repo: "alice/project", kind: "pull", id: "4" },
-            { repo: "alice/project", kind: "run", id: "9" },
-            { repo: "alice/project", kind: "commit", id: "a1" },
-            { repo: "someone/else", kind: "repo" },
-        ],
-    };
-    app.advance(5000);
+    events.emit("open");
     const before = fullCalls(app).length;
-    await app.tick();
+    events.emit("message", [
+        { repo: "alice/project", kind: "pull", id: "4" },
+        { repo: "alice/project", kind: "pull", id: "4" },
+        { repo: "alice/project", kind: "run", id: "9" },
+        { repo: "alice/project", kind: "commit", id: "a1" },
+        { repo: "someone/else", kind: "repo" },
+    ]);
     await new Promise(setImmediate);
-    assert.equal(feedCalls().at(-1).url, "/github/changes?after=1-0");
     assert.equal(quickCalls(app, "pulls/4").length, 2, "one read per changed item, a commit reading the PR it heads");
     assert.equal(quickCalls(app, "runs/9").length, 1);
-    assert.equal(fullCalls(app).length, before);
-    feed = { last: "3-0", reset: false, changes: [{ repo: "alice/project", kind: "pull", id: "8" }] };
-    app.advance(5000);
-    await app.tick();
+    assert.equal(fullCalls(app).length, before, "opening the first connection reads nothing more");
+    events.emit("message", [{ repo: "alice/project", kind: "pull", id: "8" }]);
     await app.tick();
     assert.equal(
         fullCalls(app).at(-1).url,
@@ -1132,9 +1156,7 @@ test("with the webhook, the page re-reads only what changed and reads everything
     );
     app.advance(60000);
     const known = fullCalls(app).length;
-    feed = { last: "4-0", reset: false, changes: [{ repo: "alice/project", kind: "commit", id: "b2" }] };
-    app.advance(5000);
-    await app.tick();
+    events.emit("message", [{ repo: "alice/project", kind: "commit", id: "b2" }]);
     await app.tick();
     assert.equal(fullCalls(app).length, known + 1);
     assert.equal(
@@ -1144,7 +1166,6 @@ test("with the webhook, the page re-reads only what changed and reads everything
     );
     app.advance(60000);
     const settled = fullCalls(app).length;
-    feed = { last: "4-0", reset: false, changes: [] };
     await steps(app, 10);
     assert.equal(fullCalls(app).length, settled, "no full read until five minutes have passed");
     assert.equal(quickCalls(app, "pulls/4").length, 2, "nothing is quick-polled");
@@ -1153,34 +1174,94 @@ test("with the webhook, the page re-reads only what changed and reads everything
     assert.equal(fullCalls(app).length, settled + 1);
 });
 
-test("a feed that lost changes reads everything again", async () => {
-    let feed = { last: "5-0", changes: [], reset: false };
-    const app = await harness(url => (url.startsWith("/github/changes") ? feed : idle), [repo], null, {
-        webhooks: true,
-    });
+test("without the webhook, the page opens no live connection", async () => {
+    const app = await harness(idle);
+    assert.equal(app.sources.length, 0);
+    app.setHidden(true);
+    app.setHidden(false);
+    assert.equal(app.sources.length, 0);
+});
+
+test("a hidden tab closes the live connection, and showing it reopens one and reads everything", async () => {
+    const app = await harness(idle, [repo], null, { webhooks: true });
     await app.tick();
+    app.sources[0].emit("open");
+    app.setHidden(true);
+    assert.equal(app.sources[0].closed, true);
     const before = fullCalls(app).length;
-    feed = { last: "1-0", changes: [], reset: true };
-    app.advance(5000);
-    await app.tick();
+    app.setHidden(false);
+    assert.equal(app.sources.length, 2);
+    assert.equal(app.sources[1].closed, false);
+    await new Promise(setImmediate);
     await app.tick();
     assert.equal(fullCalls(app).length, before + 1);
+});
+
+test("a dropped connection checks the sign-in, reconnects after a pause and reads everything once open", async () => {
+    const app = await harness(idle, [repo], null, { webhooks: true });
+    await app.tick();
+    const discoveries = () => app.calls.filter(call => call.url === "/github/repositories").length;
+    const before = { full: fullCalls(app).length, discoveries: discoveries() };
+    app.sources[0].emit("error");
+    assert.equal(app.sources[0].closed, true, "the page reconnects itself, not the browser");
+    assert.equal(app.timeouts[0].delay, 1000);
+    await app.runTimeouts();
+    assert.equal(discoveries(), before.discoveries + 1);
+    assert.equal(app.sources.length, 2);
+    await app.tick();
+    assert.equal(fullCalls(app).length, before.full, "nothing is read until the connection opens");
+    app.sources[1].emit("open");
+    await app.tick();
+    assert.equal(fullCalls(app).length, before.full + 1);
+});
+
+test("an expired sign-in found on reconnecting reloads the page instead", async () => {
+    const app = await harness(idle, [repo], null, { webhooks: true });
+    app.setRedirect(true);
+    app.sources[0].emit("error");
+    await app.runTimeouts();
+    assert.equal(app.location.reloads, 1);
+    assert.equal(app.sources.length, 1, "no new connection");
+});
+
+test("errors in a row back off, and the page gives up on live updates after six", async () => {
+    const app = await harness(idle, [repo], null, { webhooks: true });
+    const delays = [];
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+        // Each connection opens and drops at once, as one would with the broker's Redis down.
+        app.sources.at(-1).emit("open");
+        app.sources.at(-1).emit("error");
+        delays.push(...app.timeouts.map(timer => timer.delay));
+        await app.runTimeouts();
+    }
+    assert.deepEqual(delays, [1000, 2000, 4000, 8000, 16000]);
+    assert.equal(app.sources.length, 6);
+    assert.match(app.ids.get("error").textContent, /Live updates stopped/);
+    app.setHidden(true);
+    app.setHidden(false);
+    assert.equal(app.sources.length, 6, "showing the tab doesn't start them again");
+});
+
+test("a connection that lasted a while starts its backoff afresh", async () => {
+    const app = await harness(idle, [repo], null, { webhooks: true });
+    app.sources[0].emit("open");
+    app.sources[0].emit("error");
+    await app.runTimeouts();
+    app.sources[1].emit("open");
+    app.advance(60000);
+    app.sources[1].emit("error");
+    assert.equal(app.timeouts[0].delay, 1000);
 });
 
 test("repositories are discovered every minute, or every five with the webhook, whose installation events ask at once", async () => {
     const discoveryTimer = app => app.intervals.find(timer => timer.callback === app.evaluate("discover"));
     assert.equal(discoveryTimer(await harness(idle)).interval, 60000);
-    let feed = { last: "1-0", changes: [], reset: false };
-    const app = await harness(url => (url.startsWith("/github/changes") ? feed : idle), [repo], null, {
-        webhooks: true,
-    });
+    const app = await harness(idle, [repo], null, { webhooks: true });
     assert.equal(discoveryTimer(app).interval, 300000);
     const discoveries = () => app.calls.filter(call => call.url === "/github/repositories").length;
     await app.tick();
     const before = discoveries();
-    feed = { last: "2-0", changes: [{ kind: "repositories" }], reset: false };
-    app.advance(5000);
-    await app.tick();
+    app.sources[0].emit("message", [{ kind: "repositories" }]);
     await new Promise(setImmediate);
     assert.equal(discoveries(), before + 1);
 });

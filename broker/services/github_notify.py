@@ -1,7 +1,8 @@
 """Telegram messages about the GitHub dashboard's webhook deliveries, held back while the dashboard is open.
 
-The page reads the change feed every few seconds while its tab is visible (services/github_app.py), so a recent read
-means its user is already watching and their phone stays quiet. Only what needs attention is sent: a release
+The page keeps its live connection open only while its tab is visible (routes/github_dashboard.events), and the
+connection marks the page seen every few seconds, so a recent mark means its user is already watching and their
+phone stays quiet. Only what needs attention is sent: a release
 finishing or waiting for approval, a PR's checks failing or changes being requested on it, and a PR merging.
 
 A release waiting for approval gets a button that opens its run on GitHub, where Review deployments approves it: the
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 API_URL = "https://api.telegram.org/bot{token}/{method}"
 TIMEOUT = 5
 SEEN = "v1:github:dashboard-seen"
-# Several of the page's 5-second feed reads, so one slow read doesn't count as the page being closed.
+# Longer than the live connection's pings (EVENTS_PING_S), so one late ping doesn't count as the page being closed.
 SEEN_S = 30
 # GitHub can deliver an event again, and a release waits for approval in one delivery per job.
 SENT = "v1:github:notified:{}"

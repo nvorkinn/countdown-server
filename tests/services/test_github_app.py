@@ -174,36 +174,3 @@ def test_installation_changes_ask_for_the_repositories_again():
 def test_repository_changes_ask_for_the_repositories_again():
     payload = REPO | {"action": "renamed"}
     assert github_app.changes_in("repository", payload) == [{"kind": "repositories"}]
-
-
-def test_the_feed_starts_at_its_newest_entry_and_returns_what_follows(ctx):
-    github_app.record([{"repo": "alice/project", "kind": "repo"}])
-    start = github_app.changes_after(None)
-    assert start["changes"] == []
-    github_app.record([{"repo": "alice/project", "kind": "pull", "id": "4"}])
-    feed = github_app.changes_after(start["last"])
-    assert feed["changes"] == [{"repo": "alice/project", "kind": "pull", "id": "4"}]
-    assert feed["reset"] is False
-    assert github_app.changes_after(feed["last"])["changes"] == []
-
-
-def test_an_empty_feed_starts_at_zero(ctx):
-    assert github_app.changes_after(None) == {"last": "0-0", "changes": [], "reset": False}
-    github_app.record([{"repo": "alice/project", "kind": "repo"}])
-    assert len(github_app.changes_after("0-0")["changes"]) == 1
-
-
-def test_a_reader_behind_the_trimmed_feed_or_ahead_of_an_emptied_one_reads_everything(ctx):
-    redis = ctx.extensions["redis"]
-    github_app.record([{"repo": "alice/project", "kind": "repo"}])
-    first = github_app.changes_after(None)["last"]
-    github_app.record([{"repo": "alice/project", "kind": "repo"}] * 3)
-    redis.xtrim(github_app.CHANGES, maxlen=2, approximate=False)
-    assert github_app.changes_after(first) == {
-        "last": redis.xrevrange(github_app.CHANGES)[0][0],
-        "changes": [],
-        "reset": True,
-    }
-    later = github_app.changes_after(None)["last"]
-    redis.delete(github_app.CHANGES)
-    assert github_app.changes_after(later)["reset"] is True

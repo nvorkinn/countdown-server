@@ -5,8 +5,8 @@ an installation token would act as the App, which no environment lists. GitHub e
 and the refresh token after 6 months, and a refresh token works once: renewing takes a Redis lock, so two workers
 never spend the same one.
 
-The webhook doesn't call GitHub: it appends what changed to a Redis stream, which the dashboard reads every few
-seconds and answers by re-reading only those items.
+The webhook doesn't call GitHub: changes_in says what a delivery changed, and services/github_changes hands that to
+the open dashboard, which re-reads only those items.
 """
 
 import hashlib
@@ -14,7 +14,7 @@ import hmac
 import logging
 import time
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 import requests
@@ -38,11 +38,6 @@ RENEW_LOCK = "v1:github:app-token-renewal"
 RENEW_LOCK_S = 30
 # How long a worker waits for another's renewal before giving up on this request.
 RENEW_WAIT_S = 30
-CHANGES = "v1:github:changes"
-# Enough for a few minutes of a busy CI run; a dashboard further behind is told to read everything.
-CHANGES_KEPT = 2000
-# A read of the feed: each entry's ID and fields.
-type StreamEntries = list[tuple[str, dict[str, str]]]
 
 
 class NotConnectedError(github.DashboardError):
@@ -176,34 +171,3 @@ def changes_in(event: str, payload: dict) -> list[dict[str, str]]:
     elif event == "status":
         changed = [("commit", payload["sha"])]
     return [{"repo": repo, "kind": kind} | ({"id": str(item)} if item is not None else {}) for kind, item in changed]
-
-
-def record(changes: list[dict[str, str]]) -> None:
-    """Append changes to the feed the dashboard reads."""
-    redis: Redis = current_app.extensions["redis"]
-    for change in changes:
-        redis.xadd(CHANGES, {**change}, maxlen=CHANGES_KEPT, approximate=True)
-
-
-def changes_after(after: str | None) -> dict:
-    """Return changes since the feed entry `after`, the newest entry's ID, and whether some were lost."""
-    redis: Redis = current_app.extensions["redis"]
-    # The app's client decodes responses, so str; redis-py types them as either, or as None.
-    newest = cast("StreamEntries", redis.xrevrange(CHANGES, count=1))
-    last = newest[0][0] if newest else "0-0"
-    if after is None:
-        return {"last": last, "changes": [], "reset": False}
-    oldest = cast("StreamEntries", redis.xrange(CHANGES, count=1))
-    # Trimmed past `after`, or emptied (a Redis restart) so that `after` is ahead of everything.
-    reset = (bool(oldest) and _stream_id(oldest[0][0]) > _stream_id(after) and after != "0-0") or (
-        _stream_id(after) > _stream_id(last)
-    )
-    entries = (
-        cast("StreamEntries", redis.xrange(CHANGES, min=f"({after}", max="+", count=CHANGES_KEPT)) if not reset else []
-    )
-    return {"last": last, "changes": [fields for _, fields in entries], "reset": reset}
-
-
-def _stream_id(value: str) -> tuple[int, int]:
-    millis, _, sequence = value.partition("-")
-    return int(millis), int(sequence or 0)
