@@ -33,8 +33,17 @@ jobs:
 
       - name: Install redis-server
         # For the render queue's script's tests against a real Redis (tests/services/test_render_jobs.py starts its
-        # own; they skip without it).
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends redis-server
+        # own; they skip without it). A redis-server on the PATH that runs the image docker-compose.yml runs, on the
+        # host network, so the tests get production's Redis without apt (whose Ubuntu mirror can be unreachable).
+        env:
+          REDIS_IMAGE: docker.io/library/redis:8.10-alpine
+        run: |
+          docker pull --quiet "$REDIS_IMAGE"
+          sudo tee /usr/local/bin/redis-server >/dev/null <<EOF
+          #!/bin/sh
+          exec docker run --rm --network host $REDIS_IMAGE redis-server "\$@"
+          EOF
+          sudo chmod +x /usr/local/bin/redis-server
 
       # Exactly what uv.lock pins, dev group included, into .venv.
       - name: Install dependencies
