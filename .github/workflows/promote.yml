@@ -1,5 +1,8 @@
 name: Promote
 
+# Shown on the GitHub dashboard among the running releases.
+# dashboard: release
+
 # Deploys a release that has already been through dev to production, with one approval for all of it. Run it from
 # main (Actions > Promote > Run workflow) with the release's tag. Nothing is built: it deploys the images that Release made,
 # with the tag's docker-compose.yml and config/prod.env, so production runs exactly what dev did. To roll back, promote an older tag that

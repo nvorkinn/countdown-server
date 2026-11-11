@@ -1,5 +1,8 @@
 name: Release
 
+# Shown on the GitHub dashboard among the running releases.
+# dashboard: release
+
 on:
   push:
     tags: ["v*"]
