@@ -103,6 +103,11 @@ services:
       # connection closes: Caddy's idle timeout, 5 minutes. The screen opens a new connection for every poll anyway,
       # so close each one after its answer.
       caddy_0.header: /api/frame Connection close
+      # The GitHub dashboard has its own name now (GITHUB_HOST, below): send its old paths there, keeping the rest of
+      # the URL, so bookmarks and a GitHub sign-in that comes back to the old callback still land on it. The webhook
+      # stays here too (in the list below) until the App's Webhook URL is changed, as GitHub doesn't follow redirects.
+      caddy_0.@github.path: /github /github/*
+      caddy_0.redir: "@github https://${GITHUB_HOST:?}{uri}"
       caddy_0.@browser.not.path: /api/frame /api/frame/* /api/devices/* /api/status/* /api/github/webhook /api/telegram/webhook /about /static/* /pair
       # /pair is public, but asks Tinyauth who is calling first ("soft" auth): signed in, the broker gets the Remote-*
       # headers and sends the person on to /pair/add, which pairs the screen with no form; otherwise (any 3xx, 4xx or
@@ -127,9 +132,29 @@ services:
       # both names pointing at the edge, or Caddy can't get a certificate.
       caddy_1: ${APEX_HOST:?}, www.${APEX_HOST}
       caddy_1.redir: https://${AUTH_HOST}{uri}
+      # The personal GitHub dashboard (README), on a name of its own for the `admins` group. The broker serves it under
+      # /github, so every other path is rewritten there: the dashboard is at the name's root, and nothing else of the
+      # settings site can be reached on this name. GitHub's webhook (signed with its secret; GitHub can't sign in) is
+      # the one path without the login. The Remote-* headers are stripped here too, as on the settings site.
+      caddy_2: ${GITHUB_HOST:?}
+      caddy_2.request_header_0: -Remote-User
+      caddy_2.request_header_1: -Remote-Email
+      caddy_2.request_header_2: -Remote-Name
+      caddy_2.request_header_3: -Remote-Groups
+      caddy_2.request_header_4: -Remote-Sub
+      caddy_2.@webhook.path: /api/github/webhook
+      caddy_2.@outside.not.path: /github /github/* /static/*
+      caddy_2.handle_0: "@webhook"
+      caddy_2.handle_0.reverse_proxy: "{{upstreams 5000}}"
+      caddy_2.handle_1.import: countdown_auth
+      caddy_2.handle_1.rewrite: "@outside /github{uri}"
+      caddy_2.handle_1.reverse_proxy: "{{upstreams 5000}}"
       tinyauth.apps.countdown.config.domain: ${AUTH_HOST}
       tinyauth.apps.countdown.oauth.groups: countdown
       tinyauth.apps.countdown.oauth.whitelist: /.*/
+      tinyauth.apps.github.config.domain: ${GITHUB_HOST}
+      tinyauth.apps.github.oauth.groups: admins
+      tinyauth.apps.github.oauth.whitelist: /.*/
 
   # The music provider (broker/providers/music.py): what each screen's Spotify and Apple Music are playing, into
   # Redis. It starts the broker's app and writes refreshed Spotify tokens back, so the data volume is writable here.
