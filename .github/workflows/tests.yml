@@ -41,7 +41,7 @@ jobs:
         run: uv sync --locked
 
       # The browser tests don't depend on the shard, so only the first runs them.
-      - name: Test dashboard browser logic
+      - name: Test browser logic
         if: matrix.shard == 0
         run: node --test tests/browser/*.test.cjs
 

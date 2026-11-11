@@ -15,7 +15,7 @@ locals {
   # ID_HOST Pocket ID, which every environment runs for itself.
   names = toset([
     local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.AUTH_HOST, local.settings.LOGS_HOST,
-    local.settings.METRICS_HOST, local.settings.TAUTH_HOST, local.settings.ID_HOST, local.settings.GITHUB_HOST,
+    local.settings.METRICS_HOST, local.settings.TAUTH_HOST, local.settings.ID_HOST,
   ])
 }
 
