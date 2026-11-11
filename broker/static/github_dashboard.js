@@ -116,7 +116,7 @@ function badge(text, state) {
 }
 
 // Tinyauth's forward-auth session for this site runs out while the page polls, and its answer is then a redirect to
-// sso.nikolaivorkinn.com. A fetch can't follow it there (another origin, and these requests need a preflight, which
+// Tinyauth's own host. A fetch can't follow it there (another origin, and these requests need a preflight, which
 // Tinyauth answers with another redirect), so the redirect is left unfollowed and the page reloads instead: a page
 // load goes through the sign-in, without a prompt while the SSO session lasts. A hidden tab waits until it is shown.
 let signedOut = false;

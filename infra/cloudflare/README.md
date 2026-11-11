@@ -1,7 +1,7 @@
 # Cloudflare DNS
 
 The records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, `AUTH_HOST`, `TAUTH_HOST`,
-`ID_HOST`, `LOGS_HOST` and `METRICS_HOST` in `config/<environment>.env`), each in its own zone
+`ID_HOST`, `LOGS_HOST`, `METRICS_HOST` and `GITHUB_HOST` in `config/<environment>.env`), each in its own zone
 (`zone_ids` in `variables.tf`): dev in `countdown.build`, production in `countdown.run`. Production's are A records to its
 host. Dev/QA runs on the home server, so its are CNAMEs to `home.vorkinn.org` (`cname_targets` in `variables.tf`;
 home-stack's cloudflare-ddns keeps `*.vorkinn.org` on the home's address). Every environment runs its own Tinyauth and
