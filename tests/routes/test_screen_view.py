@@ -11,6 +11,8 @@ from broker.models import DeviceConfig
 from broker.services import config_store, frame_image, frame_record, pace, render_jobs
 from broker.services.frame_record import FRAME_BYTES
 
+SMALL, HD = (800, 480), (1872, 1404)
+
 
 def _frame_with_black_pixel(x: int, y: int) -> bytes:
     """Return a white frame in the panel's own layout (800x480, set bit = black) with one black pixel."""
@@ -43,7 +45,7 @@ def _black_pixels(png: bytes) -> tuple[tuple[int, int], list[tuple[int, int]]]:
 
 
 def test_a_landscape_frame_is_drawn_as_is():
-    size, black = _black_pixels(frame_image.to_png(_frame_with_black_pixel(10, 3), portrait=False))
+    size, black = _black_pixels(frame_image.to_png(_frame_with_black_pixel(10, 3), SMALL, portrait=False))
 
     assert size == (800, 480)
     assert black == [(10, 3)]
@@ -53,7 +55,7 @@ def test_a_portrait_frame_is_turned_back_a_quarter_clockwise():
     # The render turned the portrait picture a quarter anticlockwise: portrait (x, y) is at landscape (y, 479 - x).
     portrait_x, portrait_y = 10, 3
     frame = _frame_with_black_pixel(portrait_y, 479 - portrait_x)
-    size, black = _black_pixels(frame_image.to_png(frame, portrait=True))
+    size, black = _black_pixels(frame_image.to_png(frame, SMALL, portrait=True))
 
     assert size == (480, 800)
     assert black == [(portrait_x, portrait_y)]
@@ -71,14 +73,47 @@ def _make_png_screen(app, device_id, width, height, orientation="vertical"):
 
 def test_a_png_frame_is_served_as_it_is_in_portrait_or_landscape():
     # The page turns a portrait one back (the frame-portrait style); the broker never decodes it.
-    assert frame_image.preview(PNG_FRAME, "png", portrait=True) == PNG_FRAME
-    assert frame_image.preview(PNG_FRAME, "png", portrait=False) == PNG_FRAME
+    assert frame_image.preview(PNG_FRAME, "png", (1404, 1872), portrait=True) == PNG_FRAME
+    assert frame_image.preview(PNG_FRAME, "png", (1872, 1404), portrait=False) == PNG_FRAME
 
 
 def test_a_mono_frame_is_previewed_as_before():
     frame = _frame_with_black_pixel(10, 3)
 
-    assert frame_image.preview(frame, "mono-1bpp-packed", portrait=True) == frame_image.to_png(frame, portrait=True)
+    assert frame_image.preview(frame, "mono-1bpp-packed", (480, 800), portrait=True) == frame_image.to_png(
+        frame, SMALL, portrait=True
+    )
+
+
+def _hd_frame_with_black_pixel(x: int, y: int) -> bytes:
+    """Return a white HD frame (1872x1404 landscape, set bit = black) with one black pixel."""
+    frame = bytearray(1872 * 1404 // 8)
+    frame[(y * 1872 + x) // 8] |= 0x80 >> (x % 8)
+    return bytes(frame)
+
+
+def test_an_hd_frame_is_read_at_its_own_width():
+    size, black = _black_pixels(
+        frame_image.preview(_hd_frame_with_black_pixel(1000, 3), "mono-1bpp-packed", HD, portrait=False)
+    )
+
+    assert size == (1872, 1404)
+    assert black == [(1000, 3)]
+
+
+def test_an_hd_portrait_frame_is_turned_back_at_its_own_size():
+    # Portrait (x, y) is at landscape (y, 1403 - x), whichever way round the screen gave its size.
+    portrait_x, portrait_y = 10, 1500
+    frame = _hd_frame_with_black_pixel(portrait_y, 1403 - portrait_x)
+    size, black = _black_pixels(frame_image.preview(frame, "mono-1bpp-packed", (1404, 1872), portrait=True))
+
+    assert size == (1404, 1872)
+    assert black == [(portrait_x, portrait_y)]
+
+
+def test_a_frame_not_the_screens_size_is_refused_rather_than_shown_as_noise():
+    with pytest.raises(ValueError, match="1872x1404"):
+        frame_image.preview(_frame_with_black_pixel(10, 3), "mono-1bpp-packed", HD, portrait=True)
 
 
 def test_a_portrait_png_screen_turns_its_picture_on_the_page(app, paired_client, draw):
@@ -348,3 +383,33 @@ def test_the_screen_is_only_its_owners(app, paired_client, anonymous_client, dra
     for path in (f"/device/{device_id}/screen", f"/device/{device_id}/screen/frame.png"):
         assert stranger.get(path).status_code == 404
         assert anonymous_client.get(path).status_code == 401
+
+
+def test_an_hd_mono_screens_preview_is_its_own_size(app, paired_client, draw):
+    client, device_id, _secret = paired_client
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        config.width, config.height, config.orientation = 1872, 1404, "vertical"
+        db.session.commit()
+    draw(device_id, _hd_frame_with_black_pixel(1500, 1403 - 10))
+
+    response = client.get(f"/device/{device_id}/screen/frame.png")
+
+    assert response.status_code == 200
+    size, black = _black_pixels(response.data)
+    assert size == (1404, 1872)
+    assert black == [(10, 1500)]
+
+
+def test_a_frame_drawn_for_another_size_is_no_picture_yet(app, paired_client, draw):
+    client, device_id, _secret = paired_client
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        config.width, config.height = 1872, 1404
+        db.session.commit()
+    draw(device_id, _frame_with_black_pixel(10, 3))
+
+    response = client.get(f"/device/{device_id}/screen/frame.png")
+
+    assert response.status_code == 404
+    assert "Retry-After" in response.headers

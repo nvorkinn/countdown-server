@@ -1,5 +1,6 @@
 """The owners' site: pairing the signed-in user with a device, and the device's settings page."""
 
+import logging
 import re
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
@@ -64,6 +65,7 @@ if TYPE_CHECKING:
     from broker.models import Layout
 
 bp = Blueprint("pages", __name__)
+logger = logging.getLogger(__name__)
 
 PAIRING_TOKEN_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -547,7 +549,15 @@ def screen_frame() -> ResponseReturnValue:
         resp.set_etag(_frame_etag(latest, config))
         resp.headers["X-Rendered-At"] = latest.rendered_at.isoformat(timespec="seconds")
         frame = latest.frame
-    resp.set_data(frame_image.preview(frame, config.format, portrait=config.orientation != "horizontal"))
+    try:
+        picture = frame_image.preview(
+            frame, config.format, (config.width, config.height), portrait=config.orientation != "horizontal"
+        )
+    except ValueError:
+        # Not this screen's size: drawn for a size it no longer has. Its next render will be.
+        logger.warning("A screen's frame isn't the size of its config")
+        return _no_picture(sleep_s)
+    resp.set_data(picture)
     return resp
 
 
