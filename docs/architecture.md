@@ -70,10 +70,13 @@ Docker network `edge`, which is created here in production and is home-stack's i
 host's `127.0.0.1:6379`, for countdown; so are VictoriaLogs and VictoriaMetrics (9428, 8428), for Fluent Bit on the
 host's network. Nothing is published on a public address except Caddy's 80 and 443.
 
-Caddy routes by path. The screen's paths (`/api/frame`, `/api/devices/*`), the status endpoint (`/api/status/*`) and
-the public `/about` page go straight to the broker, which checks the bearer secret itself. Every other path is a
-browser page: Caddy asks Tinyauth first (group `countdown`), then passes its `Remote-*` headers (`Remote-Sub`,
-`Remote-Name`, ...) to the broker. The sign-up page `/pair` and `/static/*` are public. Caddy strips those headers from
+Caddy routes by name first. `api.<domain>` (`API_HOST`) is the screens' API: the screen's paths (`/api/frame`,
+`/api/devices/*`) and the status endpoint (`/api/status/*`) go straight to the broker, which checks the bearer secret
+itself, and anything else there is a 404. `app.<domain>` (`APP_HOST`) is the settings site: every path asks Tinyauth
+first (group `countdown`), then passes its `Remote-*` headers (`Remote-Sub`, `Remote-Name`, ...) to the broker, except
+the sign-up page `/pair`, the `/about` page and `/static/*`, which are public. `auth.<domain>` (`LEGACY_HOST`) is the
+name both shared before: it still answers the screens' API, for boards flashed then, and redirects everything else to
+`app.<domain>`. Caddy strips those headers from
 every incoming request, and the broker is reachable only over the `edge` network, which is what makes it safe for the
 broker to trust them. The broker has no user table: the Pocket ID user id is stored as a device's `owner`.
 

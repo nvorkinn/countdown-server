@@ -67,6 +67,15 @@ def test_each_environment_serves_only_names_in_its_own_domain():
     domains = {"dev": "countdown.build", "prod": "countdown.run"}
     for environment, domain in domains.items():
         settings = _settings(CONFIG / f"{environment}.env")
-        for key in ("APEX_HOST", "AUTH_HOST", "TAUTH_HOST", "ID_HOST", "LOGS_HOST", "METRICS_HOST"):
+        for key in (
+            "APEX_HOST",
+            "APP_HOST",
+            "API_HOST",
+            "LEGACY_HOST",
+            "TAUTH_HOST",
+            "ID_HOST",
+            "LOGS_HOST",
+            "METRICS_HOST",
+        ):
             host = settings[key]
             assert host == domain or host.endswith(f".{domain}"), (environment, key, host)

@@ -14,32 +14,69 @@ def _labels(service):
     return SERVICES[service]["labels"]
 
 
-def _paths_without_login():
-    """Return the paths the settings site's @browser matcher leaves out of the login."""
-    return _labels("countdown-server")["caddy_0.@browser.not.path"].split()
+LOGIN_HEADERS = {"Remote-User", "Remote-Name", "Remote-Email", "Remote-Groups", "Remote-Sub"}
 
 
-def test_device_routes_are_not_behind_the_browser_login(app):
+def _screen_api_paths():
+    """Return the paths the screens' API (API_HOST, LEGACY_HOST) sends to the broker, with no login."""
+    return _labels("countdown-server")["caddy_2.@screen_api.path"].split()
+
+
+def _covered(route, patterns):
+    # Caddy's * matches across slashes, as fnmatch's does; a <converter> stands for one segment.
+    return any(fnmatchcase(re.sub(r"<[^>]+>", "x", route), pattern) for pattern in patterns)
+
+
+def test_the_names_are_the_settings_site_the_screens_api_and_the_old_shared_one():
+    labels = _labels("countdown-server")
+    assert labels["caddy_0"] == "${APP_HOST:?}"
+    assert labels["caddy_2"] == "(countdown_screen_api)"
+    assert labels["caddy_3"] == "${API_HOST:?}"
+    assert labels["caddy_4"] == "${LEGACY_HOST:?}"
+
+
+def test_every_device_route_is_on_the_screens_api(app):
     """A device can't sign in: behind forward auth it gets the login page as HTML instead of JSON."""
-    paths = _paths_without_login()
     device_routes = [
         rule.rule
         for rule in app.url_map.iter_rules()
         if getattr(app.view_functions[rule.endpoint], "device_auth", False)
     ]
     assert device_routes
-    # Caddy's * matches across slashes, as fnmatch's does; a <converter> stands for one segment.
-    behind_login = [
-        route for route in device_routes if not any(fnmatchcase(re.sub(r"<[^>]+>", "x", route), path) for path in paths)
-    ]
-    assert behind_login == []
+    assert [route for route in device_routes if not _covered(route, _screen_api_paths())] == []
+
+
+def test_the_screens_api_serves_nothing_from_the_settings_site(app):
+    """Only device routes and the status endpoint (its own token) are on API_HOST: no page, no browser call."""
+    pages = [rule.rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith(("pages.", "account."))]
+    assert pages
+    assert [route for route in pages if _covered(route, _screen_api_paths())] == []
+    for site in ("caddy_3", "caddy_4"):
+        assert _labels("countdown-server")[f"{site}.import"] == "countdown_screen_api"
+
+
+def test_the_api_name_answers_404_and_the_old_name_redirects_to_the_settings_site():
+    labels = _labels("countdown-server")
+    assert labels["caddy_3.handle.respond"] == "404"
+    assert labels["caddy_4.handle.redir"] == "https://${APP_HOST}{uri}"
 
 
 def test_sign_up_is_public_but_adding_a_screen_is_not():
     """/pair is where a visitor registers with Pocket ID; /pair/add and /pair/token need the login."""
-    paths = _paths_without_login()
-    assert "/pair" in paths
-    assert not any(fnmatchcase(route, pattern) for route in ("/pair/add", "/pair/token") for pattern in paths)
+    labels = _labels("countdown-server")
+    public = labels["caddy_0.@pair.path"].split() + labels["caddy_0.@public.path"].split()
+    assert "/pair" in public
+    assert not any(fnmatchcase(route, pattern) for route in ("/pair/add", "/pair/token") for pattern in public)
+
+
+def test_only_sign_up_about_and_static_files_skip_the_login():
+    labels = _labels("countdown-server")
+    assert labels["caddy_0.@public.path"].split() == ["/about", "/static/*"]
+    assert labels["caddy_0.handle_1"] == "@public"
+    # The catch-all: everything else on the settings site imports the login.
+    assert "caddy_0.handle_2" not in labels
+    assert labels["caddy_0.handle_2.import"] == "countdown_auth"
+    assert not any(key.startswith(f"caddy_0.handle_{n}.import") for key in labels for n in (0, 1))
 
 
 def test_frame_answers_close_the_connection():
@@ -47,22 +84,17 @@ def test_frame_answers_close_the_connection():
 
     Without `Connection: close` that's Caddy's idle timeout, 5 minutes, after every unchanged frame.
     """
-    assert _labels("countdown-server")["caddy_0.header"] == "/api/frame Connection close"
+    assert _labels("countdown-server")["caddy_2.header"] == "/api/frame Connection close"
 
 
 def test_the_login_headers_are_stripped_from_every_request():
-    """The broker trusts them as the signed-in user, so only forward auth may set them."""
+    """The broker trusts them as the signed-in user, so only forward auth may set them, on every name."""
     labels = _labels("countdown-server")
     snippet = _labels("countdown-tinyauth")["caddy_0.forward_auth.copy_headers"].split()
-    stripped = {value for key, value in labels.items() if key.startswith("caddy_0.request_header_")}
-    assert {f"-{header}" for header in snippet} <= stripped
-
-
-def test_only_the_browser_routes_import_the_login():
-    labels = _labels("countdown-server")
-    assert labels["caddy_0.handle_1"] == "@browser"
-    assert labels["caddy_0.handle_1.import"] == "countdown_auth"
-    assert not any(key.startswith(f"caddy_0.handle_{n}.import") for key in labels for n in (0, 2))
+    assert set(snippet) == LOGIN_HEADERS
+    for site in ("caddy_0", "caddy_2"):
+        stripped = {value for key, value in labels.items() if key.startswith(f"{site}.request_header_")}
+        assert {f"-{header}" for header in snippet} <= stripped, site
 
 
 def test_sign_up_asks_the_login_who_is_calling_but_serves_the_page_either_way():
@@ -73,30 +105,24 @@ def test_sign_up_asks_the_login_who_is_calling_but_serves_the_page_either_way():
     assert labels["caddy_0.handle_0"] == "@pair"
     assert labels[prefix] == "countdown-tinyauth:3000"
     assert labels[f"{prefix}.uri"] == "/api/auth/caddy"
-    assert set(labels[f"{prefix}.copy_headers"].split()) == {
-        "Remote-User", "Remote-Name", "Remote-Email", "Remote-Groups", "Remote-Sub"
-    }  # fmt: skip
+    assert set(labels[f"{prefix}.copy_headers"].split()) == LOGIN_HEADERS
     # Any refusal from the login carries on without headers: the matched response needs a route, or it is sent on.
     assert labels[f"{prefix}.@anonymous.status"] == "3xx 4xx 5xx"
     assert labels[f"{prefix}.handle_response"] == "@anonymous"
     assert f"{prefix}.handle_response.vars" in labels
-    # A visitor's own Remote-* headers are stripped before the login is asked, on every route.
-    assert {"-Remote-User", "-Remote-Email", "-Remote-Name", "-Remote-Groups", "-Remote-Sub"} <= {
-        value for key, value in labels.items() if key.startswith("caddy_0.request_header_")
-    }
 
 
 def test_bare_domain_redirects_to_the_settings_site():
     """The bare domain and www. have nothing of their own; they send visitors on, keeping the path."""
     labels = _labels("countdown-server")
     assert labels["caddy_1"] == "${APEX_HOST:?}, www.${APEX_HOST}"
-    assert labels["caddy_1.redir"] == "https://${AUTH_HOST}{uri}"
+    assert labels["caddy_1.redir"] == "https://${APP_HOST}{uri}"
 
 
 def test_the_settings_site_is_for_the_countdown_group():
     labels = _labels("countdown-server")
     assert labels["tinyauth.apps.countdown.oauth.groups"] == "countdown"
-    assert labels["tinyauth.apps.countdown.config.domain"] == "${AUTH_HOST}"
+    assert labels["tinyauth.apps.countdown.config.domain"] == "${APP_HOST}"
 
 
 def test_the_victoria_uis_are_for_admins_and_only_ingest_skips_the_login():
