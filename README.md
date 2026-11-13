@@ -4,7 +4,7 @@ The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare
 [countdown](https://github.com/nvorkinn/countdown)'s render pool. It:
 
 - registers screens and pairs each with its owner's login;
-- hosts the settings site at **https://auth.countdown.run**;
+- hosts the settings site at **https://app.countdown.run**, and the screens' API at **https://api.countdown.run**;
 - holds every account a screen's owner links (Spotify, Apple Music, Glowmarkt, GitHub) and runs the providers that use
   them, so no credential leaves the broker;
 - writes each screen's config and subscriptions to Redis for countdown, and serves each screen the frame the render
@@ -136,7 +136,7 @@ fields they don't know.
 
 ```yaml
 rest:
-  - resource: https://auth.countdown.run/api/status/devices
+  - resource: https://api.countdown.run/api/status/devices
     headers:
       Authorization: !secret auth_broker_status_token   # "Bearer <STATUS_TOKEN>"
     scan_interval: 300
@@ -154,7 +154,7 @@ Python 3.14 and [uv](https://docs.astral.sh/uv/). Clone with the submodule:
 git clone --recurse-submodules https://github.com/nvorkinn/countdown-server.git   # or: git submodule update --init
 uv sync && source .venv/bin/activate
 cp .env.example .env   # fill in Spotify app credentials, FLASK_SECRET_KEY and CREDENTIAL_ENCRYPTION_KEY
-export SPOTIFY_REDIRECT_URI=https://auth.countdown.run/auth/spotify/callback
+export SPOTIFY_REDIRECT_URI=https://app.countdown.run/auth/spotify/callback
 export $(grep -v '^#' .env | xargs)
 FLASK_DEBUG=1 python wsgi.py
 ```
@@ -327,8 +327,10 @@ under the file it belongs in.
 ### Settings
 
 What differs between environments and isn't secret is in `config/<environment>.env`: the names the labels route
-(`AUTH_HOST` for the settings site, `TAUTH_HOST` for Tinyauth, `ID_HOST` for Pocket ID, `LOGS_HOST`, `METRICS_HOST` and
-the bare `APEX_HOST`, which redirects to `AUTH_HOST`), `POCKET_ID_URL`, whether this environment runs its own edge
+(`APP_HOST` for the settings site, `API_HOST` for the screens' API, `TAUTH_HOST` for Tinyauth, `ID_HOST` for Pocket ID,
+`LOGS_HOST`, `METRICS_HOST`, the bare `APEX_HOST`, which redirects to `APP_HOST`, and `LEGACY_HOST`, the `auth.` name the
+settings site and the API shared before: it still answers the API for boards flashed then and redirects everything else
+to `APP_HOST`), `POCKET_ID_URL`, whether this environment runs its own edge
 (`EDGE_OWNED`) and the Spotify redirect URI. `deploy-context.sh` stages the environment's file as `settings.env`
 next to `docker-compose.yml`, where the services list it in their `env_file`, and copies it into `.env`, where
 Compose fills the names into the labels. One image and one compose file serve every environment. Each name needs an
