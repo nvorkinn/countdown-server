@@ -185,7 +185,36 @@ def test_settings_page_header_before_the_first_frame_says_so(paired_client):
     html = client.get(f"/device/{device_id}").get_data(as_text=True)
 
     assert "No picture yet" in html
-    assert "/screen/frame.png" not in html
+    # No picture to show, only where the page asks for one until it's drawn.
+    assert 'src="' not in html.split('id="preview"')[1].split("</figure>")[0]
+    assert f'data-frame-url="/device/{device_id}/screen/frame.png"' in html
+
+
+def test_settings_page_with_a_picture_doesnt_ask_for_one(paired_client, draw):
+    client, device_id, _ = paired_client
+    draw(device_id, bytes(FRAME_BYTES))
+
+    assert "data-frame-url" not in client.get(f"/device/{device_id}").get_data(as_text=True)
+
+
+def test_turning_the_screen_forgets_the_picture_drawn_the_other_way(paired_client, draw):
+    # It would be shown on its side until the pool's next render, which the save queues.
+    client, device_id, _ = paired_client
+    draw(device_id, bytes(FRAME_BYTES))
+
+    assert client.post(f"/device/{device_id}", data={"orientation": "horizontal"}).status_code == 302
+
+    assert client.get(f"/device/{device_id}/screen/frame.png").status_code == 404
+    assert "No picture yet" in client.get(f"/device/{device_id}").get_data(as_text=True)
+
+
+def test_a_save_that_doesnt_turn_the_screen_keeps_its_picture(paired_client, draw):
+    client, device_id, _ = paired_client
+    draw(device_id, bytes(FRAME_BYTES))
+
+    assert client.post(f"/device/{device_id}", data={"orientation": "vertical", "language": "nb"}).status_code == 302
+
+    assert client.get(f"/device/{device_id}/screen/frame.png").status_code == 200
 
 
 def test_settings_page_header_lists_the_saved_settings(app, paired_client):

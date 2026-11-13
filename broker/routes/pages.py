@@ -405,18 +405,35 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     config.parcels_days_ahead = int(days_ahead) if days_ahead else None
     config.parcels_kept_hours = int(kept_hours)
     config.tfl_stop_ids = stop_ids
-    for field, value in choices.items():
-        setattr(config, field, value)
+    turned = _set_choices(config, choices)
     config.layout = layout
     if "screen_name" in request.form:
         db.session.get_one(Device, device_id).device_name = screen_name
     db.session.commit()
+    _publish_saved(device_id, turned=turned)
+    return redirect(url_for("pages.device_config", device_id=device_id))
+
+
+def _publish_saved(device_id: str, *, turned: bool) -> None:
+    """Tell the store of a screen's saved settings, and queue a render of it; `turned` if its orientation changed."""
     _write_subscriptions_to_redis()
+    if turned:
+        # Its picture was drawn for it hung the other way, and the page would show that on its side. Forgotten before
+        # the render the save queues, which draws the screen as it hangs now: until then there's no picture yet, for
+        # the page and for the screen, which keeps the one it has and asks again shortly.
+        frame_record.forget(device_id)
     # Every screen's, not just this one's: it costs little, and puts back any copy the store lost.
     config_store.publish_all()
     # A render of this screen, if the render pool draws it, even if its copy didn't change.
     render_jobs.enqueue(current_app.extensions["redis"], [device_id])
-    return redirect(url_for("pages.device_config", device_id=device_id))
+
+
+def _set_choices(config: DeviceConfig, choices: Mapping[str, str]) -> bool:
+    """Set the config's CHOICES to those picked, and return whether that turns the screen (a new orientation)."""
+    turned = choices["orientation"] != config.orientation
+    for field, value in choices.items():
+        setattr(config, field, value)
+    return turned
 
 
 def _form_value(number: int | None) -> str:
