@@ -177,7 +177,9 @@ def test_settings_page_header_says_when_the_picture_was_drawn(paired_client, dra
     client, device_id, _ = paired_client
     draw(device_id, bytes(FRAME_BYTES), at=datetime.now(UTC) - timedelta(minutes=7))
 
-    assert "<figcaption>Drawn 7 min ago</figcaption>" in client.get(f"/device/{device_id}").get_data(as_text=True)
+    html = client.get(f"/device/{device_id}").get_data(as_text=True)
+
+    assert '<figcaption id="previewDrawn">Drawn 7 min ago</figcaption>' in html
 
 
 def test_settings_page_header_before_the_first_frame_says_so(paired_client):
@@ -189,13 +191,17 @@ def test_settings_page_header_before_the_first_frame_says_so(paired_client):
     # No picture to show, only where the page asks for one until it's drawn.
     assert 'src="' not in html.split('id="preview"')[1].split("</figure>")[0]
     assert f'data-frame-url="/device/{device_id}/screen/frame.png"' in html
+    assert '<figcaption id="previewDrawn" hidden></figcaption>' in html
 
 
-def test_settings_page_with_a_picture_doesnt_ask_for_one(paired_client, draw):
+def test_settings_page_with_a_picture_keeps_asking_for_the_latest(paired_client, draw):
+    # The picture loaded with the page is the one from before a save: its render lands a moment later.
     client, device_id, _ = paired_client
     draw(device_id, bytes(FRAME_BYTES))
 
-    assert "data-frame-url" not in client.get(f"/device/{device_id}").get_data(as_text=True)
+    html = client.get(f"/device/{device_id}").get_data(as_text=True)
+
+    assert f'data-frame-url="/device/{device_id}/screen/frame.png"' in html
 
 
 def test_turning_the_screen_forgets_the_picture_drawn_the_other_way(paired_client, draw):

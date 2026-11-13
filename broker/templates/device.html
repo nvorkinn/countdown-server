@@ -32,8 +32,8 @@
             <p class="tour-start"><button type="button" id="tourStart">Take the tour ›</button></p>
         </div>
     </div>
-    {# With no picture yet the page asks for one until it's drawn (the script below), as after the screen is turned. #}
-    <figure class="preview{% if not has_frame %} empty{% endif %}" id="preview"{% if not has_frame %} data-frame-url="{{ url_for('pages.screen_frame', device_id=device_id) }}"{% endif %}>
+    {# The page keeps asking for the picture (the script below), so it shows a save's new one, and the first one. #}
+    <figure class="preview{% if not has_frame %} empty{% endif %}" id="preview" data-frame-url="{{ url_for('pages.screen_frame', device_id=device_id) }}">
         <a class="bezel{% if frame_height > frame_width %} portrait{% endif %}" href="{{ url_for('pages.screen_view', device_id=device_id) }}" aria-label="See what's on the screen">
             {% if has_frame %}
                 <span class="frame{% if frame_portrait %} frame-portrait{% endif %}" style="--frame-w: {{ frame_width }}; --frame-h: {{ frame_height }}">
@@ -46,7 +46,7 @@
                 <span class="bezel-empty" style="aspect-ratio: {{ frame_width }} / {{ frame_height }}">No picture yet</span>
             {% endif %}
         </a>
-        {% if has_frame %}<figcaption>Drawn {{ frame_drawn }}</figcaption>{% endif %}
+        <figcaption id="previewDrawn"{% if not has_frame %} hidden{% endif %}>{% if has_frame %}Drawn {{ frame_drawn }}{% endif %}</figcaption>
     </figure>
 </section>
 {% endblock %}
@@ -382,37 +382,74 @@
 <script src="{{ url_for('static', filename='settings_choices.js') }}"></script>
 <script>
 (() => {
-    // The screen's picture, while there's none yet (a screen just named, or just turned): ask for it until it's
-    // drawn, then show it in place of the blank bezel.
+    // The screen's picture, kept as the screen has it: the one loaded with the page is the one from before a save
+    // (its render lands a moment later), and the pool draws a new one whenever what the screen shows changes.
     const preview = document.getElementById('preview');
     const url = preview.dataset.frameUrl;
-    if (!url) return;
-    const EVERY_MS = 3000;
-    // The render the save queued lands within seconds, and the pool's own within a minute: after two, stop asking.
-    let tries = 40;
+    const frame = preview.querySelector('.frame');
+    const picture = frame.querySelector('.frame-picture');
+    const caption = document.getElementById('previewDrawn');
+    // Soon after the page loads, for the render a save just queued; then every few seconds.
+    const FIRST_MS = 1500;
+    const EVERY_MS = 5000;
+    let etag = null;
+    let objectUrl = null;
+    let drawnAt = null;
+    let timer = null;
 
-    async function check() {
-        if (!document.hidden) {
-            tries -= 1;
-            try {
-                const response = await fetch(url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'error' });
-                if (response.ok) {
-                    const frame = preview.querySelector('.frame');
-                    frame.querySelector('.frame-picture').src = URL.createObjectURL(await response.blob());
-                    frame.hidden = false;
-                    preview.querySelector('.bezel-empty').remove();
-                    preview.classList.remove('empty');
-                    preview.appendChild(document.createElement('figcaption')).textContent = 'Drawn just now';
-                    return;
-                }
-            } catch (error) {
-                // Offline, or the sign-in expired: the next try, or a reload, shows it.
-            }
-        }
-        if (tries > 0) setTimeout(check, EVERY_MS);
+    // As the page's own "Drawn 5 min ago" (routes/pages.py, _seen_ago).
+    function ago(since) {
+        const minutes = Math.floor((Date.now() - since) / 60000);
+        if (minutes < 1) return 'just now';
+        if (minutes < 60) return `${minutes} min ago`;
+        if (minutes < 48 * 60) return `${Math.floor(minutes / 60)} h ago`;
+        return `${Math.floor(minutes / (24 * 60))} days ago`;
     }
 
-    setTimeout(check, EVERY_MS);
+    function showDrawn() {
+        if (drawnAt === null) return;
+        caption.textContent = `Drawn ${ago(drawnAt)}`;
+        caption.hidden = false;
+    }
+
+    async function refresh() {
+        try {
+            // no-cache: the browser asks again with the ETag it has, and a 304 comes back as the picture it kept.
+            const response = await fetch(url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'error' });
+            // No picture (yet, or its record lapsed): what's shown stays.
+            if (!response.ok) return;
+            const tag = response.headers.get('ETag');
+            if (tag !== etag) {
+                const blob = await response.blob();
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
+                objectUrl = URL.createObjectURL(blob);
+                picture.src = objectUrl;
+                frame.hidden = false;
+                preview.querySelector('.bezel-empty')?.remove();
+                preview.classList.remove('empty');
+                etag = tag;
+            }
+            const renderedAt = Date.parse(response.headers.get('X-Rendered-At'));
+            if (!Number.isNaN(renderedAt)) drawnAt = renderedAt;
+            showDrawn();
+        } catch (error) {
+            // Offline, or the sign-in expired: the next try, or a reload, shows it.
+        }
+    }
+
+    function schedule() {
+        clearInterval(timer);
+        timer = document.hidden ? null : setInterval(refresh, EVERY_MS);
+    }
+
+    // Only ask while the page is in view, and catch up as soon as it is again.
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refresh();
+        schedule();
+    });
+
+    setTimeout(refresh, FIRST_MS);
+    schedule();
 })();
 </script>
 <script>
