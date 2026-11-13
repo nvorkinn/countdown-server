@@ -57,7 +57,7 @@ def search(query: str) -> list[dict[str, Any]]:
     A query with æ, ø or å lists Norway's first, any other London's. Raises only if both searches fail.
     """
     # Flask's only way to unwrap the proxy for other threads (SLF001), which Flask types as the app itself (ty).
-    app = current_app._get_current_object()  # noqa: SLF001 -- see above  # ty: ignore[unresolved-attribute]
+    app = current_app._get_current_object()  # noqa: SLF001 -- see above  # ty: ignore[missing-attribute]
 
     def run(source: str) -> list[dict[str, Any]]:
         with app.app_context():
