@@ -417,14 +417,17 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
 def _publish_saved(device_id: str, *, turned: bool) -> None:
     """Tell the store of a screen's saved settings, and queue a render of it; `turned` if its orientation changed."""
     _write_subscriptions_to_redis()
-    if turned:
-        # Its picture was drawn for it hung the other way, and the page would show that on its side. Forgotten before
-        # the render the save queues, which draws the screen as it hangs now: until then there's no picture yet, for
-        # the page and for the screen, which keeps the one it has and asks again shortly.
-        frame_record.forget(device_id)
     # Every screen's, not just this one's: it costs little, and puts back any copy the store lost.
     config_store.publish_all()
-    # A render of this screen, if the render pool draws it, even if its copy didn't change.
+    if turned:
+        # Its picture was drawn for it hung the other way, and the page would show that on its side. Forgotten after
+        # the new config is in the store: the pool writes no frame drawn from a config that has been replaced
+        # (countdown's frame_record.write_if_changed), so a render in flight can't put the old picture back. Until the
+        # render queued below there's no picture yet, for the page and for the screen, which keeps the one it has and
+        # asks again shortly.
+        frame_record.forget(device_id)
+    # A render of this screen, if the render pool draws it, even if its copy didn't change: and after the picture is
+    # forgotten, so one drawn in between is drawn again.
     render_jobs.enqueue(current_app.extensions["redis"], [device_id])
 
 
