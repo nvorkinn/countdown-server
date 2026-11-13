@@ -16,8 +16,9 @@ the frame (`frame_of`). A record that isn't what the store contract's frame_reco
 that isn't 16 hex digits, a time without its offset, a frame that doesn't hash to its etag) is no record. The pool
 gives each record a TTL of a day from its last change (`volatile-lru` may evict it before then), and writes it again
 at its next render; meanwhile, as after a Redis restart, the screen is told there's no frame yet and asks again
-shortly, keeping the picture it has. The broker deletes a device's record when it forgets the device, or
-unpairs it with its config (`forget`).
+shortly, keeping the picture it has. The broker deletes a device's record when it forgets the device, unpairs it
+with its config, or its owner turns it (a new orientation: the picture drawn for the old one would be shown on its
+side) (`forget`).
 
 Nothing logged says what a frame shows. A Redis that can't be asked is logged by the error's type, and counts as no
 record.

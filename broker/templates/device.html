@@ -32,13 +32,17 @@
             <p class="tour-start"><button type="button" id="tourStart">Take the tour ›</button></p>
         </div>
     </div>
-    <figure class="preview{% if not has_frame %} empty{% endif %}">
+    {# With no picture yet the page asks for one until it's drawn (the script below), as after the screen is turned. #}
+    <figure class="preview{% if not has_frame %} empty{% endif %}" id="preview"{% if not has_frame %} data-frame-url="{{ url_for('pages.screen_frame', device_id=device_id) }}"{% endif %}>
         <a class="bezel{% if frame_height > frame_width %} portrait{% endif %}" href="{{ url_for('pages.screen_view', device_id=device_id) }}" aria-label="See what's on the screen">
             {% if has_frame %}
                 <span class="frame{% if frame_portrait %} frame-portrait{% endif %}" style="--frame-w: {{ frame_width }}; --frame-h: {{ frame_height }}">
                     <img class="frame-picture" src="{{ url_for('pages.screen_frame', device_id=device_id) }}" alt="" width="{{ frame_height if frame_portrait else frame_width }}" height="{{ frame_width if frame_portrait else frame_height }}">
                 </span>
             {% else %}
+                <span class="frame{% if frame_portrait %} frame-portrait{% endif %}" style="--frame-w: {{ frame_width }}; --frame-h: {{ frame_height }}" hidden>
+                    <img class="frame-picture" alt="" width="{{ frame_height if frame_portrait else frame_width }}" height="{{ frame_width if frame_portrait else frame_height }}">
+                </span>
                 <span class="bezel-empty" style="aspect-ratio: {{ frame_width }} / {{ frame_height }}">No picture yet</span>
             {% endif %}
         </a>
@@ -376,6 +380,41 @@
 <script src="{{ url_for('static', filename='config_tour.js') }}" data-picture="{{ url_for('static', filename='display/tour.png') }}"></script>
 <script src="{{ url_for('static', filename='settings_form.js') }}"></script>
 <script src="{{ url_for('static', filename='settings_choices.js') }}"></script>
+<script>
+(() => {
+    // The screen's picture, while there's none yet (a screen just named, or just turned): ask for it until it's
+    // drawn, then show it in place of the blank bezel.
+    const preview = document.getElementById('preview');
+    const url = preview.dataset.frameUrl;
+    if (!url) return;
+    const EVERY_MS = 3000;
+    // The render the save queued lands within seconds, and the pool's own within a minute: after two, stop asking.
+    let tries = 40;
+
+    async function check() {
+        if (!document.hidden) {
+            tries -= 1;
+            try {
+                const response = await fetch(url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'error' });
+                if (response.ok) {
+                    const frame = preview.querySelector('.frame');
+                    frame.querySelector('.frame-picture').src = URL.createObjectURL(await response.blob());
+                    frame.hidden = false;
+                    preview.querySelector('.bezel-empty').remove();
+                    preview.classList.remove('empty');
+                    preview.appendChild(document.createElement('figcaption')).textContent = 'Drawn just now';
+                    return;
+                }
+            } catch (error) {
+                // Offline, or the sign-in expired: the next try, or a reload, shows it.
+            }
+        }
+        if (tries > 0) setTimeout(check, EVERY_MS);
+    }
+
+    setTimeout(check, EVERY_MS);
+})();
+</script>
 <script>
     const settingsForm = document.getElementById('settingsForm');
 
