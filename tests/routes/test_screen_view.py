@@ -1,3 +1,4 @@
+import json
 import struct
 import zlib
 from datetime import UTC, datetime, timedelta
@@ -6,7 +7,7 @@ import fakeredis
 
 from broker.db import db
 from broker.models import DeviceConfig
-from broker.services import frame_image
+from broker.services import config_store, frame_image, frame_record, render_jobs
 from broker.services.frame_record import FRAME_BYTES
 
 
@@ -206,6 +207,33 @@ def test_turning_the_screen_forgets_the_picture_drawn_the_other_way(paired_clien
 
     assert client.get(f"/device/{device_id}/screen/frame.png").status_code == 404
     assert "No picture yet" in client.get(f"/device/{device_id}").get_data(as_text=True)
+
+
+def test_a_turned_screens_picture_is_forgotten_after_its_config_is_stored_and_before_its_render(
+    app, paired_client, draw, fake_redis, monkeypatch
+):
+    # The pool writes no frame drawn from a config since replaced, so once the new config is stored nothing can put
+    # the old picture back; and the render queued last draws again whatever was drawn in between.
+    client, device_id, _ = paired_client
+    draw(device_id, bytes(FRAME_BYTES))
+    events = []
+    forget, enqueue = frame_record.forget, render_jobs.enqueue
+
+    def forget_and_note(forgotten):
+        stored = json.loads(fake_redis.get(config_store.key(forgotten)))
+        events.append(("forget", stored["screen"]["orientation"]))
+        forget(forgotten)
+
+    def enqueue_and_note(redis, device_ids):
+        events.append(("render", list(device_ids)))
+        return enqueue(redis, device_ids)
+
+    monkeypatch.setattr(frame_record, "forget", forget_and_note)
+    monkeypatch.setattr(render_jobs, "enqueue", enqueue_and_note)
+
+    assert client.post(f"/device/{device_id}", data={"orientation": "horizontal"}).status_code == 302
+
+    assert events[-2:] == [("forget", "horizontal"), ("render", [device_id])]
 
 
 def test_a_save_that_doesnt_turn_the_screen_keeps_its_picture(paired_client, draw):

@@ -18,7 +18,8 @@ gives each record a TTL of a day from its last change (`volatile-lru` may evict 
 at its next render; meanwhile, as after a Redis restart, the screen is told there's no frame yet and asks again
 shortly, keeping the picture it has. The broker deletes a device's record when it forgets the device, unpairs it
 with its config, or its owner turns it (a new orientation: the picture drawn for the old one would be shown on its
-side) (`forget`).
+side) (`forget`). A turned screen's is deleted after its new config is in the store: the pool writes no frame drawn
+from a config that has been replaced since, so a render in flight can't put the old picture back.
 
 Nothing logged says what a frame shows. A Redis that can't be asked is logged by the error's type, and counts as no
 record.
