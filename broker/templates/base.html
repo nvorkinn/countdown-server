@@ -1815,9 +1815,11 @@
                 grid-template-columns: minmax(0, 1fr);
             }
 
+            /* The figure spans the column: the picture gives it no width of its own (.frame is a size container),
+               so shrunk to fit it would be only as wide as its caption. */
             .preview {
-                justify-self: center;
-                max-width: 100%;
+                justify-self: stretch;
+                width: 100%;
             }
 
             .app .bezel.portrait {
