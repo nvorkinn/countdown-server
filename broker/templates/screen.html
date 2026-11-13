@@ -84,7 +84,7 @@
     <div class="card-header screen-links">
         <div>
             <h2 class="card-title">On the screen now</h2>
-            <p class="card-subtitle">The picture the screen paints, checked every {{ '%g' | format(interval) }} seconds as the screen does.</p>
+            <p class="card-subtitle">The picture the screen paints, checked when the screen checks: every {{ '%g' | format(interval) }} seconds.</p>
         </div>
         <a href="{{ url_for('pages.device_config', device_id=device_id) }}">Settings ›</a>
     </div>
@@ -106,23 +106,19 @@
     </p>
 </div>
 
+<script src="{{ url_for('static', filename='frame_poll.js') }}"></script>
 <script>
 (() => {
-    const url = {{ url_for('pages.screen_frame', device_id=device_id) | tojson }};
-    const intervalMs = {{ '%g' | format(interval) }} * 1000;
     const frame = document.getElementById('screenFrame');
     const picture = document.getElementById('screenPicture');
     const empty = document.getElementById('screenEmpty');
     const status = document.getElementById('screenStatus');
-    let etag = null;
-    let objectUrl = null;
-    let timer = null;
 
     const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    function showDrawn(iso) {
+    function showDrawn(at) {
         status.className = '';
-        status.textContent = 'Drawn ' + timeFormat.format(new Date(iso));
+        status.textContent = 'Drawn ' + timeFormat.format(new Date(at));
     }
 
     function showProblem(text) {
@@ -130,52 +126,27 @@
         status.textContent = text;
     }
 
-    async function refresh() {
-        try {
-            // no-cache: the browser asks again with the ETag it has, and a 304 comes back as the picture it kept.
-            const response = await fetch(url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'error' });
-            if (response.status === 404) {
-                showProblem('Waiting for the first picture');
-                return;
-            }
-            if (!response.ok) {
-                throw new Error(response.status);
-            }
-            const tag = response.headers.get('ETag');
-            if (tag !== etag) {
-                const blob = await response.blob();
-                if (objectUrl) URL.revokeObjectURL(objectUrl);
-                objectUrl = URL.createObjectURL(blob);
-                picture.src = objectUrl;
-                frame.hidden = false;
-                empty.hidden = true;
-                etag = tag;
-            }
-            const renderedAt = response.headers.get('X-Rendered-At');
-            if (renderedAt) showDrawn(renderedAt);
-        } catch (error) {
-            // Most likely the sign-in expired, which only a reload can renew.
-            showProblem("Couldn't check for a new picture. Reload the page to try again.");
-        }
-    }
-
-    function schedule() {
-        clearInterval(timer);
-        timer = null;
-        if (!document.hidden) {
-            timer = setInterval(refresh, intervalMs);
-        }
-    }
-
-    // Only poll while the page is in view, and catch up as soon as it is again.
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) refresh();
-        schedule();
-    });
-
     const drawn = document.getElementById('renderedAt');
     if (drawn) showDrawn(drawn.dateTime);
-    schedule();
+
+    // Asks when the screen does: each answer says when that next is.
+    followFrame({{ url_for('pages.screen_frame', device_id=device_id) | tojson }}, {
+        etag: {{ ('"' ~ frame_etag ~ '"' if frame_etag else none) | tojson }},
+        firstMs: 1500,
+        picture(objectUrl) {
+            picture.src = objectUrl;
+            frame.hidden = false;
+            empty.hidden = true;
+        },
+        drawn: showDrawn,
+        missing() {
+            if (frame.hidden) showProblem('Waiting for the first picture');
+        },
+        failed() {
+            // Most likely the sign-in expired, which only a reload can renew.
+            showProblem("Couldn't check for a new picture. Reload the page to try again.");
+        },
+    });
 })();
 </script>
 {% endblock %}

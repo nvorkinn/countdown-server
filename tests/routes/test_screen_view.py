@@ -4,10 +4,11 @@ import zlib
 from datetime import UTC, datetime, timedelta
 
 import fakeredis
+import pytest
 
 from broker.db import db
 from broker.models import DeviceConfig
-from broker.services import config_store, frame_image, frame_record, render_jobs
+from broker.services import config_store, frame_image, frame_record, pace, render_jobs
 from broker.services.frame_record import FRAME_BYTES
 
 
@@ -126,8 +127,8 @@ def test_screen_page_shows_the_picture_and_polls_at_the_screens_interval(app, pa
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert f'src="/device/{device_id}/screen/frame.png"' in html
-    assert "const intervalMs = 30 * 1000;" in html  # twice a render, as the screen polls
-    assert "checked every 30 seconds as the screen does" in html
+    assert "checked when the screen checks: every 30 seconds." in html  # twice a render, as the screen polls
+    assert "/static/frame_poll.js" in html
     assert 'width="480" height="800"' in html
 
 
@@ -142,7 +143,7 @@ def test_screen_page_polls_as_fast_as_the_screen_while_a_provider_asks(app, pair
 
     html = client.get(f"/device/{device_id}/screen").get_data(as_text=True)
 
-    assert "const intervalMs = 10 * 1000;" in html
+    assert "checked when the screen checks: every 10 seconds." in html
 
 
 def test_screen_page_before_the_first_frame_says_so(paired_client):
@@ -177,7 +178,9 @@ def test_settings_page_header_says_when_the_picture_was_drawn(paired_client, dra
     client, device_id, _ = paired_client
     draw(device_id, bytes(FRAME_BYTES), at=datetime.now(UTC) - timedelta(minutes=7))
 
-    assert "<figcaption>Drawn 7 min ago</figcaption>" in client.get(f"/device/{device_id}").get_data(as_text=True)
+    html = client.get(f"/device/{device_id}").get_data(as_text=True)
+
+    assert '<figcaption id="previewDrawn">Drawn 7 min ago</figcaption>' in html
 
 
 def test_settings_page_header_before_the_first_frame_says_so(paired_client):
@@ -189,13 +192,59 @@ def test_settings_page_header_before_the_first_frame_says_so(paired_client):
     # No picture to show, only where the page asks for one until it's drawn.
     assert 'src="' not in html.split('id="preview"')[1].split("</figure>")[0]
     assert f'data-frame-url="/device/{device_id}/screen/frame.png"' in html
+    assert '<figcaption id="previewDrawn" hidden></figcaption>' in html
 
 
-def test_settings_page_with_a_picture_doesnt_ask_for_one(paired_client, draw):
+def test_settings_page_with_a_picture_keeps_asking_for_the_latest(paired_client, draw):
+    # The picture loaded with the page is the one from before a save: its render lands a moment later.
     client, device_id, _ = paired_client
     draw(device_id, bytes(FRAME_BYTES))
 
-    assert "data-frame-url" not in client.get(f"/device/{device_id}").get_data(as_text=True)
+    html = client.get(f"/device/{device_id}").get_data(as_text=True)
+
+    assert f'data-frame-url="/device/{device_id}/screen/frame.png"' in html
+    # With the ETag of the picture it loaded, so the first ask doesn't download it again.
+    etag = client.get(f"/device/{device_id}/screen/frame.png").headers["ETag"]
+    assert f"data-frame-etag='{etag}'" in html
+    assert "/static/frame_poll.js" in html
+
+
+def test_the_picture_says_when_to_ask_again_as_the_screens_own_poll_does(paired_client, draw, monkeypatch):
+    client, device_id, secret = paired_client
+    draw(device_id, bytes(FRAME_BYTES))
+    # 12:00:10: the screen's next wake is at :33.
+    monkeypatch.setattr(pace, "clock", lambda: datetime(2026, 11, 13, 12, 0, 10, tzinfo=UTC))
+
+    picture = client.get(f"/device/{device_id}/screen/frame.png")
+    poll = client.post("/api/frame", headers={"Authorization": f"Bearer {secret}"})
+
+    assert picture.headers["Retry-After"] == "23"
+    assert poll.headers["Retry-After"] == "23"
+
+
+def test_an_unchanged_picture_is_a_304_that_says_when_to_ask_again_without_reading_the_frame(
+    paired_client, draw, monkeypatch
+):
+    client, device_id, _ = paired_client
+    draw(device_id, bytes(FRAME_BYTES))
+    etag = client.get(f"/device/{device_id}/screen/frame.png").headers["ETag"]
+    monkeypatch.setattr(frame_record, "frame_of", lambda *_: pytest.fail("the frame was read"))
+    monkeypatch.setattr(frame_record, "read", lambda *_: pytest.fail("the frame was read"))
+
+    again = client.get(f"/device/{device_id}/screen/frame.png", headers={"If-None-Match": etag})
+
+    assert again.status_code == 304
+    assert int(again.headers["Retry-After"]) >= pace.MIN_SLEEP_S
+    assert "X-Rendered-At" in again.headers
+
+
+def test_a_picture_there_isnt_yet_is_asked_for_again_soon(paired_client):
+    client, device_id, _ = paired_client
+
+    missing = client.get(f"/device/{device_id}/screen/frame.png")
+
+    assert missing.status_code == 404
+    assert 0 < int(missing.headers["Retry-After"]) <= 10
 
 
 def test_turning_the_screen_forgets_the_picture_drawn_the_other_way(paired_client, draw):
