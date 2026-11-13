@@ -33,7 +33,7 @@
         </div>
     </div>
     {# The page keeps asking for the picture (the script below), so it shows a save's new one, and the first one. #}
-    <figure class="preview{% if not has_frame %} empty{% endif %}" id="preview" data-frame-url="{{ url_for('pages.screen_frame', device_id=device_id) }}">
+    <figure class="preview{% if not has_frame %} empty{% endif %}" id="preview" data-frame-url="{{ url_for('pages.screen_frame', device_id=device_id) }}"{% if frame_etag %} data-frame-etag='"{{ frame_etag }}"'{% endif %}>
         <a class="bezel{% if frame_height > frame_width %} portrait{% endif %}" href="{{ url_for('pages.screen_view', device_id=device_id) }}" aria-label="See what's on the screen">
             {% if has_frame %}
                 <span class="frame{% if frame_portrait %} frame-portrait{% endif %}" style="--frame-w: {{ frame_width }}; --frame-h: {{ frame_height }}">
@@ -380,22 +380,14 @@
 <script src="{{ url_for('static', filename='config_tour.js') }}" data-picture="{{ url_for('static', filename='display/tour.png') }}"></script>
 <script src="{{ url_for('static', filename='settings_form.js') }}"></script>
 <script src="{{ url_for('static', filename='settings_choices.js') }}"></script>
+<script src="{{ url_for('static', filename='frame_poll.js') }}"></script>
 <script>
 (() => {
     // The screen's picture, kept as the screen has it: the one loaded with the page is the one from before a save
     // (its render lands a moment later), and the pool draws a new one whenever what the screen shows changes.
     const preview = document.getElementById('preview');
-    const url = preview.dataset.frameUrl;
     const frame = preview.querySelector('.frame');
-    const picture = frame.querySelector('.frame-picture');
     const caption = document.getElementById('previewDrawn');
-    // Soon after the page loads, for the render a save just queued; then every few seconds.
-    const FIRST_MS = 1500;
-    const EVERY_MS = 5000;
-    let etag = null;
-    let objectUrl = null;
-    let drawnAt = null;
-    let timer = null;
 
     // As the page's own "Drawn 5 min ago" (routes/pages.py, _seen_ago).
     function ago(since) {
@@ -406,50 +398,21 @@
         return `${Math.floor(minutes / (24 * 60))} days ago`;
     }
 
-    function showDrawn() {
-        if (drawnAt === null) return;
-        caption.textContent = `Drawn ${ago(drawnAt)}`;
-        caption.hidden = false;
-    }
-
-    async function refresh() {
-        try {
-            // no-cache: the browser asks again with the ETag it has, and a 304 comes back as the picture it kept.
-            const response = await fetch(url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'error' });
-            // No picture (yet, or its record lapsed): what's shown stays.
-            if (!response.ok) return;
-            const tag = response.headers.get('ETag');
-            if (tag !== etag) {
-                const blob = await response.blob();
-                if (objectUrl) URL.revokeObjectURL(objectUrl);
-                objectUrl = URL.createObjectURL(blob);
-                picture.src = objectUrl;
-                frame.hidden = false;
-                preview.querySelector('.bezel-empty')?.remove();
-                preview.classList.remove('empty');
-                etag = tag;
-            }
-            const renderedAt = Date.parse(response.headers.get('X-Rendered-At'));
-            if (!Number.isNaN(renderedAt)) drawnAt = renderedAt;
-            showDrawn();
-        } catch (error) {
-            // Offline, or the sign-in expired: the next try, or a reload, shows it.
-        }
-    }
-
-    function schedule() {
-        clearInterval(timer);
-        timer = document.hidden ? null : setInterval(refresh, EVERY_MS);
-    }
-
-    // Only ask while the page is in view, and catch up as soon as it is again.
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) refresh();
-        schedule();
+    followFrame(preview.dataset.frameUrl, {
+        etag: preview.dataset.frameEtag || null,
+        // Soon after the page loads, for the render a save just queued; from then on, whenever the screen asks.
+        firstMs: 1500,
+        picture(objectUrl) {
+            frame.querySelector('.frame-picture').src = objectUrl;
+            frame.hidden = false;
+            preview.querySelector('.bezel-empty')?.remove();
+            preview.classList.remove('empty');
+        },
+        drawn(at) {
+            caption.textContent = `Drawn ${ago(at)}`;
+            caption.hidden = false;
+        },
     });
-
-    setTimeout(refresh, FIRST_MS);
-    schedule();
 })();
 </script>
 <script>

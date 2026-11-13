@@ -38,6 +38,7 @@ from broker.models import (
     is_hd_screen,
     layout_choices,
 )
+from broker.routes.frames import NO_FRAME_RETRY_S
 from broker.services import (
     assignments,
     config_store,
@@ -487,6 +488,7 @@ def screen_view() -> ResponseReturnValue:
         "screen.html",
         device_id=g.device_id,
         has_frame=shown is not None,
+        frame_etag=_frame_etag(shown, config) if shown else None,
         frame_portrait=_frame_portrait(config),
         rendered_at=shown.rendered_at if shown else None,
         # As often as the screen polls, right now.
@@ -507,29 +509,51 @@ def _frame_size(config: DeviceConfig) -> tuple[int, int]:
     return (short, long) if config.orientation != "horizontal" else (long, short)
 
 
+def _frame_etag(shown: frame_record.StoredFrame, config: DeviceConfig) -> str:
+    """Return the ETag of a screen's picture as the pages are served it: the frame's, and which way up it's shown."""
+    return f"{shown.etag}-{'h' if config.orientation == 'horizontal' else 'v'}"
+
+
 @bp.get("/device/screen/frame.png", defaults={"device_id": None})
 @bp.get("/device/<device_id>/screen/frame.png")
 @require_paired_user
 def screen_frame() -> ResponseReturnValue:
     """Serve the frame the screen is served as a PNG, in portrait or landscape as the screen is.
 
-    Conditional on the frame's ETag and the orientation, so a page polling it only downloads a frame that changed.
-    X-Rendered-At is when the pool first drew the picture.
+    Conditional on the frame's ETag and the orientation, so a page following it (static/frame_poll.js) only downloads
+    a frame that changed: a 304 is answered from the record's etag, without reading the frame. Every answer carries
+    the Retry-After the screen's own poll would get now (services/pace.py), so the page asks again when the screen
+    does. X-Rendered-At is when the pool first drew the picture.
     """
-    frame = frame_record.read(g.device_id)
-    # read() always has the frame itself; its absence is only possible in StoredFrame's type.
-    if frame is None or frame.frame is None:
-        return jsonify(error="no frame yet"), 404
+    shown = frame_record.head(g.device_id)
+    sleep_s = pace.retry_after(g.device_id)
+    if shown is None:
+        return _no_picture(sleep_s)
     config = db.session.get_one(DeviceConfig, g.device_id)
-    portrait = config.orientation != "horizontal"
     resp = Response(mimetype="image/png")
-    resp.set_etag(f"{frame.etag}-{'v' if portrait else 'h'}")
+    resp.set_etag(_frame_etag(shown, config))
     resp.headers["Cache-Control"] = "private, no-cache"
-    resp.headers["X-Rendered-At"] = frame.rendered_at.isoformat(timespec="seconds")
+    resp.headers["Retry-After"] = str(sleep_s)
+    resp.headers["X-Rendered-At"] = shown.rendered_at.isoformat(timespec="seconds")
     resp = resp.make_conditional(request)
-    if resp.status_code == HTTPStatus.OK:  # a 304 needs no picture
-        resp.set_data(frame_image.preview(frame.frame, config.format, portrait=portrait))
+    if resp.status_code != HTTPStatus.OK:  # a 304 needs no picture
+        return resp
+    frame = frame_record.frame_of(g.device_id, shown.etag)
+    if frame is None:
+        # The record went, or changed, since its etag was read: serve it whole as it is now, if there is one.
+        latest = frame_record.read(g.device_id)
+        if latest is None or latest.frame is None:
+            return _no_picture(sleep_s)
+        resp.set_etag(_frame_etag(latest, config))
+        resp.headers["X-Rendered-At"] = latest.rendered_at.isoformat(timespec="seconds")
+        frame = latest.frame
+    resp.set_data(frame_image.preview(frame, config.format, portrait=config.orientation != "horizontal"))
     return resp
+
+
+def _no_picture(sleep_s: int) -> ResponseReturnValue:
+    """Answer a page that asks for a picture there isn't yet: 404, and ask again as soon as the screen would."""
+    return jsonify(error="no frame yet"), 404, {"Retry-After": str(min(sleep_s, NO_FRAME_RETRY_S))}
 
 
 # The orientation the page sets for a screen that isn't HD, without letting it be changed, whatever is stored.
@@ -588,6 +612,7 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         display_seen=_seen_ago(device.display_last_seen_at, now),
         screen_label=screen_label(device),
         has_frame=drawn is not None,
+        frame_etag=_frame_etag(drawn, config) if drawn else None,
         frame_drawn=_seen_ago(drawn.rendered_at, now) if drawn else None,
         frame_width=frame_width,
         frame_height=frame_height,
