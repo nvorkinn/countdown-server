@@ -9,13 +9,31 @@ from http import HTTPStatus
 from typing import Any
 
 import requests
+from countdown_api.models import SpotifyAccessToken
 from flask import current_app
 
 from broker.db import db
 from broker.models import SpotifyToken
 from broker.services import accounts
 
-SCOPE = "user-read-currently-playing user-read-playback-state user-top-read"
+# What a touchscreen (the Max Mix) plays and browses with, through its Web Playback SDK and the Web API.
+TOUCHSCREEN_SCOPES = frozenset(
+    {
+        "streaming",
+        "user-read-email",
+        "user-read-private",
+        "user-read-playback-state",
+        "user-modify-playback-state",
+        "user-read-currently-playing",
+        "user-library-read",
+        "user-read-recently-played",
+        "playlist-read-private",
+    }
+)
+# A touchscreen gets a token with at least this long left, so it isn't back for another at once.
+TOUCHSCREEN_TOKEN_MARGIN_S = 600
+# One link serves every screen of the account, so it asks for what the music panel reads and a touchscreen plays with.
+SCOPE = " ".join(sorted(TOUCHSCREEN_SCOPES | {"user-top-read"}))
 AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"  # noqa: S105 -- a URL, not a password
 
@@ -64,6 +82,8 @@ def _store_tokens(user_id: str, payload: dict) -> None:
     token.refresh_token = refresh_token
     token.access_token = payload["access_token"]
     token.expires_at = expires_at
+    # A refresh's answer may leave it out, which means the scopes are as they were.
+    token.scope = payload.get("scope") or token.scope
     db.session.add(token)
     db.session.commit()
 
@@ -86,8 +106,8 @@ def _refresh_access_token(user_id: str, refresh_token: str) -> str:
     return payload["access_token"]
 
 
-def _get_access_token(device_id: str) -> str | None:
-    """Return a valid access token for the device's owner's Spotify, refreshing it if needed.
+def _get_access_token(device_id: str, margin: float = 30) -> str | None:
+    """Return a valid access token for the device's owner's Spotify, refreshing it if it has under `margin` s left.
 
     None when their account hasn't linked Spotify (or nobody owns the device).
     """
@@ -96,9 +116,34 @@ def _get_access_token(device_id: str) -> str | None:
     if user_id is None or token is None:
         return None
 
-    if token.expires_at is None or token.expires_at - 30 < datetime.now(UTC).timestamp():
+    if token.expires_at is None or token.expires_at - margin < datetime.now(UTC).timestamp():
         return _refresh_access_token(user_id, token.refresh_token)
     return token.access_token
+
+
+def lacks_touchscreen_scopes(token: SpotifyToken) -> bool:
+    """Whether the link was made without what a touchscreen plays with (made before it was asked for, if unknown)."""
+    return not set((token.scope or "").split()) >= TOUCHSCREEN_SCOPES
+
+
+def touchscreen_token(device_id: str) -> SpotifyAccessToken | None:
+    """Return an access token for a touchscreen to play its owner's Spotify with, renewed if it's about to expire.
+
+    None when the owner's account hasn't linked Spotify. The refresh token never leaves the broker. Raises
+    requests.RequestException if Spotify can't renew it.
+    """
+    access_token = _get_access_token(device_id, margin=TOUCHSCREEN_TOKEN_MARGIN_S)
+    user_id = accounts.owner(device_id)
+    token = db.session.get(SpotifyToken, user_id) if user_id is not None else None
+    if access_token is None or token is None:
+        return None
+    expires_in = max(0, int((token.expires_at or 0) - datetime.now(UTC).timestamp()))
+    return SpotifyAccessToken(
+        access_token=access_token,
+        token_type="Bearer",  # noqa: S106 -- the scheme's name, not a password
+        expires_in=expires_in,
+        scope=token.scope or "",
+    )
 
 
 def get_queue(device_id: str) -> dict[str, Any]:

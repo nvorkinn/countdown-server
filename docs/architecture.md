@@ -87,7 +87,7 @@ broker to trust them. The broker has no user table: the Pocket ID user id is sto
 | **Screen secret** | the screen, on first boot | the screen's flash; the broker keeps its SHA-256 | `Authorization: Bearer` on every screen call. Ends when the screen is unlinked or forgotten, or its flash is erased. |
 | **Pairing token** | both sides: `sha256("pairing:" + sha256hex(secret))` | `devices.pairing_token` | In the URL the phone is sent to after Wi-Fi setup. Safe to show, as it's one-way. |
 | **Pairing code** | `flask devices code` / `unpair` | `pairing_codes`, and `v1:pairing:<device id>` for the pool to draw | 6 characters, 10 minutes, one use. |
-| **Spotify tokens** | Spotify OAuth, `/auth/spotify/callback` | `spotify_tokens`, plaintext | Refreshed by the music provider. |
+| **Spotify tokens** | Spotify OAuth, `/auth/spotify/callback` | `spotify_tokens`, plaintext, with the scopes granted | Refreshed by the music provider, and by `GET /api/devices/spotify/token`, which hands a touchscreen a short-lived access token (never the refresh token). |
 | **Apple Music user token** | MusicKit JS on the account page | `apple_music_tokens`, encrypted | Lasts about six months, can't be refreshed: cleared when Apple refuses it. |
 | **Glowmarkt password** | the owner, on the account page | `glowmarkt_credentials`, encrypted | Never leaves the broker's image: the glow provider signs in with it. |
 | **Parcel API key** | the owner, on the account page | `parcel_keys`, encrypted | From the owner's own Parcel Premium account (web.parcelapp.net). Read through `services/parcel_key.get_parcel_api_key`; never sent to the browser or logged. |
