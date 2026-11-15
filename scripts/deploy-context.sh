@@ -100,7 +100,7 @@ retry_lost_lease docker compose pull
 
 if [ "$dry_run" = true ]; then
   echo "Dry run: this is what a deploy would do (containers: Recreate = replaced, Running = left alone)"
-  docker compose --dry-run up -d --no-build
+  docker compose --dry-run up -d --no-build --pull never
   exit 0
 fi
 
@@ -118,8 +118,10 @@ fi
 # 443), so whatever runs after finds them serving, and a container that won't start fails the deploy. The services start
 # in the order of their depends_on (Caddy after the socket proxy). --remove-orphans takes down this project's containers
 # for services the release no longer has: a renamed service (tinyauth -> countdown-tinyauth) would otherwise leave the
-# old one running, and an old and a new Pocket ID would both write to pocket_id_data.
-retry_lost_lease docker compose up -d --wait --wait-timeout 600 --remove-orphans
+# old one running, and an old and a new Pocket ID would both write to pocket_id_data. --pull never, as the pull above has
+# just fetched every image: the release images' pull_policy: always would otherwise make `up` check and pull them all
+# again over SSH (about 15s a deploy).
+retry_lost_lease docker compose up -d --pull never --wait --wait-timeout 600 --remove-orphans
 docker compose ps
 
 # Every release pulls new tags, so drop every image no container uses: the previous release's, and anything else left
