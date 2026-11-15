@@ -1,0 +1,12 @@
+{# A touchscreen's screen itself (the config's TouchscreenDisplay). #}
+{% from "device/_controls.html" import segmented %}
+<section class="section" data-section="display">
+    <header class="card-header">
+        <h2 class="card-title">Display</h2>
+    </header>
+    <fieldset class="form-group">
+        <legend class="form-legend">Screen sleep</legend>
+        {{ segmented("screen_sleep_minutes", screen_sleep_minutes, config.screen_sleep_minutes | string) }}
+        <p class="form-hint">Idle, with no music playing. Only a Raspberry Pi kiosk sleeps its screen.</p>
+    </fieldset>
+</section>
