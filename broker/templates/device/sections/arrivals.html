@@ -22,7 +22,7 @@
             <div id="stopsList" class="stops-list"{% if not touchscreen %} data-pages{% endif %}>
                 {% if stops %}
                     {% for stop in stops %}
-                        <div class="stop-card" data-id="{{ stop.id }}">
+                        <div class="stop-card" data-id="{{ stop.id }}" data-source="{{ stop.source }}">
                             <div class="stop-order">
                                 <span class="order-badge">{{ loop.index }}</span>
                                 {% set icon = MODE_ICONS.get(stop.mode) %}

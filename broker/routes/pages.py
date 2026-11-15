@@ -46,6 +46,7 @@ from broker.models import (
 from broker.routes.frames import NO_FRAME_RETRY_S
 from broker.services import (
     assignments,
+    config_sections,
     config_store,
     frame_image,
     frame_record,
@@ -537,8 +538,24 @@ def _weather_place(config: DeviceConfig) -> tuple[dict[str, Any] | None, list[st
 @bp.route("/device/<device_id>/name", methods=["GET", "POST"])
 @require_paired_user
 def name_screen() -> ResponseReturnValue:
-    """Redirect to the screen's settings page, where its name is set."""
-    return redirect(url_for("pages.device_config", device_id=g.device_id))
+    """Save the screen's name on its own (POST, from a touchscreen's page), or redirect to its settings page (GET).
+
+    A touchscreen's page saves each setting as it changes (config_sections.js), and the name isn't in the device's
+    config: it's saved here and answered with what the pages now call the screen. An empty name clears it; a post
+    without one is a 400.
+    """
+    if request.method == "GET":
+        return redirect(url_for("pages.device_config", device_id=g.device_id))
+    if "screen_name" not in request.form:
+        return jsonify(error="Send the screen's name as screen_name."), 400
+    try:
+        name = assignments.clean_name(request.form["screen_name"])
+    except assignments.NameTooLongError:
+        return jsonify(error=f"The screen's name can be at most {assignments.NAME_MAX} characters."), 400
+    device = db.session.get_one(Device, g.device_id)
+    device.device_name = name
+    db.session.commit()
+    return jsonify(label=screen_label(device))
 
 
 @bp.get("/device/screen", defaults={"device_id": None})
@@ -701,6 +718,7 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
     weather_suggestion = None if config.weather_location else geoip.suggest_weather_location(request.remote_addr)
     drawn = frame_record.head(device_id)
     now = pace.clock()
+    built = renderer_config.build(config, pairing_code=None) if device.type == "touchscreen" else None
     return render_template(
         "device.html",
         device_id=device_id,
@@ -708,6 +726,9 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         # A touchscreen draws itself: its page has its own settings, and none of the render pool's (no picture, style,
         # layout or orientation).
         touchscreen=device.type == "touchscreen",
+        # A touchscreen's page saves a section at a time (config_sections.js), from the config as built and its version.
+        sections_config=built.model_dump(mode="json") if built else None,
+        config_version=config_sections.version_of(built) if built else None,
         sections=PAGE_SECTIONS[device.type],
         device_type=device.type,
         device_types=DEVICE_TYPE_LABELS,

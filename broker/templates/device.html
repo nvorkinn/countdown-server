@@ -74,7 +74,10 @@
 <!-- Lives outside the settings form because forms can't nest; the Unlink button points at it. -->
 <form id="displayUnlinkForm" method="POST" action="{{ url_for('pages.display_unlink', device_id=device_id) }}"></form>
 
-<form class="settings" id="settingsForm" method="POST" action="{{ url_for('pages.device_config', device_id=device_id) }}">
+{# A touchscreen's page saves each setting as it changes, a section at a time (config_sections.js), as the tablet does:
+   no Save bar. An e-paper screen's saves the whole form. #}
+<form class="settings" id="settingsForm" method="POST" action="{{ url_for('pages.device_config', device_id=device_id) }}"
+    {%- if touchscreen %} data-config-url="{{ url_for('devices.get_config') }}" data-device-id="{{ device_id }}" data-version="{{ config_version }}" data-name-url="{{ url_for('pages.name_screen', device_id=device_id) }}"{% endif %}>
     {# The device's sections, in order (pages.PAGE_SECTIONS, by its type): each is device/sections/<name>.html, and a
        pair of them goes side by side on a wide page. #}
     {% for section in sections %}
@@ -87,18 +90,25 @@
         {% endif %}
     {% endfor %}
 
+    {% if not touchscreen %}
     <div class="save-bar" id="saveBar">
         <p class="save-status" id="saveStatus" aria-live="polite">Unsaved changes</p>
         <button type="button" class="btn-discard" id="discardChanges" hidden>Discard</button>
         <button type="submit" class="btn-save">Save</button>
     </div>
+    {% endif %}
 </form>
 
 {% if not touchscreen %}
 <script src="{{ url_for('static', filename='vendor/driver.js/driver.js.iife.js') }}"></script>
 <script src="{{ url_for('static', filename='config_tour.js') }}" data-picture="{{ url_for('static', filename='display/tour.png') }}"></script>
 {% endif %}
+{% if touchscreen %}
+<script type="application/json" id="deviceConfig">{{ sections_config | tojson }}</script>
+<script src="{{ url_for('static', filename='config_sections.js') }}"></script>
+{% else %}
 <script src="{{ url_for('static', filename='settings_form.js') }}"></script>
+{% endif %}
 <script src="{{ url_for('static', filename='settings_choices.js') }}"></script>
 {% if not touchscreen %}
 <script src="{{ url_for('static', filename='frame_poll.js') }}"></script>
@@ -159,7 +169,9 @@
         placeInput.value = place.label;
         placeId.value = place.id;
         hidePlaceResults();
-        settingsForm.dispatchEvent(new Event('change'));
+        // What picking it saves, for a page that saves a section at a time (config_sections.js).
+        document.dispatchEvent(new CustomEvent('place-picked', {detail: place}));
+        placeId.dispatchEvent(new Event('change', {bubbles: true}));
     }
 
     placeInput.addEventListener('keydown', (e) => {
@@ -333,7 +345,7 @@
             ids.push(card.dataset.id);
         });
         stopsOrderInput.value = ids.join(',');
-        settingsForm.dispatchEvent(new Event('change'));
+        stopsOrderInput.dispatchEvent(new Event('change', {bubbles: true}));
 
         const emptyNotice = stopsList.querySelector('.empty-stops');
         if (cards.length === 0 && !emptyNotice) {
@@ -356,6 +368,7 @@
         const card = document.createElement('div');
         card.className = 'stop-card';
         card.dataset.id = stop.id;
+        card.dataset.source = stop.source;
         card.innerHTML = `
             <div class="stop-order">
                 <span class="order-badge">1</span>

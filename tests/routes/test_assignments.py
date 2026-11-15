@@ -44,9 +44,10 @@ def test_pairing_names_the_screen_by_its_own_id_and_opens_its_settings(app, clie
     # The stable name the pool lists it under and its metrics are labelled with: never shown.
     assert _assignment(app, paired).slug == paired
     assert client.get("/device").status_code == 200
-    # /device/name only redirects to the settings page, where the name is set.
+    # /device/name redirects to the settings page, where the name is set; a post sets only screen_name, never a slug.
     assert client.get("/device/name").headers["Location"] == f"/device/{paired}"
-    assert client.post(f"/device/{paired}/name", data={"slug": "lisa"}).headers["Location"] == f"/device/{paired}"
+    assert client.post(f"/device/{paired}/name", data={"slug": "lisa"}).status_code == 400
+    assert _assignment(app, paired).slug == paired
 
 
 def test_pairing_by_code_and_the_owner_command_name_the_screen_too(app, client, cli):
