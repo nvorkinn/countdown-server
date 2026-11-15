@@ -79,6 +79,26 @@ def test_only_sign_up_about_and_static_files_skip_the_login():
     assert not any(key.startswith(f"caddy_0.handle_{n}.import") for key in labels for n in (0, 1))
 
 
+def test_the_touchscreens_preflights_reach_the_broker(app):
+    """A touchscreen's browser asks with OPTIONS first, which the broker answers (broker/cors.py).
+
+    So the screens' API matches its routes by path alone, any method, and nothing on it answers CORS itself.
+    """
+    labels = _labels("countdown-server")
+    snippet = {key: value for key, value in labels.items() if key.startswith("caddy_2.")}
+    assert labels["caddy_2.handle"] == "@screen_api"
+    assert labels["caddy_2.handle.reverse_proxy"] == "{{upstreams 5000}}"
+    assert [
+        key for key in snippet if key.startswith("caddy_2.@screen_api.") and key != "caddy_2.@screen_api.path"
+    ] == []
+    assert not [value for value in snippet.values() if "access-control" in str(value).lower()]
+    routes = [
+        rule.rule for rule in app.url_map.iter_rules() if rule.rule.startswith("/api/devices/") or "search" in rule.rule
+    ]
+    assert routes
+    assert [route for route in routes if not _covered(route, _screen_api_paths())] == []
+
+
 def test_frame_answers_close_the_connection():
     """A 304 through Caddy has no Content-Length, and the ESP32 then reads until the connection closes.
 
