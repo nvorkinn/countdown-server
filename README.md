@@ -194,6 +194,9 @@ python scripts/simulate_device.py --token    # prints the /pair URL instead
 # --secret <random string> to be the same screen across runs; pass a base URL to use the deployed broker
 ```
 
+To try the settings site without Redis, the login or a screen, `uv run python scripts/dev_server.py` starts it on a
+fresh database with an in-memory Redis, signed in as a user with an e-paper screen, an HD one and a touchscreen.
+
 **Tests, lint and types** (CI runs all three on every PR, the tests split into 3 shards with coverage to Codecov):
 
 ```bash
@@ -232,6 +235,7 @@ Run on the host with `docker exec countdown-server flask --app wsgi <command>`:
 | `devices owner <device_id> <user id>` | Pair a device with a user. |
 | `devices unpair <device_id> [--config]` | Clear its owner and show a new code; `--config` also resets its settings and linked accounts. |
 | `devices forget <device_id>` | Delete it; the screen registers again as a new device. |
+| `devices seed-touchscreen <user id> [--width W] [--height H]` | Add a test touchscreen paired with a user (dev only), and print its secret. |
 | `config publish` | Rewrite the configs and subscriptions in Redis. |
 | `weather backfill` | Give any config with a typed weather location but no picked place the place Open-Meteo finds first. |
 
