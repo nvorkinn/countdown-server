@@ -22,6 +22,11 @@ from broker.models import Device, DeviceConfig, DeviceType, FrameFormat
 
 from . import config_store, device_keys, frame_record, geoip, pairing
 
+
+class TakenError(Exception):
+    """A secret whose device someone else already owns: register_and_claim never hands it to another user."""
+
+
 # Bound on what anyone can add: how many screens may sit unpaired at once, and for how long before
 # they have to register again.
 MAX_UNPAIRED_SCREENS = 20
@@ -74,6 +79,26 @@ def register_screen(secret_hash: str, screen: Screen, ip: str | None = None) -> 
     if screen.type != "touchscreen":
         pairing.issue_code(device_id)
     return Registered(device_id=device_id, created=True)
+
+
+def register_and_claim(secret_hash: str, screen: Screen, user: str, ip: str | None = None) -> Registered:
+    """Register a device and make the signed-in `user` its owner, in one transaction.
+
+    For a touchscreen that registers through the login (routes/register.py): the person signing in on it is its
+    owner, so it never waits unpaired, gets no code, and isn't held to MAX_UNPAIRED_SCREENS. A repeat of a registered
+    secret finds its device and leaves its config alone; one of the same user's is fine, and one someone else owns
+    raises TakenError, with nothing changed. `ip` is the device's, for its weather location.
+    """
+    device = _device_with(secret_hash)
+    created = device is None
+    if device is None:
+        device = db.session.get_one(Device, _new_device(secret_hash, screen, ip))
+    elif device.owner not in (None, user):
+        raise TakenError
+    previous = pairing.claim(device, user)
+    db.session.commit()
+    pairing.after_claim(device.device_id, previous, user)
+    return Registered(device_id=device.device_id, created=created)
 
 
 def _unpaired_screens() -> int:

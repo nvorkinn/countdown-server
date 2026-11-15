@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Add your touchscreen{% endblock %}
+{% block heading %}Add your touchscreen{% endblock %}
+
+{% block content %}
+<div class="card">
+    {% if error %}
+    <div class="card-header">
+        <h2 class="card-title">The touchscreen wasn't added</h2>
+    </div>
+    <div class="error-banner">{{ error }}</div>
+    {% elif confirm %}
+    <div class="card-header">
+        <h2 class="card-title">Add this touchscreen to your account?</h2>
+        <p class="card-subtitle">A {{ width }} &times; {{ height }} touchscreen. Only add it if you are using it now.</p>
+    </div>
+    <form method="POST" action="{{ url_for('register.register') }}">
+        <input type="hidden" name="secret_hash" value="{{ secret_hash }}">
+        <input type="hidden" name="width" value="{{ width }}">
+        <input type="hidden" name="height" value="{{ height }}">
+        <button type="submit" class="btn-save">Add touchscreen</button>
+    </form>
+    {% else %}
+    <div class="card-header">
+        <h2 class="card-title">{% if created %}Your touchscreen is set up{% else %}This touchscreen is already yours{% endif %}</h2>
+        <p class="card-subtitle">It's on your account now, and loads your settings by itself.</p>
+    </div>
+    <a class="btn-save" href="{{ url_for('pages.device_config', device_id=device_id) }}">Open its settings</a>
+    {% endif %}
+</div>
+{% endblock %}
