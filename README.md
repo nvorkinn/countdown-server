@@ -33,6 +33,7 @@ Routes and access rules are Docker labels on the service they belong to, not a s
 | `caddy`, `tinyauth`, `pocket-id`, `socket-proxy` | The edge, in the compose profile `edge` (prod only): [caddy-docker-proxy](https://github.com/lucaslorentz/caddy-docker-proxy), the login in front of protected routes, the passkey-only identity provider behind it, and the read-only Docker socket proxy the first two use. |
 | `redis` | The store shared with countdown. A cache only: nothing on disk. On the compose network as `redis`, and on the host's `127.0.0.1:6379` for countdown. |
 | `fluent-bit`, `victoria-logs`, `victoria-metrics` | Logs and metrics from every container, the render pool and the screens. |
+| `db-viewer` | [sqlite-web](https://github.com/coleifer/sqlite-web) on the broker's database, read-only, in the compose profile `db-viewer` (dev/QA only; see [Database](#database)). |
 
 The four providers run the broker's own image with another command and the broker's secrets. The glow, developer and parcel
 providers open the database read-only; the music provider writes refreshed Spotify tokens back. Each wakes at once when
@@ -249,13 +250,14 @@ Each change to a device's pairing also updates its config in Redis and queues a 
 
 Run the **Release** workflow from the Actions tab on `main`, picking `patch`, `minor` or `major` (or push a `v*` tag).
 It builds five images, each on a runner of its own architecture (arm64 for the production host, amd64 for dev's home
-server; Caddy, which only production runs, for arm64 only) and joins them under one tag, the release and `latest`:
+server; Caddy, which only production runs, for arm64 only, and sqlite-web, which only dev runs, for amd64 only) and joins them under one tag, the release and `latest`:
 
 - `ghcr.io/nvorkinn/countdown-server` (the broker and the providers)
 - `ghcr.io/nvorkinn/countdown-server-caddy` (caddy-docker-proxy, built with xcaddy)
 - `ghcr.io/nvorkinn/countdown-server-fluent-bit` (with `fluent-bit/`)
 - `ghcr.io/nvorkinn/countdown-server-victoria-logs`
 - `ghcr.io/nvorkinn/countdown-server-victoria-metrics` (with the vmui dashboards)
+- `ghcr.io/nvorkinn/countdown-server-sqlite-web` (sqlite-web from PyPI, pinned in `sqlite-web/requirements.txt`)
 
 It also creates the GitHub Release for the tag, with generated notes. A release deploys to **dev** with no approval: starting the release is the
 decision. Production is never touched by a release; it gets a tag that has been through dev, by promotion (below). Both
@@ -365,7 +367,7 @@ What differs between environments and isn't secret is in `config/<environment>.e
 `LOGS_HOST`, `METRICS_HOST`, the bare `APEX_HOST`, which redirects to `APP_HOST`, and `LEGACY_HOST`, the `auth.` name the
 settings site and the API shared before: it still answers the API for boards flashed then and redirects everything else
 to `APP_HOST`), `POCKET_ID_URL`, whether this environment runs its own edge
-(`EDGE_OWNED`) and the Spotify redirect URI. `deploy-context.sh` stages the environment's file as `settings.env`
+(`EDGE_OWNED`), whether it runs the database viewer (`DB_VIEWER`, at `DB_VIEWER_HOST`) and the Spotify redirect URI. `deploy-context.sh` stages the environment's file as `settings.env`
 next to `docker-compose.yml`, where the services list it in their `env_file`, and copies it into `.env`, where
 Compose fills the names into the labels. One image and one compose file serve every environment. Each name needs an
 A record to its environment's edge before Caddy can get a certificate for it (`infra/cloudflare`), and the Spotify redirect URI has to be registered in the
@@ -404,6 +406,14 @@ metrics and the host's (via Fluent Bit). Browse at `https://metrics.countdown.ru
 Dashboards tab shows `victoria-metrics/dashboards/` (one, **Screens**, per screen and for the render pool); try a query
 in vmui before changing one, as CI checks every query parses. The ingest paths on both hosts take
 `Authorization: Bearer <LOGS_INGEST_TOKEN>`.
+
+### Database
+
+Where `DB_VIEWER=true` (dev/QA), [sqlite-web](https://github.com/coleifer/sqlite-web) shows the live database at
+`https://db.countdown.build` (Pocket ID group `admins` only): browse the tables, or run SQL in a table's Query tab. It
+can't change anything: the volume is mounted read-only and sqlite-web opens the file with `mode=ro`, so a write fails
+with "readonly database". The linked accounts' credentials are stored encrypted, so they show as ciphertext.
+Production doesn't run it (`DB_VIEWER=false`, and there's no DNS record).
 
 ### Redis
 

@@ -13,6 +13,7 @@ updates:
       - "/fluent-bit"
       - "/victoria-logs"
       - "/victoria-metrics"
+      - "/sqlite-web"
     schedule:
       interval: "daily"
     ignore:
@@ -20,6 +21,11 @@ updates:
       # can lack wheels (pyyaml has none for 3.15, so it built from source, slowly under QEMU).
       - dependency-name: "python"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
+  # sqlite-web/requirements.txt, the database viewer's packages (pinned with hashes).
+  - package-ecosystem: "pip"
+    directory: "/sqlite-web"
+    schedule:
+      interval: "weekly"
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:

@@ -42,16 +42,22 @@ cp "$release/docker-compose.yml" docker-compose.yml
 cp "$release/config/$target.env" settings.env
 (umask 077 && cp "$secrets"/*.env .)
 edge_owned="$(sed -n 's/^EDGE_OWNED=//p' settings.env)"
+db_viewer="$(sed -n 's/^DB_VIEWER=//p' settings.env)"
+# The compose profiles this environment runs: `edge` where it owns the reverse proxy, `db-viewer` where DB_VIEWER is on.
+profiles=""
+if [ "$edge_owned" = true ]; then profiles="edge"; fi
+if [ "$db_viewer" = true ]; then profiles="${profiles:+$profiles,}db-viewer"; fi
 (
   umask 077
   # Every version pin the compose file has, at the release's tag.
   # shellcheck disable=SC2016  # the pattern is a literal ${
   grep -o '\${[A-Z_]*_VERSION' docker-compose.yml | cut -c3- | sort -u | sed "s/\$/=$tag/" > .env
   grep -E '^[A-Z][A-Z0-9_]*=' settings.env >> .env
+  printf 'COMPOSE_PROFILES=%s\n' "$profiles" >> .env
   if [ "$edge_owned" = true ]; then
-    printf 'COMPOSE_PROFILES=edge\nEDGE_NETWORK_EXTERNAL=false\n' >> .env
+    printf 'EDGE_NETWORK_EXTERNAL=false\n' >> .env
   else
-    printf 'COMPOSE_PROFILES=\nEDGE_NETWORK_EXTERNAL=true\n' >> .env
+    printf 'EDGE_NETWORK_EXTERNAL=true\n' >> .env
   fi
 )
 echo "Staged $tag for $target ($(docker compose config --services | wc -l | tr -d ' ') services, DOCKER_HOST=${DOCKER_HOST%%@*}@...)"
