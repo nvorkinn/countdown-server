@@ -39,6 +39,7 @@ def test_every_name_the_compose_labels_and_settings_use_is_a_setting_or_secret()
         "FLUENT_BIT_VERSION",
         "VICTORIA_LOGS_VERSION",
         "VICTORIA_METRICS_VERSION",
+        "SQLITE_WEB_VERSION",
     }
 
     assert names <= known
@@ -76,6 +77,13 @@ def test_each_environment_serves_only_names_in_its_own_domain():
             "ID_HOST",
             "LOGS_HOST",
             "METRICS_HOST",
+            "DB_VIEWER_HOST",
         ):
             host = settings[key]
             assert host == domain or host.endswith(f".{domain}"), (environment, key, host)
+
+
+def test_only_dev_runs_the_database_viewer():
+    """It shows the live database to its group; production's is never served."""
+    assert _settings(CONFIG / "prod.env")["DB_VIEWER"] == "false"
+    assert _settings(CONFIG / "dev.env")["DB_VIEWER"] == "true"

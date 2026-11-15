@@ -332,6 +332,42 @@ services:
       tinyauth.apps.metrics.oauth.groups: admins
       tinyauth.apps.metrics.oauth.whitelist: /.*/
 
+  # sqlite-web (sqlite-web/Dockerfile): the broker's database in the browser, at DB_VIEWER_HOST, to Pocket ID's `admins`.
+  # dev/QA only: it runs in the profile `db-viewer`, which deploy-context.sh turns on where config/<environment>.env has
+  # DB_VIEWER=true. It reads the live file, opened read-only on a read-only mount, so nothing in it can write. The
+  # credentials in the database are encrypted, but the rest (postcodes, places, pairing tokens) isn't for everyone who can
+  # sign in, hence the group.
+  db-viewer:
+    <<: *release-image
+    image: ghcr.io/nvorkinn/countdown-server-sqlite-web:${SQLITE_WEB_VERSION:-latest}
+    container_name: db-viewer
+    profiles: [db-viewer]
+    logging: *logging
+    networks: [edge]
+    volumes:
+      - broker_data:/app/data:ro
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/", timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      caddy: ${DB_VIEWER_HOST:?}
+      caddy.import: countdown_auth
+      caddy.reverse_proxy: "{{upstreams 8080}}"
+      tinyauth.apps.db.config.domain: ${DB_VIEWER_HOST}
+      tinyauth.apps.db.oauth.groups: admins
+      tinyauth.apps.db.oauth.whitelist: /.*/
+
   # ---- The login (every environment) and the reverse proxy (profile `edge`: prod's own; dev uses home-stack's). ----
 
   # The only way to the Docker socket, for Caddy (to read the labels) and Tinyauth (to read its apps): read-only

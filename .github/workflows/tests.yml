@@ -167,6 +167,9 @@ jobs:
           # Its flags; the step below starts it as compose does and checks the vmui dashboards baked into it.
           - image: victoria-metrics
             check: -dryRun
+          # Its flags parse and the package is installed (the CMD's database is only there in compose).
+          - image: sqlite-web
+            check: --help
           # The broker itself: its CMD is overridden, and importing the submodule's code checks it was copied in and installed.
           - image: broker
             context: .

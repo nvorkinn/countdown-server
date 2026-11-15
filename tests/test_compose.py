@@ -92,3 +92,13 @@ def test_the_database_is_a_named_volume_not_a_path_on_the_runner():
 
 def test_the_broker_has_a_healthcheck_so_a_deploy_waits_for_it():
     assert COMPOSE["services"]["countdown-server"]["healthcheck"]["test"][0] == "CMD"
+
+
+def test_the_database_viewer_runs_only_in_its_profile_and_cannot_write():
+    """Off unless deploy-context.sh turns its profile on (DB_VIEWER), and read-only twice: the mount and the flag."""
+    viewer = COMPOSE["services"]["db-viewer"]
+    assert viewer["profiles"] == ["db-viewer"]
+    assert viewer["volumes"] == ["broker_data:/app/data:ro"]
+    assert viewer["labels"]["caddy.import"] == "countdown_auth"
+    assert viewer["labels"]["tinyauth.apps.db.oauth.groups"] == "admins"
+    assert "--read-only" in (ROOT / "sqlite-web" / "Dockerfile").read_text()

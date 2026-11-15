@@ -61,8 +61,8 @@ jobs:
 
   # One build per image and architecture, side by side, each on a runner of its own architecture (no emulation): arm64
   # for production's host (ARM), amd64 for dev, which runs on the x86 home server. Caddy is built for arm64 only, as only
-  # production deploys it. Each build is pushed by digest, with BuildKit's provenance and SBOM beside it, and the
-  # `images` job below joins the two into the tags. The broker's image is the code; the others are built every release
+  # production deploys it, and sqlite-web for amd64 only, as only dev does. Each build is pushed by digest, with
+  # BuildKit's provenance and SBOM beside it, and the `images` job below joins the two into the tags. The broker's image is the code; the others are built every release
   # too, so a release is one tag across all of them.
   build:
     name: build ${{ matrix.image }} (${{ matrix.arch }})
@@ -83,6 +83,7 @@ jobs:
           - {image: countdown-server-victoria-logs, context: victoria-logs, arch: arm64, runner: ubuntu-24.04-arm}
           - {image: countdown-server-victoria-metrics, context: victoria-metrics, arch: amd64, runner: ubuntu-24.04}
           - {image: countdown-server-victoria-metrics, context: victoria-metrics, arch: arm64, runner: ubuntu-24.04-arm}
+          - {image: countdown-server-sqlite-web, context: sqlite-web, arch: amd64, runner: ubuntu-24.04}
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
     steps:
@@ -145,6 +146,7 @@ jobs:
           - countdown-server-fluent-bit
           - countdown-server-victoria-logs
           - countdown-server-victoria-metrics
+          - countdown-server-sqlite-web
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
       TAG: ${{ needs.tag.outputs.value }}
