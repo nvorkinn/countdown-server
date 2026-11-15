@@ -12,6 +12,7 @@ import pytest
 import redis
 from countdown_api import fixtures
 from countdown_api.models import ConfigResponse
+from pydantic import TypeAdapter
 
 from broker.db import db
 from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
@@ -69,7 +70,7 @@ def _as_read(value):
 
     Fills in any field the contract defaults that the example omits, which the broker writes.
     """
-    return ConfigResponse.model_validate(value).model_dump(mode="json")
+    return TypeAdapter(ConfigResponse).dump_python(TypeAdapter(ConfigResponse).validate_python(value), mode="json")
 
 
 def _stored(store, device_id):
@@ -107,7 +108,7 @@ def test_the_stored_config_has_the_layout_picked(app, store, paired_client, conf
 
     client.post("/device", data={"layout": "lockscreen"})
 
-    assert _stored(store, device_id)["screen"]["layout"] == "lockscreen"
+    assert _stored(store, device_id)["style"]["layout"] == "lockscreen"
     assert _stored(store, device_id) == config_of(device_id)
 
 
@@ -117,8 +118,8 @@ def test_the_stored_config_has_a_small_screens_layout_picked(app, store, paired_
 
     client.post("/device", data={"layout": "track"})
 
-    assert _stored(store, device_id)["screen"]["layout"] == "track"
-    assert _stored(store, device_id)["screen"]["width"] == 480
+    assert _stored(store, device_id)["style"]["layout"] == "track"
+    assert _stored(store, device_id)["width"] == 480
     assert _stored(store, device_id) == config_of(device_id)
 
 
@@ -131,8 +132,8 @@ def test_the_stored_config_has_the_landscape_layout_picked(app, store, paired_cl
 
     client.post("/device", data={"layout": "newspaper"})
 
-    assert _stored(store, device_id)["screen"]["layout"] == "newspaper"
-    assert _stored(store, device_id)["screen"]["orientation"] == "horizontal"
+    assert _stored(store, device_id)["style"]["layout"] == "newspaper"
+    assert _stored(store, device_id)["style"]["orientation"] == "horizontal"
     assert _stored(store, device_id) == config_of(device_id)
 
 
@@ -186,8 +187,8 @@ def test_saving_the_config_rewrites_the_key_and_queues_a_render(app, store, nudg
     client.post("/device", data={"stops_order": "940GZZLUEUS", "style": "card"})
 
     stored = _stored(store, device_id)
-    assert stored["departures"]["stops"] == [{"source": "tfl", "id": "940GZZLUEUS"}]
-    assert stored["style"] == "card"
+    assert stored["arrivals"]["stops"] == [{"source": "tfl", "id": "940GZZLUEUS"}]
+    assert stored["style"]["drawing"] == "card"
     assert nudges() == [device_id]
 
 
@@ -370,7 +371,7 @@ def test_config_publish_rebuilds_the_configs_and_the_subscriptions(app, store, n
     result = _cli(app, "config", "publish")
 
     assert result.exit_code == 0
-    assert _stored(store, device_id)["departures"]["stops"] == [{"source": "tfl", "id": "940GZZLUEUS"}]
+    assert _stored(store, device_id)["arrivals"]["stops"] == [{"source": "tfl", "id": "940GZZLUEUS"}]
     assert store.smembers("v1:sub:tfl") == {"940GZZLUEUS"}
     assert nudges() == [device_id]
 
@@ -408,7 +409,7 @@ def test_the_broker_writes_the_store_as_it_starts(app, store, paired_client):
         hooks["post_worker_init"](SimpleNamespace(wsgi=app))  # the app gunicorn loaded
 
     start_resync.assert_called_once_with(app)  # and every minute from then on
-    assert _stored(store, device_id)["departures"]["stops"] == [{"source": "tfl", "id": "940GZZLUEUS"}]
+    assert _stored(store, device_id)["arrivals"]["stops"] == [{"source": "tfl", "id": "940GZZLUEUS"}]
     assert store.smembers("v1:sub:tfl") == {"940GZZLUEUS"}
 
 

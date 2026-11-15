@@ -5,28 +5,28 @@ the screen's live code while it has one (services/pairing_key.py, `v1:pairing:<d
 same way. The contract (vendor/countdown-api) is the shape countdown's renderer reads them with.
 """
 
-from typing import Literal
-
 from countdown_api.models import (
     AppleMusic,
+    Arrivals,
     ConfigResponse,
-    Departures,
     DepartureStop,
     Developer,
+    EpaperConfig,
+    EpaperStyle,
     Glowmarkt,
     NoticeBoard,
     Parcels,
-    Screen,
     Spotify,
-    Tfl,
-    Touchscreen,
+    TouchscreenConfig,
+    TouchscreenDisplay,
+    TouchscreenStyle,
     Weather,
 )
 from cryptography.fernet import InvalidToken
 from flask import current_app
 
 from broker.db import db
-from broker.models import Device, DeviceConfig, GlowmarktCredentials, ParcelKey, Style
+from broker.models import Device, DeviceConfig, GlowmarktCredentials, ParcelKey
 from broker.services import accounts, pace, pairing, stops, weather_place
 from broker.services.postcodes import postcode_country
 
@@ -46,61 +46,54 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
     parcel_key = db.session.get(ParcelKey, owner) if owner is not None else None
     country = postcode_country(config.postcode)
     stop_ids = config.tfl_stop_ids
-    touchscreen = config.device.type == "touchscreen"
-    return ConfigResponse(
-        device_id=device_id,
-        type=config.device.type,
-        # Only a touchscreen's config has its own settings (the contract requires them of it, and forbids them else).
-        touchscreen=Touchscreen(
-            theme=config.theme, theme_colour=config.theme_colour, screen_sleep_minutes=config.screen_sleep_minutes
-        )
-        if touchscreen
-        else None,
+    shared = {
+        "device_id": device_id,
+        "width": config.width,
+        "height": config.height,
+        "pairing_code": pairing_code,
         # How often the render pool draws (faster while a provider asks). The screen's polls aren't paced by it: the
         # broker's answers are (services/pace.py).
-        interval=pace.RENDER_INTERVAL_S,
-        clock_format=config.clock_format,
-        language=config.language,
-        timezone=timezone(country, stop_ids),
-        # The layout is None for the screen's default; a renderer draws a layout the screen's size doesn't have as its
-        # default too.
-        screen=Screen(
-            orientation=config.orientation,
-            width=config.width,
-            height=config.height,
-            format=config.format,
-            layout=config.layout,
-        ),
-        # The key is what the weather is subscribed under, so it's what the renderer reads (v1:weather:<key>). The
-        # design is only drawn on an HD screen (models.is_hd_screen); other screens ignore it.
-        weather=Weather(
-            location=config.weather_location, key=weather_place.weather_key(config), design=config.weather_design
-        ),
-        style=config.style,
-        # The panels' own styles, for renderers that predate `style`, in the names they know.
-        notice_board=NoticeBoard(postcode=config.postcode or None, country=country, style=config.style),
-        # For renderers that predate `departures`: only the stops they can show.
-        tfl=Tfl(
-            stop_ids=[s for s in stop_ids if stops.source_of(s) == "tfl"],
-            style=_departures_style(config.style),
-        ),
-        departures=Departures(
-            stops=[DepartureStop(source=stops.source_of(s), id=s) for s in stop_ids],
-            style=_departures_style(config.style),
-        ),
-        spotify=Spotify(enabled=config.spotify_enabled, style=config.style),
+        "interval": pace.RENDER_INTERVAL_S,
+        "clock_format": config.clock_format,
+        "language": config.language,
+        "timezone": timezone(country, stop_ids),
+        "arrivals": Arrivals(stops=[DepartureStop(source=stops.source_of(s), id=s) for s in stop_ids]),
+        # The key is what the weather is subscribed under, so it's what the renderer reads (v1:weather:<key>).
+        "weather": Weather(location=config.weather_location, key=weather_place.weather_key(config)),
+        "notice_board": NoticeBoard(postcode=config.postcode or None, country=country),
+        "spotify": Spotify(enabled=config.spotify_enabled),
         # Only the switch, on while the screen shows energy and its owner has a Glowmarkt login: the provider signs in
         # and fills the store, which the screen reads.
-        glowmarkt=Glowmarkt(enabled=config.energy_enabled and _glowmarkt_enabled(creds)),
+        "glowmarkt": Glowmarkt(enabled=config.energy_enabled and _glowmarkt_enabled(creds)),
         # Only the switch: the GitHub token stays here, and the developer provider fills the store the screen reads.
-        developer=Developer(enabled=config.developer_enabled),
+        "developer": Developer(enabled=config.developer_enabled),
         # Only the switch, like the developer panel's: the Apple token stays here, and the music provider fills the
         # store the screen reads.
-        apple_music=AppleMusic(enabled=config.apple_music_enabled),
+        "apple_music": AppleMusic(enabled=config.apple_music_enabled),
         # Only the switch, on while the screen shows parcels and its owner has a Parcel API key saved: the key stays
         # here, and the parcel provider fills the store the screen reads.
-        parcels=Parcels(enabled=config.parcels_enabled and parcel_key is not None),
-        pairing_code=pairing_code,
+        "parcels": Parcels(enabled=config.parcels_enabled and parcel_key is not None),
+    }
+    if config.device.type == "touchscreen":
+        return TouchscreenConfig(
+            **shared,
+            type="touchscreen",
+            style=TouchscreenStyle(skin=config.theme, colour=config.theme_colour),
+            display=TouchscreenDisplay(sleep_minutes=config.screen_sleep_minutes),
+        )
+    return EpaperConfig(
+        **shared,
+        type="epaper",
+        format=config.format,
+        # The weather design is only drawn on an HD screen (models.is_hd_screen); other screens ignore it. The layout
+        # is None for the screen's default; a renderer draws a layout the screen's size doesn't have as its default
+        # too.
+        style=EpaperStyle(
+            orientation=config.orientation,
+            drawing=config.style,
+            weather=config.weather_design,
+            layout=config.layout,
+        ),
     )
 
 
@@ -135,8 +128,3 @@ def _glowmarkt_enabled(creds: GlowmarktCredentials | None) -> bool:
         # The provider skips it too, so there would be nothing in the store to show.
         current_app.logger.warning("Can't decrypt the Glowmarkt password of user %s", creds.user_id)
         return False
-
-
-def _departures_style(style: Style) -> Literal["grouped", "hero", "card"]:
-    """Return `style` as the departures' own field names it: airy was called grouped there."""
-    return "grouped" if style == "airy" else style

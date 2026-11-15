@@ -250,7 +250,7 @@ def test_a_config_save_queues_the_screen(store, paired_client):
 
     assert _jobs(store) == [device_id]
     # After the write: the job's render reads the new config.
-    assert json.loads(store.get(config_store.key(device_id)))["style"] == "card"
+    assert json.loads(store.get(config_store.key(device_id)))["style"]["drawing"] == "card"
 
 
 def test_a_save_that_changes_no_copy_still_queues_the_screen(store, paired_client):
@@ -296,7 +296,7 @@ def test_a_save_of_a_screen_the_pool_doesnt_draw_queues_nothing(app, store, pair
 
     client.post("/device", data={"style": "card"})
 
-    assert json.loads(store.get(config_store.key(device_id)))["style"] == "card"
+    assert json.loads(store.get(config_store.key(device_id)))["style"]["drawing"] == "card"
     assert _jobs(store) == []
 
 

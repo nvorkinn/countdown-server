@@ -12,7 +12,6 @@ from .auth import current_username
 from .routes import (
     account,
     apple_music_link,
-    config_api,
     devices,
     frames,
     pages,
@@ -75,7 +74,6 @@ def create_app() -> Flask:
     )
 
     app.register_blueprint(devices.bp)
-    app.register_blueprint(config_api.bp)
     app.register_blueprint(spotify_oauth.bp)
     app.register_blueprint(apple_music_link.bp)
     app.register_blueprint(pages.bp)

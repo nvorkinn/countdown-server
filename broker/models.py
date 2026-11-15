@@ -40,7 +40,7 @@ class Device(Model):
     # (services/assignments.is_quiet).
     display_last_seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     # What kind of device it is, one of DEVICE_TYPES, as it said at registration: an e-paper screen, which shows the
-    # frames the render pool draws, or a touchscreen, which draws itself from its config (GET /api/config).
+    # frames the render pool draws, or a touchscreen, which draws itself from its config (GET /api/devices/config).
     type: Mapped[DeviceType] = mapped_column(String, default="epaper", server_default=text("'epaper'"))
 
     config: Mapped[DeviceConfig | None] = relationship(back_populates="device", cascade="all, delete-orphan")

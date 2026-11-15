@@ -3,7 +3,7 @@
 A screen becomes a device straight away: it exists from its first call, so its owner can pair with it, with a code
 it shows the moment it registers (services/pairing.py), and name it (services/assignments.py). The render pool
 draws an e-paper screen from then on: its pairing screen first, then its dashboard. A touchscreen draws itself, from
-the same config (GET /api/config), and gets no pairing code.
+the same config (GET /api/devices/config), and gets no pairing code.
 
 Secrets arrive already hashed (auth.hash_secret); the hash is what identifies the caller here.
 

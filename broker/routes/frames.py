@@ -53,11 +53,11 @@ def post_frame(device_id: str) -> ResponseReturnValue:
     yet. Every answer carries Retry-After (services/pace.py), so its loop is just "handle the status, sleep
     Retry-After". Its logs and metrics are forwarded without making it wait.
 
-    A touchscreen has no frames (it draws itself, from GET /api/config): it's a 409.
+    A touchscreen has no frames (it draws itself, from GET /api/devices/config): it's a 409.
     """
     device = db.session.get_one(Device, device_id)
     if device.type == "touchscreen":
-        return jsonify(error="a touchscreen has no frames; it reads its config from GET /api/config"), 409
+        return jsonify(error="a touchscreen has no frames; it reads its config from GET /api/devices/config"), 409
     # A screen still waiting to be paired always has a code to show, however long its owner takes.
     pairing.ensure_code(device_id)
     body = request.get_json(silent=True)
