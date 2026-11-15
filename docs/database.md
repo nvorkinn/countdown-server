@@ -9,6 +9,7 @@ erDiagram
     devices ||--o| device_config : "settings"
     devices ||--o{ pairing_codes : "codes"
     devices ||--o| renderer_assignments : "slug"
+    devices ||--o{ device_users : "owner and members"
     devices }o..o| spotify_tokens : "owner's Spotify"
     devices }o..o| apple_music_tokens : "owner's Apple Music"
     devices }o..o{ apple_music_plays : "owner's play log"
@@ -20,12 +21,16 @@ erDiagram
         string device_id PK "token_hex(6)"
         string display_secret_hash UK "SHA-256 of the screen's secret"
         string pairing_token UK
-        string owner "Pocket ID user id"
         datetime created_at
         datetime paired_at "NULL until paired"
         string device_name "friendly name"
         datetime last_seen_at
         datetime display_last_seen_at
+    }
+    device_users {
+        string device_id PK, FK
+        string user_id PK "Pocket ID user id"
+        string role "owner or member; one owner a device"
     }
     device_config {
         string device_id PK, FK
@@ -99,7 +104,8 @@ erDiagram
 
 | Table | One row per | Notes |
 |---|---|---|
-| `devices` | screen | Created when the screen registers. `owner` is a plain string (there's no users table). `last_seen_at` and `display_last_seen_at` are updated at most once a minute; the latter decides whether the pool still draws the screen. |
+| `devices` | screen | Created when the screen registers. Who it's linked to is in `device_users`. `last_seen_at` and `display_last_seen_at` are updated at most once a minute; the latter decides whether the pool still draws the screen. |
+| `device_users` | screen | A user linked to a device, with a role: its one `owner` (a partial unique index allows one), or a `member` (none yet). An e-paper screen has just its owner's row. The user id is a plain string (there's no users table). `Device.owner` reads and sets the owner's row, in Python and in queries. |
 | `device_config` | screen | Created at registration with the size the screen reported. `tfl_stop_ids` holds TfL and Entur (`NSR:...`) stops in the owner's order. |
 | `pairing_codes` | live code | 10 minutes, one use. Expired codes are swept whenever a new one is issued. |
 | `renderer_assignments` | paired screen | The screen's slug (its device id), which names it in `v1:render:screens` and in metrics. It never changes. |
@@ -110,7 +116,7 @@ erDiagram
 | `github_tokens` | developer panel token | Encrypted. |
 | `parcel_keys` | parcel notices Parcel API key | Encrypted. |
 
-- **Accounts.** The five login tables are keyed by the user id `devices.owner` holds, not by screen: a login serves all
+- **Accounts.** The five login tables are keyed by the user id of a device's owner (`device_users`), not by screen: a login serves all
   of a user's screens, and each screen's own `*_enabled` column in `device_config` says whether it shows that service
   (`services/accounts.py`). The providers still work screen by screen, reaching a screen's login through its owner.
   Unpairing or forgetting a screen leaves its owner's logins alone.

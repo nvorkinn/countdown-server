@@ -325,3 +325,15 @@ def test_settings_the_contract_doesnt_allow_are_refused(app, client):
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
         assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("day", "forest", 5)
+
+
+def test_a_save_the_owner_doesnt_approve_is_refused(app, client, monkeypatch):
+    device_id = _paired(app, client)
+    sent = _saved_with(client, clock_format="12h")
+    monkeypatch.setattr("broker.services.accounts.approves_device_save", lambda _device: False)
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 403
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).clock_format != "12h"
