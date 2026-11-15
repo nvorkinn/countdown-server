@@ -11,14 +11,15 @@
                 <span id="searchSpinner" class="search-spinner">Searching…</span>
                 <div id="searchResults" class="search-results"></div>
             </div>
-            <p class="form-hint">Two stops to a page; the screen turns the pages.</p>
+            {# An e-paper screen's pages; a touchscreen shows its stops its own way. #}
+            {% if not touchscreen %}<p class="form-hint">Two stops to a page; the screen turns the pages.</p>{% endif %}
         </div>
 
         <div>
             <p class="field-caption">Your stops</p>
             <input type="hidden" name="stops_order" id="stopsOrderInput" value="{{ stops | map(attribute='id') | join(',') }}">
 
-            <div id="stopsList" class="stops-list">
+            <div id="stopsList" class="stops-list"{% if not touchscreen %} data-pages{% endif %}>
                 {% if stops %}
                     {% for stop in stops %}
                         <div class="stop-card" data-id="{{ stop.id }}">
@@ -33,7 +34,7 @@
                                     <p>
                                         {% if stop.source == 'entur' and stop.indent %}{{ stop.subtitle.split(' • ')[0] }}{% if stop.lines %} • {% endif %}{% endif %}
                                         {{ stop.lines | join(', ') }}
-                                        <span class="page-badge">Page {{ ((loop.index0 // 2) + 1) }}</span>
+                                        {% if not touchscreen %}<span class="page-badge">Page {{ ((loop.index0 // 2) + 1) }}</span>{% endif %}
                                     </p>
                                 </div>
                             </div>

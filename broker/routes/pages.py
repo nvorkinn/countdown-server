@@ -232,7 +232,7 @@ def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way th
     retry_after = max(pair_throttle.retry_after(ip) or 0, signup_throttle.retry_after(ip) or 0)
     if retry_after:
         return _too_many_attempts(retry_after, _render_signup)
-    if (lockout := signup_throttle.record_failure(ip)) is not None:
+    if (lockout := signup_throttle.record(ip)) is not None:
         return _too_many_attempts(lockout, _render_signup)
 
     code = request.form.get("code", "").strip().upper()
@@ -249,7 +249,7 @@ def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way th
     except signup.SignupError as e:
         if e.wrong_code:
             current_app.logger.warning("Wrong pairing code from %s", ip)
-            if (lockout := pair_throttle.record_failure(ip)) is not None:
+            if (lockout := pair_throttle.record(ip)) is not None:
                 return _too_many_attempts(lockout, _render_signup)
         page = _render_signup(code="" if e.wrong_code else code, error=e.message, name=name, email=email, token=token)
         return page, e.status
@@ -281,7 +281,7 @@ def add_screen(user_id: str) -> ResponseReturnValue:
 
     device_id = pairing.redeem_code(request.form.get("code", "").strip().upper(), user_id)
     if device_id is None:
-        lockout = throttle.record_failure(ip)
+        lockout = throttle.record(ip)
         current_app.logger.warning("Wrong pairing code from %s", ip)
         if lockout is not None:
             current_app.logger.warning("Too many wrong pairing codes from %s; locked out for %ss", ip, lockout)
@@ -388,7 +388,7 @@ def _foreign_fields(device_type: DeviceType) -> list[str]:
     ]
 
 
-def _save_device_config(device_id: str) -> ResponseReturnValue:  # noqa: PLR0915 -- one step per kind of setting
+def _save_device_config(device_id: str) -> ResponseReturnValue:
     """Save the settings posted from the page, or show it again with what's wrong and nothing saved.
 
     The saved settings must make a config the contract allows for the device's type (_contract_errors), and a field
@@ -396,12 +396,6 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:  # noqa: PLR0915
     """
     raw_stops = request.form.get("stops_order", "")
     stop_ids = [s.strip() for s in raw_stops.split(",") if s.strip()]
-
-    spotify_enabled = request.form.get("spotify_enabled") == "on"
-    developer_enabled = request.form.get("developer_enabled") == "on"
-    apple_music_enabled = request.form.get("apple_music_enabled") == "on"
-    parcels_enabled = request.form.get("parcels_enabled") == "on"
-    energy_enabled = request.form.get("energy_enabled") == "on"
 
     raw_postcode = request.form.get("postcode", "")
     postcode = normalize_postcode(raw_postcode)
@@ -443,11 +437,7 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:  # noqa: PLR0915
 
     weather_place.store(config, place)
     config.postcode = postcode
-    config.spotify_enabled = spotify_enabled
-    config.developer_enabled = developer_enabled
-    config.apple_music_enabled = apple_music_enabled
-    config.parcels_enabled = parcels_enabled
-    config.energy_enabled = energy_enabled
+    _set_integrations(config, device_type)
     config.parcels_days_ahead = int(days_ahead) if days_ahead else None
     config.parcels_kept_hours = int(kept_hours)
     config.tfl_stop_ids = stop_ids
@@ -461,6 +451,16 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:  # noqa: PLR0915
     db.session.commit()
     _publish_saved(device_id, turned=turned)
     return redirect(url_for("pages.device_config", device_id=device_id))
+
+
+def _set_integrations(config: DeviceConfig, device_type: DeviceType) -> None:
+    """Switch the integrations on or off as the page's boxes are ticked.
+
+    An unticked box isn't posted, so only a page that has them sets them: a touchscreen's keeps what's stored.
+    """
+    if _has_section(device_type, "integrations"):
+        for integration in INTEGRATIONS:
+            setattr(config, f"{integration}_enabled", request.form.get(f"{integration}_enabled") == "on")
 
 
 def _contract_errors(config: DeviceConfig) -> list[str]:
@@ -663,16 +663,19 @@ def _seen_ago(seen: datetime | None, now: datetime) -> str | None:
 # on a wide page.
 PAGE_SECTIONS: dict[DeviceType, tuple[str | tuple[str, str], ...]] = {
     "epaper": ("general", "style_epaper", "layout", ("weather", "notice_board"), "arrivals", "integrations", "screen"),
-    "touchscreen": (
-        "general",
-        "style_touchscreen",
-        "display",
-        ("weather", "notice_board"),
-        "arrivals",
-        "integrations",
-        "screen",
-    ),
+    # What the tablet shows and nothing else: no language (it's English-only) and no integrations (its music is its
+    # own). The page's sections follow the config's: the flat fields (general), its panels, then its style and display.
+    "touchscreen": ("general", "arrivals", ("weather", "notice_board"), "style_touchscreen", "display", "screen"),
 }
+# The integrations' switches on a page with them, each its form field and DeviceConfig attribute <name>_enabled.
+INTEGRATIONS = ("spotify", "developer", "apple_music", "parcels", "energy")
+
+
+def _has_section(device_type: DeviceType, name: str) -> bool:
+    """Whether a page of `device_type` has the section `name`."""
+    return any(name in ((section,) if isinstance(section, str) else section) for section in PAGE_SECTIONS[device_type])
+
+
 # What the page calls each type of device.
 DEVICE_TYPE_LABELS: dict[DeviceType, str] = {"epaper": "E-paper screen", "touchscreen": "Touchscreen"}
 

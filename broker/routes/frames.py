@@ -45,7 +45,7 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="forward")
 
 
 @bp.post("/frame")
-@require_device_auth()
+@require_device_auth
 def post_frame(device_id: str) -> ResponseReturnValue:
     """Serve the screen its current frame, and forward what it logged and measured since its last poll.
 
