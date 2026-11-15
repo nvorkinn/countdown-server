@@ -201,10 +201,13 @@ jobs:
   # ID serve it, so the edge profile is off there); production's edge is promote.yml's, in the same deploy. DNS is not
   # part of a release: it is applied on its own (cloudflare.yml).
   # Dev, through the host's Docker daemon (deploy-compose.yml): one job fetches the secrets from Vaultwarden and deploys
-  # every service once the images are built.
+  # every service once the images are built. It starts with the builds rather than after them, so joining the tailnet and
+  # fetching the secrets (~35s) happen while they run, and deploy-context.sh waits for the tag's images in the registry
+  # (wait_for_images) before it pulls. A re-run of a whole release finds the first attempt's tags already there and may
+  # deploy those before the new builds are joined: run deploy-compose.yml by hand afterwards if that matters.
   deploy-dev:
     name: deploy (dev)
-    needs: [tag, images]
+    needs: tag
     uses: ./.github/workflows/deploy-compose.yml
     # The deploy job (below) asks for id-token: write, to join the tailnet with GitHub's OIDC token, so its caller grants it too.
     permissions:
@@ -213,4 +216,5 @@ jobs:
     with:
       environment: dev
       tag: ${{ needs.tag.outputs.value }}
+      wait_for_images: true
     secrets: inherit
