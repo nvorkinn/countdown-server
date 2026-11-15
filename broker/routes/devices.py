@@ -34,9 +34,8 @@ MIN_SECRET_LENGTH = 16
 
 # ConfigResponse's members, by their tag, `type`.
 CONFIGS = {"epaper": EpaperConfig, "touchscreen": TouchscreenConfig}
-# What a touchscreen's own settings panel changes, and so what a PUT may: its look, when it sleeps, and the clock and
-# language every panel shares.
-SAVED_HERE = frozenset({"clock_format", "language", "style", "display"})
+# What a touchscreen's own settings panel changes, and so what a PUT may: its look, when it sleeps, and its clock.
+SAVED_HERE = frozenset({"clock_format", "style", "display"})
 
 
 @bp.post("/register")
@@ -155,7 +154,6 @@ def put_config(device_id: str) -> ResponseReturnValue:
         refused = [name for name in changed if name not in SAVED_HERE] or ["type"]
         return jsonify(error=f"only {', '.join(sorted(SAVED_HERE))} can be saved here, not {', '.join(refused)}"), 400
     config.clock_format = sent.clock_format
-    config.language = sent.language
     config.theme = sent.style.skin
     config.theme_colour = sent.style.colour
     config.screen_sleep_minutes = sent.display.sleep_minutes

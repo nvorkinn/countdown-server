@@ -46,44 +46,41 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
     parcel_key = db.session.get(ParcelKey, owner) if owner is not None else None
     country = postcode_country(config.postcode)
     stop_ids = config.tfl_stop_ids
-    shared = {
-        "device_id": device_id,
-        "width": config.width,
-        "height": config.height,
-        "pairing_code": pairing_code,
-        # How often the render pool draws (faster while a provider asks). The screen's polls aren't paced by it: the
-        # broker's answers are (services/pace.py).
-        "interval": pace.RENDER_INTERVAL_S,
-        "clock_format": config.clock_format,
-        "language": config.language,
-        "timezone": timezone(country, stop_ids),
-        "arrivals": Arrivals(stops=[DepartureStop(source=stops.source_of(s), id=s) for s in stop_ids]),
-        # The key is what the weather is subscribed under, so it's what the renderer reads (v1:weather:<key>).
-        "weather": Weather(location=config.weather_location, key=weather_place.weather_key(config)),
-        "notice_board": NoticeBoard(postcode=config.postcode or None, country=country),
-        "spotify": Spotify(enabled=config.spotify_enabled),
-        # Only the switch, on while the screen shows energy and its owner has a Glowmarkt login: the provider signs in
-        # and fills the store, which the screen reads.
-        "glowmarkt": Glowmarkt(enabled=config.energy_enabled and _glowmarkt_enabled(creds)),
-        # Only the switch: the GitHub token stays here, and the developer provider fills the store the screen reads.
-        "developer": Developer(enabled=config.developer_enabled),
-        # Only the switch, like the developer panel's: the Apple token stays here, and the music provider fills the
-        # store the screen reads.
-        "apple_music": AppleMusic(enabled=config.apple_music_enabled),
-        # Only the switch, on while the screen shows parcels and its owner has a Parcel API key saved: the key stays
-        # here, and the parcel provider fills the store the screen reads.
-        "parcels": Parcels(enabled=config.parcels_enabled and parcel_key is not None),
-    }
+    # What every type's config has besides its type: who the device is, its clock, and the panels both types show.
+    arrivals = Arrivals(stops=[DepartureStop(source=stops.source_of(s), id=s) for s in stop_ids])
+    # The key is what the weather is subscribed under, so it's what the renderer reads (v1:weather:<key>).
+    weather = Weather(location=config.weather_location, key=weather_place.weather_key(config))
+    notice_board = NoticeBoard(postcode=config.postcode or None, country=country)
     if config.device.type == "touchscreen":
+        # English only, paired by token, keeping its own time and playing its own music: nothing more than its look and
+        # its screen's sleep.
         return TouchscreenConfig(
-            **shared,
+            device_id=device_id,
             type="touchscreen",
+            width=config.width,
+            height=config.height,
+            clock_format=config.clock_format,
+            arrivals=arrivals,
+            weather=weather,
+            notice_board=notice_board,
             style=TouchscreenStyle(skin=config.theme, colour=config.theme_colour),
             display=TouchscreenDisplay(sleep_minutes=config.screen_sleep_minutes),
         )
     return EpaperConfig(
-        **shared,
+        device_id=device_id,
         type="epaper",
+        width=config.width,
+        height=config.height,
+        clock_format=config.clock_format,
+        arrivals=arrivals,
+        weather=weather,
+        notice_board=notice_board,
+        pairing_code=pairing_code,
+        # How often the render pool draws (faster while a provider asks). The screen's polls aren't paced by it: the
+        # broker's answers are (services/pace.py).
+        interval=pace.RENDER_INTERVAL_S,
+        language=config.language,
+        timezone=timezone(country, stop_ids),
         format=config.format,
         # The weather design is only drawn on an HD screen (models.is_hd_screen); other screens ignore it. The layout
         # is None for the screen's default; a renderer draws a layout the screen's size doesn't have as its default
@@ -94,6 +91,18 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
             weather=config.weather_design,
             layout=config.layout,
         ),
+        spotify=Spotify(enabled=config.spotify_enabled),
+        # Only the switch, on while the screen shows energy and its owner has a Glowmarkt login: the provider signs in
+        # and fills the store, which the screen reads.
+        glowmarkt=Glowmarkt(enabled=config.energy_enabled and _glowmarkt_enabled(creds)),
+        # Only the switch: the GitHub token stays here, and the developer provider fills the store the screen reads.
+        developer=Developer(enabled=config.developer_enabled),
+        # Only the switch, like the developer panel's: the Apple token stays here, and the music provider fills the
+        # store the screen reads.
+        apple_music=AppleMusic(enabled=config.apple_music_enabled),
+        # Only the switch, on while the screen shows parcels and its owner has a Parcel API key saved: the key stays
+        # here, and the parcel provider fills the store the screen reads.
+        parcels=Parcels(enabled=config.parcels_enabled and parcel_key is not None),
     )
 
 
