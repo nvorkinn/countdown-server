@@ -7,13 +7,17 @@ Timestamps are timezone-aware UTC datetimes (see UTCDateTime).
 """
 
 from datetime import datetime  # noqa: TC003 -- SQLAlchemy resolves the Mapped[...] annotations at runtime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, select, text
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, object_session, relationship
 
 from .crypto import decrypt, encrypt
 from .db import Model, UTCDateTime
+
+if TYPE_CHECKING:
+    from sqlalchemy.sql.selectable import ScalarSelect
 
 # What kind of device it is (Device.type, DEVICE_TYPES below), the store contract's DeviceType.
 type DeviceType = Literal["epaper", "touchscreen"]
@@ -29,8 +33,6 @@ class Device(Model):
     display_secret_hash: Mapped[str | None] = mapped_column(String, index=True, unique=True)
     # What the owner's browser presents to pair without a code (services/pairing.token_for), derived from the secret.
     pairing_token: Mapped[str | None] = mapped_column(String, index=True, unique=True)
-    # The Pocket ID user id (Tinyauth's Remote-Sub) of the device's one owner (auth.current_user).
-    owner: Mapped[str | None] = mapped_column(String, index=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     paired_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     device_name: Mapped[str | None] = mapped_column(String)
@@ -48,6 +50,69 @@ class Device(Model):
     # The services a screen shows (Spotify, Apple Music, GitHub, Parcel, Glowmarkt) are linked to its owner's account,
     # not to the screen: see SpotifyToken and the rest, keyed by user_id.
     assignment: Mapped[RendererAssignment | None] = relationship(back_populates="device", cascade="all, delete-orphan")
+    # Who the device is linked to, each with a role (DeviceUser): its one owner, and later its members.
+    # Loaded with the device, as most reads of one ask who owns it.
+    users: Mapped[list[DeviceUser]] = relationship(
+        back_populates="device", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    @hybrid_property
+    def owner(self) -> str | None:
+        """Return the Pocket ID user id (Remote-Sub, auth.current_user) of the device's one owner, if it has one.
+
+        That's its DeviceUser row with the role "owner". Usable in queries as well (Device.owner == user_id).
+        """
+        return next((link.user_id for link in self.users if link.role == "owner"), None)
+
+    @owner.inplace.setter
+    def _owner_setter(self, user_id: str | None) -> None:
+        """Make `user_id` the owner, replacing the one it had (not committed); None leaves it with no owner.
+
+        A member who becomes the owner keeps their one link, with the role changed.
+        """
+        self.users = [link for link in self.users if link.role != "owner" and link.user_id != user_id]
+        # The old rows go first: the unit of work would insert the new one before deleting them, which the one-owner
+        # index (and the primary key, for a member) refuses.
+        if (session := object_session(self)) is not None:
+            session.flush()
+        if user_id is not None:
+            self.users.append(DeviceUser(user_id=user_id, role="owner"))
+
+    @owner.inplace.expression
+    @classmethod
+    def _owner_expression(cls) -> ScalarSelect[str]:
+        return (
+            select(DeviceUser.user_id)
+            .where(DeviceUser.device_id == cls.device_id, DeviceUser.role == "owner")
+            .scalar_subquery()
+        )
+
+
+# A device user's role: its owner (who pairs it and approves its own saves), or a member it's shared with.
+type DeviceRole = Literal["owner", "member"]
+DEVICE_ROLES: tuple[DeviceRole, ...] = ("owner", "member")
+
+
+class DeviceUser(Model):
+    """A user linked to a device, with their role. An e-paper screen has just its owner's row."""
+
+    __tablename__ = "device_users"
+    # One owner a device, enforced by the database too.
+    __table_args__ = (
+        Index(
+            "ix_device_users_one_owner",
+            "device_id",
+            unique=True,
+            sqlite_where=text("role = 'owner'"),
+        ),
+    )
+
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id", ondelete="CASCADE"), primary_key=True)
+    # The Pocket ID user id (auth.current_user).
+    user_id: Mapped[str] = mapped_column(String, primary_key=True, index=True)
+    role: Mapped[DeviceRole] = mapped_column(String)
+
+    device: Mapped[Device] = relationship(back_populates="users")
 
 
 class PendingPairing(Model):

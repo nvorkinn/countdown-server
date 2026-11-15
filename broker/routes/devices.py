@@ -23,7 +23,7 @@ from broker.auth import hash_secret, require_device_auth, with_retry_after
 from broker.clients import spotify
 from broker.db import db
 from broker.models import DEVICE_TYPES, FRAME_FORMATS, Device, DeviceConfig, DeviceType, FrameFormat, SpotifyToken
-from broker.services import config_store, registration, renderer_config
+from broker.services import accounts, config_store, registration, renderer_config
 
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
@@ -132,12 +132,15 @@ def put_config(device_id: str) -> ResponseReturnValue:
     """Save a touchscreen's own settings from the whole config it sends, and answer the config as saved.
 
     400 for a config the contract doesn't allow or that changes anything but SAVED_HERE (read-only fields included),
-    409 for a device no one has paired yet, or an e-paper screen, which has no settings panel of its own.
+    409 for a device no one has paired yet, or an e-paper screen, which has no settings panel of its own; 403 when its
+    owner doesn't approve the save (accounts.approves_device_save).
     """
     device = db.session.get_one(Device, device_id)
     config = db.session.get_one(DeviceConfig, device_id)
     if device.paired_at is None or device.type != "touchscreen":
         return jsonify(error="only a paired touchscreen saves its own config; set it up on the settings site"), 409
+    if not accounts.approves_device_save(device):
+        return jsonify(error="the device's owner hasn't approved this save"), 403
     body = request.get_json(silent=True)
     model = CONFIGS.get(body.get("type")) if isinstance(body, dict) else None
     try:

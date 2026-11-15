@@ -75,8 +75,9 @@ def accounts() -> list[Account]:
     try:
         rows = db.session.execute(
             select(GlowmarktCredentials, DeviceConfig)
-            .join(Device, Device.owner == GlowmarktCredentials.user_id)
-            .join(DeviceConfig, DeviceConfig.device_id == Device.device_id)
+            .select_from(DeviceConfig)
+            .join(Device, Device.device_id == DeviceConfig.device_id)
+            .join(GlowmarktCredentials, GlowmarktCredentials.user_id == Device.owner)
             .where(GlowmarktCredentials.password_encrypted.is_not(None), DeviceConfig.energy_enabled)
             .order_by(DeviceConfig.device_id)
         ).all()

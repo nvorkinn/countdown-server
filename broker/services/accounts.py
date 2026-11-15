@@ -24,6 +24,16 @@ def owner(device_id: str) -> str | None:
     return device.owner if device is not None else None
 
 
+def approves_device_save(device: Device) -> bool:
+    """Whether the device's owner approves a save the device makes of its own config (PUT /api/devices/config).
+
+    Saves need the owner's approval, enforced here. For now that is a stub: a device with an owner saves as its owner,
+    so every save of an owned device is approved. Members (DeviceUser's "member" role) will need the owner to approve
+    what they change from a shared touchscreen; this is where that check goes.
+    """
+    return device.owner is not None
+
+
 def screens(user_id: str) -> list[str]:
     """Return the ids of the devices the user owns, which show what their account links."""
     return list(db.session.scalars(select(Device.device_id).where(Device.owner == user_id).order_by(Device.device_id)))
