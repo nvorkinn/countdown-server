@@ -46,3 +46,43 @@ CVE-2026-78661 exp:2026-11-24
 # Fluent Bit's compression use inflate/deflate streams). Goes away with the next python:3.14-slim / fluent-bit rebuild.
 CVE-2026-76844 exp:2026-11-24
 CVE-2026-85091 exp:2026-11-24
+
+# fluent-bit (debian 13.7): libpq5 17.11-0+deb13u1, PostgreSQL's client library, fixed in Debian as 17.12-0+deb13u1 but
+# not yet in fluent/fluent-bit:5.2.0. Nearly all are flaws in the PostgreSQL server (code run by SQL functions,
+# extensions, reindexdb); Fluent Bit only links the client library for its pgsql output, which fluent-bit.yaml doesn't
+# use (it tails logs and sends them over HTTP and remote write), so nothing in the image talks to a PostgreSQL server.
+# Goes away with the next fluent-bit rebuild.
+CVE-2026-116304 exp:2026-11-29
+CVE-2026-116306 exp:2026-11-29
+CVE-2026-116307 exp:2026-11-29
+CVE-2026-116309 exp:2026-11-29
+CVE-2026-116314 exp:2026-11-29
+CVE-2026-116315 exp:2026-11-29
+CVE-2026-116316 exp:2026-11-29
+CVE-2026-116317 exp:2026-11-29
+CVE-2026-116319 exp:2026-11-29
+CVE-2026-116320 exp:2026-11-29
+CVE-2026-116323 exp:2026-11-29
+CVE-2026-116325 exp:2026-11-29
+CVE-2026-116326 exp:2026-11-29
+CVE-2026-116328 exp:2026-11-29
+CVE-2026-116330 exp:2026-11-29
+CVE-2026-116331 exp:2026-11-29
+CVE-2026-116332 exp:2026-11-29
+CVE-2026-116335 exp:2026-11-29
+CVE-2026-116336 exp:2026-11-29
+CVE-2026-120139 exp:2026-11-29
+CVE-2026-120141 exp:2026-11-29
+CVE-2026-120142 exp:2026-11-29
+CVE-2026-120143 exp:2026-11-29
+CVE-2026-120145 exp:2026-11-29
+CVE-2026-120147 exp:2026-11-29
+CVE-2026-120148 exp:2026-11-29
+CVE-2026-120149 exp:2026-11-29
+CVE-2026-120150 exp:2026-11-29
+CVE-2026-120151 exp:2026-11-29
+CVE-2026-120153 exp:2026-11-29
+CVE-2026-14661 exp:2026-11-29
+CVE-2026-18447 exp:2026-11-29
+CVE-2026-6460 exp:2026-11-29
+CVE-2026-6467 exp:2026-11-29
