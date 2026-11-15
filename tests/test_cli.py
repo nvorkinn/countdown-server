@@ -390,3 +390,32 @@ def test_redis_down_is_an_error_by_type_only(app):
     assert result.exit_code == 1
     assert "Couldn't ask Redis (RedisError)." in result.stderr
     assert "SW1A" not in result.output + result.stderr
+
+
+def test_seed_touchscreen_adds_a_paired_touchscreen_its_secret_reads_the_config_of(app, client, cli):
+    app.config["ENVIRONMENT_LABEL"] = "DEV"
+
+    result = cli("seed-touchscreen", "user-1", "--width", "1024", "--height", "600")
+
+    assert result.exit_code == 0, result.output
+    device_id = result.output.split(":")[0]
+    secret = result.output.rsplit(" ", 1)[1].strip()
+    with app.app_context():
+        device = db.session.get_one(Device, device_id)
+        assert (device.type, device.owner, device.device_name) == ("touchscreen", "user-1", "Test touchscreen")
+        assert device.paired_at is not None
+    body = client.get("/api/devices/config", headers=_headers(secret)).get_json()
+    assert (body["type"], body["width"], body["height"]) == ("touchscreen", 1024, 600)
+    # Its owner's, in their sidebar, with a touchscreen's page.
+    assert b"Test touchscreen" in client.get(f"/device/{device_id}").data
+
+
+def test_seed_touchscreen_is_refused_in_prod(app, cli):
+    app.config["ENVIRONMENT_LABEL"] = ""
+
+    result = cli("seed-touchscreen", "user-1")
+
+    assert result.exit_code != 0
+    assert "only for dev" in result.output
+    with app.app_context():
+        assert db.session.scalar(select(func.count()).select_from(Device)) == 0

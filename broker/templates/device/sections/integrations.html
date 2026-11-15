@@ -1,0 +1,49 @@
+{# Every device's services (the config's Spotify, AppleMusic, Developer, Parcels and Glowmarkt): the ticks, with
+   the logins on the Account page. #}
+{% from "device/_controls.html" import segmented, service_row %}
+<div class="integrations">
+    <p class="group-label">Integrations</p>
+    <p class="form-hint">Connect services in <a href="{{ url_for('account.account') }}">your account</a>, once for all your screens. The ticks pick what this screen shows.</p>
+    <div class="integration-grid">
+        <section class="section integration" data-tour="music">
+            <header class="card-header">
+                <h2 class="card-title">Music</h2>
+            </header>
+            {{ service_row('spotify_enabled', 'Spotify', config.spotify_enabled, spotify_linked) }}
+            {% if apple_music_available or config.apple_music_enabled %}
+                {{ service_row('apple_music_enabled', 'Apple Music', config.apple_music_enabled, apple_music_linked) }}
+                <p class="form-hint">Apple Music shows what you played last, since Apple doesn't share what's playing now. With both on, Spotify shows while it's playing, and the two take turns with their top lists.</p>
+            {% endif %}
+        </section>
+
+        <section class="section integration" data-tour="developer">
+            <header class="card-header">
+                <h2 class="card-title">Developer</h2>
+            </header>
+            {{ service_row('developer_enabled', 'GitHub', config.developer_enabled, github_linked) }}
+        </section>
+
+        <section class="section integration" data-tour="parcels">
+            <header class="card-header">
+                <h2 class="card-title">Parcels</h2>
+            </header>
+            {{ service_row('parcels_enabled', 'Parcel', config.parcels_enabled, parcel_linked, parcel_problem) }}
+            <div class="form-group">
+                <p class="field-caption">Arriving by</p>
+                {{ segmented("parcels_days_ahead", parcel_days_ahead, form_value(config.parcels_days_ahead)) }}
+                <p class="form-hint">Shown as notices on the notice board. Undated parcels only show with Any day. Out for delivery and held ones always show.</p>
+            </div>
+            <div class="form-group">
+                <p class="field-caption">Delivered ones stay</p>
+                {{ segmented("parcels_kept_hours", parcel_kept_hours, form_value(config.parcels_kept_hours)) }}
+            </div>
+        </section>
+
+        <section class="section integration" data-tour="energy">
+            <header class="card-header">
+                <h2 class="card-title">Energy</h2>
+            </header>
+            {{ service_row('energy_enabled', 'Glowmarkt', config.energy_enabled, glowmarkt_linked) }}
+        </section>
+    </div>
+</div>

@@ -1,0 +1,16 @@
+{# An e-paper screen's layout (EpaperStyle.layout), where its size has more than one. #}
+{% from "device/_controls.html" import style_picker %}
+{% if layouts %}
+    <section class="section" data-tour="layout">
+        <header class="card-header">
+            <h2 class="card-title">Layout</h2>
+        </header>
+        {% if landscape %}
+            {{ style_picker("layout", "How your HD screen arranges its panels, hung landscape.", layouts, layout, "layouts", 468, 351, legend="Layout", prefix="landscape-", option_min=300, legend_shown=false) }}
+        {% elif hd_screen %}
+            {{ style_picker("layout", "How your HD screen arranges its panels, hung portrait.", layouts, layout, "layouts", 351, 468, legend="Layout", option_min=210, legend_shown=false) }}
+        {% else %}
+            {{ style_picker("layout", "How your screen arranges its panels.", layouts, layout, "layouts", 240, 400, legend="Layout", prefix="small-", option_min=190, legend_shown=false) }}
+        {% endif %}
+    </section>
+{% endif %}

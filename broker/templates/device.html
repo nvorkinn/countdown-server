@@ -4,8 +4,10 @@
 {% block heading %}{% endblock %}
 
 {% block head %}
+{% if not touchscreen %}
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor/driver.js/driver.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='config_tour.css') }}">
+{% endif %}
 {% endblock %}
 
 {% block hero %}
@@ -22,6 +24,7 @@
             {% endif %}
             {% if touchscreen %}
                 <li>{{ themes[config.theme] }}</li>
+                <li>{{ theme_colours[config.theme_colour] }}</li>
             {% else %}
                 <li>{{ styles[config.style][0] }}</li>
                 <li>{{ orientation_labels[config.orientation if hd_screen else page_orientation] }}</li>
@@ -32,10 +35,11 @@
             <li>{{ clock_formats[config.clock_format].split(' (')[0] }}</li>
         </ul>
         <div class="hero-links">
+            {# The tour's sample pictures are an e-paper screen's, and a touchscreen has no picture of its own. #}
             {% if not touchscreen %}
                 <a href="{{ url_for('pages.screen_view', device_id=device_id) }}">See what's on the screen ›</a>
+                <p class="tour-start"><button type="button" id="tourStart">Take the tour ›</button></p>
             {% endif %}
-            <p class="tour-start"><button type="button" id="tourStart">Take the tour ›</button></p>
         </div>
     </div>
     {# The page keeps asking for the picture (the script below), so it shows a save's new one, and the first one. A
@@ -61,97 +65,6 @@
 {% endblock %}
 
 {% block content %}
-{# A gallery of pictures to pick one from: the style, an HD screen's weather design, the layout. option_min is the
-   narrowest a picture gets before the gallery scrolls instead. #}
-{# The style's showcase: the one picked, big, with its name and what it's like; the others beside it, small, to pick
-   instead. The big picture follows the pick (the script below); without the script it shows the saved one. #}
-{% macro showcase(field, hint, styles, chosen, folder, width, height) %}
-        {% set picked = chosen if chosen in styles else (styles | list | first) %}
-        <fieldset class="showcase" aria-describedby="{{ field }}_hint">
-            <legend class="visually-hidden">Style</legend>
-            <div class="showcase-stage">
-                <img class="showcase-picture" id="{{ field }}_picture" src="{{ url_for('static', filename=folder ~ '/' ~ picked ~ '.png') }}" alt="{{ styles[picked][0] }} style preview" width="{{ width }}" height="{{ height }}">
-            </div>
-            <div class="showcase-info">
-                <p class="showcase-kicker">Selected style</p>
-                <div aria-live="polite" aria-atomic="true">
-                    <p class="showcase-name" id="{{ field }}_name">{{ styles[picked][0] }}</p>
-                    <p class="showcase-description" id="{{ field }}_description">{{ styles[picked][1] }}.</p>
-                </div>
-                <p id="{{ field }}_hint" class="form-hint">{{ hint }}</p>
-            </div>
-            <div class="showcase-browse">
-                <div class="gallery-head">
-                    <p class="field-caption">Choose a style</p>
-                    <div class="gallery-nav" hidden>
-                        <button type="button" class="gallery-step" data-step="-1" aria-label="Previous styles" aria-controls="{{ field }}_options">‹</button>
-                        <button type="button" class="gallery-step" data-step="1" aria-label="Next styles" aria-controls="{{ field }}_options">›</button>
-                    </div>
-                </div>
-                <div class="showcase-options" id="{{ field }}_options">
-                    {% for style, (name, description) in styles.items() %}
-                        <label class="showcase-option">
-                            <input type="radio" id="{{ field }}_{{ style }}" name="{{ field }}" value="{{ style }}" {% if chosen == style %}checked{% endif %} data-name="{{ name }}" data-description="{{ description }}." data-picture="{{ url_for('static', filename=folder ~ '/' ~ style ~ '.png') }}">
-                            <img src="{{ url_for('static', filename=folder ~ '/' ~ style ~ '.png') }}" alt="" width="{{ width }}" height="{{ height }}" loading="lazy">
-                            <span class="showcase-option-name">{{ name }}</span>
-                            <span class="showcase-picked" aria-hidden="true">Selected</span>
-                        </label>
-                    {% endfor %}
-                </div>
-            </div>
-        </fieldset>
-{% endmacro %}
-{% macro style_picker(field, hint, styles, chosen, folder, width, height, legend="Style", prefix="", option_min=220, legend_shown=true) %}
-        <fieldset class="form-group gallery" aria-describedby="{{ field }}_hint">
-            <legend{% if not legend_shown %} class="visually-hidden"{% endif %}>{{ legend }}</legend>
-            <div class="gallery-head">
-                <p id="{{ field }}_hint" class="form-hint">{{ hint }}</p>
-                <div class="gallery-nav" hidden>
-                    <button type="button" class="gallery-step" data-step="-1" aria-label="Scroll back">‹</button>
-                    <button type="button" class="gallery-step" data-step="1" aria-label="Scroll on">›</button>
-                </div>
-            </div>
-            <div class="gallery-track" style="--option-min: {{ option_min }}px">
-                {% for style, (name, description) in styles.items() %}
-                    <label class="style-option">
-                        <input type="radio" id="{{ field }}_{{ style }}" name="{{ field }}" value="{{ style }}" {% if chosen == style %}checked{% endif %}>
-                        <span class="style-stage"><img src="{{ url_for('static', filename=folder ~ '/' ~ prefix ~ style ~ '.png') }}" alt="" width="{{ width }}" height="{{ height }}" style="max-width: {{ width }}px" loading="lazy"></span>
-                        <span class="style-caption">
-                            <span class="style-title"><span class="style-name">{{ name }}</span> <span class="style-picked">Selected</span></span>
-                            <span class="style-description">{{ description }}</span>
-                        </span>
-                    </label>
-                {% endfor %}
-            </div>
-        </fieldset>
-{% endmacro %}
-{# A choice of a few as a segmented control; a label's "(example)" is set smaller. #}
-{% macro segmented(field, options, chosen, required=True) %}
-                        <div class="segmented">
-                            {% for value, label in options.items() %}
-                                <input type="radio" id="{{ field }}_{{ value }}" name="{{ field }}" value="{{ value }}" {% if chosen == value %}checked{% endif %}{% if required %} required{% endif %}>
-                                <label for="{{ field }}_{{ value }}">{{ label.split(' (')[0] }}{% if ' (' in label %} <small>{{ label.split(' (')[1].rstrip(')') }}</small>{% endif %}</label>
-                            {% endfor %}
-                        </div>
-{% endmacro %}
-{# A service the screen can show: its tick, and whether the account has it connected (problem: what's wrong with it). #}
-{% macro service_row(field, label, enabled, linked, problem=none) %}
-                <div class="service-row">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="{{ field }}" name="{{ field }}" {% if enabled %}checked{% endif %}>
-                        <label for="{{ field }}">{{ label }}</label>
-                    </div>
-                    <div class="service-actions">
-                        {% if not linked %}
-                            <a href="{{ url_for('account.account') }}" class="status-pill status-unlinked">Not connected</a>
-                        {% elif problem %}
-                            <a href="{{ url_for('account.account') }}" class="status-pill status-unlinked">{{ problem }}</a>
-                        {% else %}
-                            <span class="status-pill status-linked">Connected</span>
-                        {% endif %}
-                    </div>
-                </div>
-{% endmacro %}
 {% if errors %}
     <div class="error-banner">
         {% for error in errors %}<p style="margin: 0;">{{ error }}</p>{% endfor %}
@@ -162,247 +75,17 @@
 <form id="displayUnlinkForm" method="POST" action="{{ url_for('pages.display_unlink', device_id=device_id) }}"></form>
 
 <form class="settings" id="settingsForm" method="POST" action="{{ url_for('pages.device_config', device_id=device_id) }}">
-    <section class="section" data-tour="general">
-        <header class="card-header">
-            <h2 class="card-title">General</h2>
-        </header>
-        <div class="field-row">
-            <fieldset class="form-group">
-                <legend class="form-legend">Clock format</legend>
-                {{ segmented("clock_format", clock_formats, config.clock_format) }}
-            </fieldset>
-
-            <fieldset class="form-group">
-                <legend class="form-legend">Language</legend>
-                {{ segmented("language", languages, config.language) }}
-            </fieldset>
-
-            <!-- Only an HD screen picks its orientation; elsewhere the page locks it, and as a disabled
-                 fieldset isn't submitted, the orientation goes in this hidden input instead. A touchscreen
-                 has none: it isn't posted, so what's stored is kept. -->
-            {% if not touchscreen %}
-                {% set shown_orientation = config.orientation if hd_screen else page_orientation %}
-                {% if not hd_screen %}
-                    <input type="hidden" name="orientation" value="{{ page_orientation }}">
-                {% endif %}
-                <fieldset class="form-group"{% if not hd_screen %} disabled{% endif %}>
-                    <legend class="form-legend">Orientation</legend>
-                    {{ segmented("orientation", orientation_labels, shown_orientation, required=False) }}
-                </fieldset>
-            {% endif %}
-        </div>
-    </section>
-
-    {% if touchscreen %}
-    <section class="section">
-        <header class="card-header">
-            <h2 class="card-title">Touchscreen</h2>
-        </header>
-        <div class="field-row">
-            <fieldset class="form-group">
-                <legend class="form-legend">Theme</legend>
-                {{ segmented("theme", themes, config.theme) }}
-            </fieldset>
-
-            <fieldset class="form-group">
-                <legend class="form-legend">Screen sleep</legend>
-                {{ segmented("screen_sleep_minutes", screen_sleep_minutes, config.screen_sleep_minutes | string) }}
-            </fieldset>
-        </div>
-        <fieldset class="form-group">
-            <legend class="form-legend">Theme colour</legend>
-            {{ segmented("theme_colour", theme_colours, config.theme_colour) }}
-        </fieldset>
-    </section>
-    {% else %}
-    <section class="section section-showcase" data-tour="style">
-        <header class="card-header">
-            <h2 class="card-title">Style</h2>
-        </header>
-        {{ showcase("style", "How your screen draws its departures, Spotify and notice board.", styles, config.style, "styles", 480, 528) }}
-        {% if hd_screen %}
-            {{ style_picker("weather_design", "How your HD screen draws the weather, which spans its whole width.", weather_designs, config.weather_design, "weather", 468, 230, legend="Weather", option_min=300) }}
+    {# The device's sections, in order (pages.PAGE_SECTIONS, by its type): each is device/sections/<name>.html, and a
+       pair of them goes side by side on a wide page. #}
+    {% for section in sections %}
+        {% if section is string %}
+            {% include "device/sections/" ~ section ~ ".html" %}
+        {% else %}
+            <div class="section-pair">
+                {% for paired in section %}{% include "device/sections/" ~ paired ~ ".html" %}{% endfor %}
+            </div>
         {% endif %}
-    </section>
-
-    {% if layouts %}
-        <section class="section" data-tour="layout">
-            <header class="card-header">
-                <h2 class="card-title">Layout</h2>
-            </header>
-            {% if landscape %}
-                {{ style_picker("layout", "How your HD screen arranges its panels, hung landscape.", layouts, layout, "layouts", 468, 351, legend="Layout", prefix="landscape-", option_min=300, legend_shown=false) }}
-            {% elif hd_screen %}
-                {{ style_picker("layout", "How your HD screen arranges its panels, hung portrait.", layouts, layout, "layouts", 351, 468, legend="Layout", option_min=210, legend_shown=false) }}
-            {% else %}
-                {{ style_picker("layout", "How your screen arranges its panels.", layouts, layout, "layouts", 240, 400, legend="Layout", prefix="small-", option_min=190, legend_shown=false) }}
-            {% endif %}
-        </section>
-    {% endif %}
-    {% endif %}
-
-    <div class="section-pair">
-        <section class="section" data-tour="weather">
-            <header class="card-header">
-                <h2 class="card-title">Weather</h2>
-            </header>
-            <!-- Typing clears the picked place, so text that wasn't picked (or a browser without JavaScript)
-                 is looked up when saved. -->
-            <div class="form-group">
-                <label for="weather_location">Town or city</label>
-                <div class="search-container" style="margin-bottom: 0;">
-                    <input type="text" id="weather_location" name="weather_location" value="{{ config.weather_place_label or config.weather_location or weather_suggestion or '' }}" placeholder="Search for a town or city" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="placeResults" aria-describedby="weather_location_hint">
-                    <span id="placeSpinner" class="search-spinner">Searching…</span>
-                    <div id="placeResults" class="search-results" role="listbox" aria-label="Towns and cities"></div>
-                </div>
-                <input type="hidden" id="weather_place_id" name="weather_place_id" value="{{ config.weather_place_id if config.weather_place_id is not none else '' }}">
-                <p id="weather_location_hint" class="form-hint">For the forecast.{% if config.weather_place_label %} Now: <span id="weather_place_saved">{{ config.weather_place_label }}</span>.{% endif %}{% if weather_suggestion %} Suggested from your location.{% endif %}</p>
-            </div>
-        </section>
-
-        <section class="section" data-tour="notice_board">
-            <header class="card-header">
-                <h2 class="card-title">Notice board</h2>
-            </header>
-            <div class="form-group">
-                <label for="postcode">Postcode</label>
-                <input
-                    type="text"
-                    id="postcode"
-                    name="postcode"
-                    value="{{ config.postcode }}"
-                    placeholder="e.g. SW1A 1AA or 0150"
-                    pattern="\s*([A-Za-z]{1,2}[0-9][A-Za-z0-9]?\s*[0-9][A-Za-z]{2}|[0-9]{4})\s*"
-                    title="A UK or Norwegian postcode, e.g. SW1A 1AA or 0150"
-                    autocapitalize="characters"
-                    autocomplete="postal-code"
-                    maxlength="10"
-                    aria-describedby="postcode_hint"
-                >
-                <p id="postcode_hint" class="form-hint">Picks the local notices, in the UK or Norway.</p>
-            </div>
-        </section>
-    </div>
-
-    <section class="section section-panel" data-tour="departures">
-        <header class="card-header">
-            <h2 class="card-title">Departures</h2>
-        </header>
-        <div class="departures-grid">
-            <div>
-                <label class="field-caption" for="searchInput">Add a stop</label>
-                <div class="search-container">
-                    <input type="text" id="searchInput" class="search-input" placeholder="Search for a station or stop in London or Norway" autocomplete="off">
-                    <span id="searchSpinner" class="search-spinner">Searching…</span>
-                    <div id="searchResults" class="search-results"></div>
-                </div>
-                <p class="form-hint">Two stops to a page; the screen turns the pages.</p>
-            </div>
-
-            <div>
-                <p class="field-caption">Your stops</p>
-                <input type="hidden" name="stops_order" id="stopsOrderInput" value="{{ stops | map(attribute='id') | join(',') }}">
-
-                <div id="stopsList" class="stops-list">
-                    {% if stops %}
-                        {% for stop in stops %}
-                            <div class="stop-card" data-id="{{ stop.id }}">
-                                <div class="stop-order">
-                                    <span class="order-badge">{{ loop.index }}</span>
-                                    {% set icon = MODE_ICONS.get(stop.mode) %}
-                                    <div class="mode-icon mode-{{ icon[0] if icon else 'bus' }}">
-                                        {% if icon %}{{ icon[1] }}{% else %}{{ stop.letter or '🚌' }}{% endif %}
-                                    </div>
-                                    <div class="item-text">
-                                        <h4>{{ stop.name }}</h4>
-                                        <p>
-                                            {% if stop.source == 'entur' and stop.indent %}{{ stop.subtitle.split(' • ')[0] }}{% if stop.lines %} • {% endif %}{% endif %}
-                                            {{ stop.lines | join(', ') }}
-                                            <span class="page-badge">Page {{ ((loop.index0 // 2) + 1) }}</span>
-                                        </p>
-                                    </div>
-                                </div>
-                                <div class="stop-actions">
-                                    <button type="button" class="btn-action btn-move-up" title="Move Up">▲</button>
-                                    <button type="button" class="btn-action btn-move-down" title="Move Down">▼</button>
-                                    <button type="button" class="btn-action btn-delete" title="Remove">✕</button>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    {% else %}
-                        <div class="empty-stops">No stops yet. Search for one to add it.</div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <div class="integrations">
-        <p class="group-label">Integrations</p>
-        <p class="form-hint">Connect services in <a href="{{ url_for('account.account') }}">your account</a>, once for all your screens. The ticks pick what this screen shows.</p>
-        <div class="integration-grid">
-            <section class="section integration" data-tour="music">
-                <header class="card-header">
-                    <h2 class="card-title">Music</h2>
-                </header>
-                {{ service_row('spotify_enabled', 'Spotify', config.spotify_enabled, spotify_linked) }}
-                {% if apple_music_available or config.apple_music_enabled %}
-                    {{ service_row('apple_music_enabled', 'Apple Music', config.apple_music_enabled, apple_music_linked) }}
-                    <p class="form-hint">Apple Music shows what you played last, since Apple doesn't share what's playing now. With both on, Spotify shows while it's playing, and the two take turns with their top lists.</p>
-                {% endif %}
-            </section>
-
-            <section class="section integration" data-tour="developer">
-                <header class="card-header">
-                    <h2 class="card-title">Developer</h2>
-                </header>
-                {{ service_row('developer_enabled', 'GitHub', config.developer_enabled, github_linked) }}
-            </section>
-
-            <section class="section integration" data-tour="parcels">
-                <header class="card-header">
-                    <h2 class="card-title">Parcels</h2>
-                </header>
-                {{ service_row('parcels_enabled', 'Parcel', config.parcels_enabled, parcel_linked, parcel_problem) }}
-                <div class="form-group">
-                    <p class="field-caption">Arriving by</p>
-                    {{ segmented("parcels_days_ahead", parcel_days_ahead, form_value(config.parcels_days_ahead)) }}
-                    <p class="form-hint">Shown as notices on the notice board. Undated parcels only show with Any day. Out for delivery and held ones always show.</p>
-                </div>
-                <div class="form-group">
-                    <p class="field-caption">Delivered ones stay</p>
-                    {{ segmented("parcels_kept_hours", parcel_kept_hours, form_value(config.parcels_kept_hours)) }}
-                </div>
-            </section>
-
-            <section class="section integration" data-tour="energy">
-                <header class="card-header">
-                    <h2 class="card-title">Energy</h2>
-                </header>
-                {{ service_row('energy_enabled', 'Glowmarkt', config.energy_enabled, glowmarkt_linked) }}
-            </section>
-        </div>
-    </div>
-
-    <section class="section" data-tour="screen">
-        <header class="card-header">
-            <h2 class="card-title">Screen</h2>
-        </header>
-        <div class="form-group">
-            <label for="screen_name">Name</label>
-            <input type="text" id="screen_name" name="screen_name" value="{{ screen_name }}" maxlength="{{ name_max }}" placeholder="e.g. Kitchen" autocomplete="off">
-            <p class="form-hint">What it's called in the list of your screens.</p>
-        </div>
-        <div class="danger-row">
-            <p>
-                <strong>Screen: {{ 'attached' if display_attached else 'not attached' }}</strong>
-                {% if display_attached %}Unlink a lost or retired screen. It can only come back as a new screen.{% else %}This screen can only come back by being set up as a new one.{% endif %}
-            </p>
-            {% if display_attached %}
-                <button type="submit" form="displayUnlinkForm" class="btn-action btn-delete" data-confirm="Unlink this screen? It can only come back as a new screen.">Unlink screen</button>
-            {% endif %}
-        </div>
-    </section>
+    {% endfor %}
 
     <div class="save-bar" id="saveBar">
         <p class="save-status" id="saveStatus" aria-live="polite">Unsaved changes</p>
@@ -411,8 +94,10 @@
     </div>
 </form>
 
+{% if not touchscreen %}
 <script src="{{ url_for('static', filename='vendor/driver.js/driver.js.iife.js') }}"></script>
 <script src="{{ url_for('static', filename='config_tour.js') }}" data-picture="{{ url_for('static', filename='display/tour.png') }}"></script>
+{% endif %}
 <script src="{{ url_for('static', filename='settings_form.js') }}"></script>
 <script src="{{ url_for('static', filename='settings_choices.js') }}"></script>
 {% if not touchscreen %}

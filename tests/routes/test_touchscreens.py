@@ -12,7 +12,8 @@ from countdown_api.models import ConfigResponse, DeviceRegistration, Touchscreen
 from pydantic import TypeAdapter
 
 from broker.db import db
-from broker.models import Device, DeviceConfig
+from broker.models import THEMES, Device, DeviceConfig
+from broker.routes import pages
 from broker.services import pairing, render_screens
 from tests.conftest import name_screen
 
@@ -265,7 +266,10 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
 
     html = client.get("/device").get_data(as_text=True)
 
-    assert '<h2 class="card-title">Touchscreen</h2>' in html
+    # Its own style (skin and colour) and display sections, after the ones every device has.
+    titles = re.findall(r'<h2 class="card-title">([^<]+)</h2>', html)
+    assert titles[:3] == ["General", "Style", "Display"]
+    assert titles[-1] == "Screen"
     assert re.findall(r'id="theme_([a-z]+)"[^>]*checked', html) == ["day"]
     assert re.findall(r'id="theme_colour_(\w+)"[^>]*checked', html) == ["forest"]
     assert re.findall(r'id="screen_sleep_minutes_(\w+)"[^>]*checked', html) == ["5"]
@@ -273,6 +277,27 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
     assert 'id="preview"' not in html
     assert 'name="style"' not in html
     assert 'name="orientation"' not in html
+    assert 'name="layout"' not in html
+    # Nor the tour, whose pictures are an e-paper screen's.
+    assert "tourStart" not in html
+    assert "config_tour.js" not in html
+
+
+def test_a_devices_page_shows_what_it_said_at_registration_but_cant_change_it(app, client, paired_client):
+    touchscreen = _paired(app, client)
+    _, epaper, _ = paired_client
+
+    for device_id, kind, size in (
+        (touchscreen, "Touchscreen", "1280 \u00d7 800"),
+        (epaper, "E-paper screen", "480 \u00d7 800"),
+    ):
+        html = client.get(f"/device/{device_id}").get_data(as_text=True)
+        facts = html.split('<dl class="device-facts"')[1].split("</dl>")[0]
+        assert f"<dd>{kind}</dd>" in facts
+        assert f"{size} px" in facts
+        assert f"<code>{device_id}</code>" in facts
+        # Shown, never a field.
+        assert "<input" not in facts
 
 
 def test_an_epaper_screens_page_has_no_touchscreen_settings(paired_client):
@@ -280,8 +305,9 @@ def test_an_epaper_screens_page_has_no_touchscreen_settings(paired_client):
 
     html = client.get("/device").get_data(as_text=True)
 
-    assert "Touchscreen" not in html
     assert 'name="theme"' not in html
+    assert 'name="theme_colour"' not in html
+    assert 'name="screen_sleep_minutes"' not in html
     assert 'id="preview"' in html
 
 
@@ -337,3 +363,61 @@ def test_a_save_the_owner_doesnt_approve_is_refused(app, client, monkeypatch):
     assert response.status_code == 403
     with app.app_context():
         assert db.session.get_one(DeviceConfig, device_id).clock_format != "12h"
+
+
+def test_a_touchscreens_save_with_an_epaper_screens_settings_is_refused(app, client):
+    device_id = _paired(app, client)
+
+    for field, value in (
+        ("orientation", "horizontal"),
+        ("style", "hero"),
+        ("weather_design", "poster"),
+        ("layout", ""),
+    ):
+        response = client.post("/device", data={field: value, "clock_format": "12h"})
+        assert response.status_code == 400, field
+        assert b"isn&#39;t a setting of a touchscreen." in response.data
+        assert b"Nothing was saved." in response.data
+
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).clock_format == "24h"
+
+
+def test_an_epaper_screens_save_with_a_touchscreens_settings_is_refused(app, paired_client):
+    client, device_id, _ = paired_client
+
+    for field, value in (("theme", "night"), ("theme_colour", "plum"), ("screen_sleep_minutes", "0")):
+        response = client.post("/device", data={field: value, "clock_format": "12h", "orientation": "vertical"})
+        assert response.status_code == 400, field
+        assert b"isn&#39;t a setting of an e-paper screen." in response.data
+
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.clock_format, config.theme, config.theme_colour) == ("24h", "day", "forest")
+
+
+def test_a_save_is_checked_against_the_contracts_model_for_the_type(app, client, monkeypatch):
+    """Whatever the page lets through, a save that makes a config the contract refuses is refused, and saves nothing."""
+    device_id = _paired(app, client)
+    # The page taking a skin the contract doesn't have, as if their lists had drifted apart.
+    monkeypatch.setitem(pages.CHOICES, "theme", ({**THEMES, "dusk": "Dusk"}, "The theme"))
+
+    response = client.post("/device", data={"theme": "dusk", "clock_format": "12h"})
+
+    assert response.status_code == 400
+    assert b"These settings aren&#39;t allowed for a touchscreen" in response.data
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.theme, config.clock_format) == ("day", "24h")
+
+
+def test_each_types_page_posts_only_its_own_types_fields(app, client, paired_client):
+    touchscreen = _paired(app, client)
+    _, epaper, _ = paired_client
+
+    for device_id, device_type in ((touchscreen, "touchscreen"), (epaper, "epaper")):
+        html = client.get(f"/device/{device_id}").get_data(as_text=True)
+        posted = set(re.findall(r'<(?:input|select|textarea)[^>]*\sname="([^"]+)"', html))
+        others = set().union(*(fields for kind, fields in pages.TYPE_FIELDS.items() if kind != device_type))
+        assert posted & pages.TYPE_FIELDS[device_type]
+        assert not posted & others, device_type

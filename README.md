@@ -106,7 +106,9 @@ incoming request). The sign-up page (`/pair`) and the device endpoints stay publ
   (or signs them up in Pocket ID and has them add a passkey), and the same request then registers the touchscreen and
   makes them its owner in one transaction, with no code. Only the secret's hash is sent. A visit that the browser says
   came from another site (`Sec-Fetch-Site`) gets a confirm button instead, so a link elsewhere can't add a device to a
-  signed-in person's account. Someone else's touchscreen is a `409`.
+  signed-in person's account. Someone else's touchscreen is a `409`. With `&return_to=<url>` the page redirects back
+  to the tablet's app instead, adding `device_id=<id>` (or `error=taken`). The URL's origin must be listed in the
+  setting `TOUCHSCREEN_RETURN_ORIGINS`, or the request is refused before anything is registered.
 
 Pairing gives the screen its internal name (its slug, which is its device id), puts it on the render pool's list and
 queues its first render. Its owner can give it a friendly name on its settings page.
@@ -194,6 +196,9 @@ python scripts/simulate_device.py --token    # prints the /pair URL instead
 # --secret <random string> to be the same screen across runs; pass a base URL to use the deployed broker
 ```
 
+To try the settings site without Redis, the login or a screen, `uv run python scripts/dev_server.py` starts it on a
+fresh database with an in-memory Redis, signed in as a user with an e-paper screen, an HD one and a touchscreen.
+
 **Tests, lint and types** (CI runs all three on every PR, the tests split into 3 shards with coverage to Codecov):
 
 ```bash
@@ -232,6 +237,7 @@ Run on the host with `docker exec countdown-server flask --app wsgi <command>`:
 | `devices owner <device_id> <user id>` | Pair a device with a user. |
 | `devices unpair <device_id> [--config]` | Clear its owner and show a new code; `--config` also resets its settings and linked accounts. |
 | `devices forget <device_id>` | Delete it; the screen registers again as a new device. |
+| `devices seed-touchscreen <user id> [--width W] [--height H]` | Add a test touchscreen paired with a user (dev only), and print its secret. |
 | `config publish` | Rewrite the configs and subscriptions in Redis. |
 | `weather backfill` | Give any config with a typed weather location but no picked place the place Open-Meteo finds first. |
 

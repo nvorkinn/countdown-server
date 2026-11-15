@@ -72,6 +72,8 @@ DEP001 = ["PIL"]
 # tzdata is never imported: zoneinfo reads it from site-packages on images without a system tz database
 # (python:3.14-slim has none), so it has to stay a runtime dependency.
 DEP002 = ["tzdata"]
+# fakeredis: only scripts/dev_server.py (the local settings site), a dev tool, outside the tests.
+DEP004 = ["fakeredis"]
 
 [tool.deptry.package_module_name_map]
 # deptry reads the installed metadata for these too; listed so the mapping holds without an installed environment.

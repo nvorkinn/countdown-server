@@ -1,0 +1,11 @@
+{# An e-paper screen's style (the config's EpaperStyle): how every panel is drawn, and an HD screen's weather. #}
+{% from "device/_controls.html" import showcase, style_picker %}
+<section class="section section-showcase" data-tour="style">
+    <header class="card-header">
+        <h2 class="card-title">Style</h2>
+    </header>
+    {{ showcase("style", "How your screen draws its departures, Spotify and notice board.", styles, config.style, "styles", 480, 528) }}
+    {% if hd_screen %}
+        {{ style_picker("weather_design", "How your HD screen draws the weather, which spans its whole width.", weather_designs, config.weather_design, "weather", 468, 230, legend="Weather", option_min=300) }}
+    {% endif %}
+</section>

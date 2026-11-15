@@ -7,6 +7,7 @@ docker exec countdown-server flask --app wsgi devices code <device_id>
 docker exec countdown-server flask --app wsgi devices owner <device_id> <user id>
 docker exec countdown-server flask --app wsgi devices unpair <device_id> [--config]
 docker exec countdown-server flask --app wsgi devices forget <device_id>
+docker exec countdown-server flask --app wsgi devices seed-touchscreen <user id> [--width W] [--height H]
 docker exec countdown-server flask --app wsgi weather backfill
 docker exec countdown-server flask --app wsgi config publish
 docker exec countdown-server flask --app wsgi redis subs [source]
@@ -16,6 +17,7 @@ Like any `flask` command it loads the app, so it needs the app's env vars (the c
 """
 
 import json
+import secrets
 from datetime import UTC, datetime
 from itertools import islice
 
@@ -26,11 +28,21 @@ from flask.cli import AppGroup
 from redis import RedisError
 from sqlalchemy import select
 
+from .auth import hash_secret
 from .clients import weather as weather_client
 from .db import db
 from .models import Device, DeviceConfig
 from .routes.pages import _write_subscriptions_to_redis
-from .services import assignments, config_store, device_keys, frame_record, pairing, pairing_key, weather_place
+from .services import (
+    assignments,
+    config_store,
+    device_keys,
+    frame_record,
+    pairing,
+    pairing_key,
+    registration,
+    weather_place,
+)
 
 devices = AppGroup("devices", help="Manual device admin for development.")
 weather = AppGroup("weather", help="The screens' weather places.")
@@ -157,6 +169,43 @@ def forget(device_id: str) -> None:
     device_keys.forget(device_id)
     config_store.publish(device_id)
     click.echo(f"{device_id} forgotten; delete its credentials file so it registers again.")
+
+
+# A tablet's size in pixels, landscape, for a seeded touchscreen that isn't given one.
+SEEDED_TOUCHSCREEN_SIZE = (1280, 800)
+
+
+@devices.command("seed-touchscreen")
+@click.argument("user")
+@click.option("--width", type=click.IntRange(min=1), default=SEEDED_TOUCHSCREEN_SIZE[0], show_default=True)
+@click.option("--height", type=click.IntRange(min=1), default=SEEDED_TOUCHSCREEN_SIZE[1], show_default=True)
+def seed_touchscreen(user: str, width: int, height: int) -> None:
+    """Add a test touchscreen, paired with a user (their Pocket ID user id), to set up on the settings site.
+
+    For trying a touchscreen's page before a touchscreen can pair itself: it registers as one would, with a new random
+    secret, and is paired at once. The secret is printed once, for calling the device API as it (GET
+    /api/devices/config). Refused in prod.
+    """
+    if not current_app.config["ENVIRONMENT_LABEL"]:
+        msg = "Test devices are only for dev: this is prod."
+        raise click.ClickException(msg)
+    secret = secrets.token_urlsafe(24)
+    screen = registration.Screen("touchscreen", width, height)
+    found = registration.register_screen(hash_secret(secret), screen)
+    if found is None:
+        msg = "Too many devices are waiting to be paired; try again later."
+        raise click.ClickException(msg)
+    device = _get_device(found.device_id)
+    # As `devices owner` pairs it.
+    device.owner = user
+    device.paired_at = datetime.now(UTC)
+    device.device_name = "Test touchscreen"
+    assignments.auto_name(device)
+    db.session.commit()
+    config_store.publish(device.device_id)
+    _write_subscriptions_to_redis()
+    click.echo(f"{device.device_id}: a {width}x{height} touchscreen, paired with {user}.")
+    click.echo(f"Its secret, shown only now: {secret}")
 
 
 @weather.command()

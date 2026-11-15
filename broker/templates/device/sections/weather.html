@@ -1,0 +1,18 @@
+{# Every device's weather (the config's Weather). #}
+<section class="section" data-tour="weather">
+    <header class="card-header">
+        <h2 class="card-title">Weather</h2>
+    </header>
+    <!-- Typing clears the picked place, so text that wasn't picked (or a browser without JavaScript)
+         is looked up when saved. -->
+    <div class="form-group">
+        <label for="weather_location">Town or city</label>
+        <div class="search-container" style="margin-bottom: 0;">
+            <input type="text" id="weather_location" name="weather_location" value="{{ config.weather_place_label or config.weather_location or weather_suggestion or '' }}" placeholder="Search for a town or city" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="placeResults" aria-describedby="weather_location_hint">
+            <span id="placeSpinner" class="search-spinner">Searching…</span>
+            <div id="placeResults" class="search-results" role="listbox" aria-label="Towns and cities"></div>
+        </div>
+        <input type="hidden" id="weather_place_id" name="weather_place_id" value="{{ config.weather_place_id if config.weather_place_id is not none else '' }}">
+        <p id="weather_location_hint" class="form-hint">For the forecast.{% if config.weather_place_label %} Now: <span id="weather_place_saved">{{ config.weather_place_label }}</span>.{% endif %}{% if weather_suggestion %} Suggested from your location.{% endif %}</p>
+    </div>
+</section>

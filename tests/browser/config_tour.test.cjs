@@ -4,7 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const tour = require("../../broker/static/config_tour.js");
-const template = fs.readFileSync(path.join(__dirname, "../../broker/templates/device.html"), "utf8");
+const templates = path.join(__dirname, "../../broker/templates");
+const read = file => fs.readFileSync(path.join(templates, file), "utf8");
+// An e-paper screen's page, the one with the tour: device.html's hero, then its sections in pages.PAGE_SECTIONS' order.
+const pages = fs.readFileSync(path.join(__dirname, "../../broker/routes/pages.py"), "utf8");
+const epaperSections = [...pages.match(/"epaper": \((.*)\),\n/)[1].matchAll(/"([a-z_]+)"/g)].map(m => m[1]);
+const template = [read("device.html"), ...epaperSections.map(name => read(`device/sections/${name}.html`))].join("\n");
 
 test("every step points at a section of the page, in the page's order", () => {
     const sections = [...template.matchAll(/data-tour="([a-z_]+)"/g)].map(m => m[1]);

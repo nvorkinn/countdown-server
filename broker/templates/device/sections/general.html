@@ -1,0 +1,32 @@
+{# Every device's: the clock, the language and, on an e-paper screen, which way it hangs. #}
+{% from "device/_controls.html" import segmented %}
+<section class="section" data-tour="general">
+    <header class="card-header">
+        <h2 class="card-title">General</h2>
+    </header>
+    <div class="field-row">
+        <fieldset class="form-group">
+            <legend class="form-legend">Clock format</legend>
+            {{ segmented("clock_format", clock_formats, config.clock_format) }}
+        </fieldset>
+
+        <fieldset class="form-group">
+            <legend class="form-legend">Language</legend>
+            {{ segmented("language", languages, config.language) }}
+        </fieldset>
+
+        <!-- Only an HD screen picks its orientation; elsewhere the page locks it, and as a disabled
+             fieldset isn't submitted, the orientation goes in this hidden input instead. A touchscreen
+             has none: it isn't posted, so what's stored is kept. -->
+        {% if not touchscreen %}
+            {% set shown_orientation = config.orientation if hd_screen else page_orientation %}
+            {% if not hd_screen %}
+                <input type="hidden" name="orientation" value="{{ page_orientation }}">
+            {% endif %}
+            <fieldset class="form-group"{% if not hd_screen %} disabled{% endif %}>
+                <legend class="form-legend">Orientation</legend>
+                {{ segmented("orientation", orientation_labels, shown_orientation, required=False) }}
+            </fieldset>
+        {% endif %}
+    </div>
+</section>

@@ -1,0 +1,92 @@
+{# The config page's controls, shared by its sections (device/sections/). #}
+{# A gallery of pictures to pick one from: the style, an HD screen's weather design, the layout. option_min is the
+   narrowest a picture gets before the gallery scrolls instead. #}
+{# The style's showcase: the one picked, big, with its name and what it's like; the others beside it, small, to pick
+   instead. The big picture follows the pick (the script below); without the script it shows the saved one. #}
+{% macro showcase(field, hint, styles, chosen, folder, width, height) %}
+        {% set picked = chosen if chosen in styles else (styles | list | first) %}
+        <fieldset class="showcase" aria-describedby="{{ field }}_hint">
+            <legend class="visually-hidden">Style</legend>
+            <div class="showcase-stage">
+                <img class="showcase-picture" id="{{ field }}_picture" src="{{ url_for('static', filename=folder ~ '/' ~ picked ~ '.png') }}" alt="{{ styles[picked][0] }} style preview" width="{{ width }}" height="{{ height }}">
+            </div>
+            <div class="showcase-info">
+                <p class="showcase-kicker">Selected style</p>
+                <div aria-live="polite" aria-atomic="true">
+                    <p class="showcase-name" id="{{ field }}_name">{{ styles[picked][0] }}</p>
+                    <p class="showcase-description" id="{{ field }}_description">{{ styles[picked][1] }}.</p>
+                </div>
+                <p id="{{ field }}_hint" class="form-hint">{{ hint }}</p>
+            </div>
+            <div class="showcase-browse">
+                <div class="gallery-head">
+                    <p class="field-caption">Choose a style</p>
+                    <div class="gallery-nav" hidden>
+                        <button type="button" class="gallery-step" data-step="-1" aria-label="Previous styles" aria-controls="{{ field }}_options">‹</button>
+                        <button type="button" class="gallery-step" data-step="1" aria-label="Next styles" aria-controls="{{ field }}_options">›</button>
+                    </div>
+                </div>
+                <div class="showcase-options" id="{{ field }}_options">
+                    {% for style, (name, description) in styles.items() %}
+                        <label class="showcase-option">
+                            <input type="radio" id="{{ field }}_{{ style }}" name="{{ field }}" value="{{ style }}" {% if chosen == style %}checked{% endif %} data-name="{{ name }}" data-description="{{ description }}." data-picture="{{ url_for('static', filename=folder ~ '/' ~ style ~ '.png') }}">
+                            <img src="{{ url_for('static', filename=folder ~ '/' ~ style ~ '.png') }}" alt="" width="{{ width }}" height="{{ height }}" loading="lazy">
+                            <span class="showcase-option-name">{{ name }}</span>
+                            <span class="showcase-picked" aria-hidden="true">Selected</span>
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+        </fieldset>
+{% endmacro %}
+{% macro style_picker(field, hint, styles, chosen, folder, width, height, legend="Style", prefix="", option_min=220, legend_shown=true) %}
+        <fieldset class="form-group gallery" aria-describedby="{{ field }}_hint">
+            <legend{% if not legend_shown %} class="visually-hidden"{% endif %}>{{ legend }}</legend>
+            <div class="gallery-head">
+                <p id="{{ field }}_hint" class="form-hint">{{ hint }}</p>
+                <div class="gallery-nav" hidden>
+                    <button type="button" class="gallery-step" data-step="-1" aria-label="Scroll back">‹</button>
+                    <button type="button" class="gallery-step" data-step="1" aria-label="Scroll on">›</button>
+                </div>
+            </div>
+            <div class="gallery-track" style="--option-min: {{ option_min }}px">
+                {% for style, (name, description) in styles.items() %}
+                    <label class="style-option">
+                        <input type="radio" id="{{ field }}_{{ style }}" name="{{ field }}" value="{{ style }}" {% if chosen == style %}checked{% endif %}>
+                        <span class="style-stage"><img src="{{ url_for('static', filename=folder ~ '/' ~ prefix ~ style ~ '.png') }}" alt="" width="{{ width }}" height="{{ height }}" style="max-width: {{ width }}px" loading="lazy"></span>
+                        <span class="style-caption">
+                            <span class="style-title"><span class="style-name">{{ name }}</span> <span class="style-picked">Selected</span></span>
+                            <span class="style-description">{{ description }}</span>
+                        </span>
+                    </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+{% endmacro %}
+{# A choice of a few as a segmented control; a label's "(example)" is set smaller. #}
+{% macro segmented(field, options, chosen, required=True) %}
+                        <div class="segmented">
+                            {% for value, label in options.items() %}
+                                <input type="radio" id="{{ field }}_{{ value }}" name="{{ field }}" value="{{ value }}" {% if chosen == value %}checked{% endif %}{% if required %} required{% endif %}>
+                                <label for="{{ field }}_{{ value }}">{{ label.split(' (')[0] }}{% if ' (' in label %} <small>{{ label.split(' (')[1].rstrip(')') }}</small>{% endif %}</label>
+                            {% endfor %}
+                        </div>
+{% endmacro %}
+{# A service the screen can show: its tick, and whether the account has it connected (problem: what's wrong with it). #}
+{% macro service_row(field, label, enabled, linked, problem=none) %}
+                <div class="service-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="{{ field }}" name="{{ field }}" {% if enabled %}checked{% endif %}>
+                        <label for="{{ field }}">{{ label }}</label>
+                    </div>
+                    <div class="service-actions">
+                        {% if not linked %}
+                            <a href="{{ url_for('account.account') }}" class="status-pill status-unlinked">Not connected</a>
+                        {% elif problem %}
+                            <a href="{{ url_for('account.account') }}" class="status-pill status-unlinked">{{ problem }}</a>
+                        {% else %}
+                            <span class="status-pill status-linked">Connected</span>
+                        {% endif %}
+                    </div>
+                </div>
+{% endmacro %}
