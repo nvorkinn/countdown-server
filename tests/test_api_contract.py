@@ -19,8 +19,6 @@ OPERATIONS = frozenset({"get", "put", "post", "delete", "patch"})
 # broker), so this only shrinks: add the route to the contract rather than here.
 NOT_IN_CONTRACT = {
     ("POST", "/api/frame"): "the e-paper screen's frame poll and log report (countdown-esp32), older than the paths",
-    ("GET", "/api/places/search"): "the settings page's place picker; the search endpoints go into the contract next",
-    ("GET", "/api/stops/search"): "the settings page's stop picker; the search endpoints go into the contract next",
     ("GET", "/api/status/devices"): "monitoring (a Home Assistant sensor), with its own status token",
     ("GET", "/api/status/health"): "the health check, for monitoring",
 }

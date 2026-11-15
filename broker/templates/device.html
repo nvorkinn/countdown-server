@@ -208,7 +208,7 @@
             placeResults.innerHTML = placeMatches.map((place, index) => `
                 <button type="button" class="search-item place-item" role="option" data-index="${index}">
                     <span class="place-name">${escapeHtml(place.name)}</span>
-                    <span class="place-detail">${escapeHtml([place.admin1, place.country].filter(p => p && p !== place.name).join(', '))}</span>
+                    <span class="place-detail">${escapeHtml(place.subtitle)}</span>
                 </button>
             `).join('');
         }

@@ -274,3 +274,60 @@ def require_paired_user(view: View) -> View:
         return view(*args, **kwargs)
 
     return wrapped
+
+
+def require_device_or_owner(view: View) -> View:
+    """Protect a route a device calls with its secret and the settings site with its owner's login.
+
+    With an Authorization header it's the device's own call (authenticate_device), for itself. Without one it's the
+    settings site's, by a signed-in person (401 otherwise) for the device of theirs that ?device_id= names: a 400
+    without one, and a 404 for one that isn't theirs (never admitting it exists). The view gets `device_id`, and
+    `by_device`, which says which it was.
+    """
+
+    @functools.wraps(view)
+    def wrapped(*args: object, **kwargs: object) -> ResponseReturnValue:
+        if "Authorization" in request.headers:
+            try:
+                device = authenticate_device(request.headers["Authorization"])
+            except DeviceAuthError as error:
+                return jsonify(error=error.message), error.status
+            return view(*args, device_id=device.device_id, by_device=True, **kwargs)
+        if current_user() is None:
+            return jsonify(error="sign in, or send the device's secret"), 401
+        requested = request.args.get("device_id", "")
+        if not requested:
+            return jsonify(error="device_id is needed"), 400
+        if requested not in {device.device_id for device in user_devices()}:
+            return jsonify(error="not found"), 404
+        g.device_id = requested
+        return view(*args, device_id=requested, by_device=False, **kwargs)
+
+    # A device route, which the screens' API must serve (see require_device_auth).
+    wrapped.device_auth = True  # ty: ignore[missing-attribute] -- a marker attribute, not part of the view type
+    return wrapped
+
+
+def require_paired_device_or_user(view: View) -> View:
+    """Protect a route for a paired device (by its secret), or a person with a paired device (by the login).
+
+    Either way it takes a screen someone has set up, as signing up is open to anyone: one with none is a 403.
+    """
+
+    @functools.wraps(view)
+    def wrapped(*args: object, **kwargs: object) -> ResponseReturnValue:
+        if "Authorization" in request.headers:
+            try:
+                device = authenticate_device(request.headers["Authorization"])
+            except DeviceAuthError as error:
+                return jsonify(error=error.message), error.status
+            if device.paired_at is None:
+                return jsonify(error="the device isn't paired yet"), 403
+        elif current_user() is None:
+            return jsonify(error="sign in, or send the device's secret"), 401
+        elif not user_devices():
+            return jsonify(error="pair a screen first"), 403
+        return view(*args, **kwargs)
+
+    wrapped.device_auth = True  # ty: ignore[missing-attribute] -- a marker attribute, not part of the view type
+    return wrapped
