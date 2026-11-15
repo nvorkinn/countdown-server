@@ -113,6 +113,12 @@ jobs:
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max
           sbom: true
+          # The previous release's layers, from the registry (a tag's run can't read another tag's Actions cache), so an
+          # image whose inputs haven't changed is rebuilt in seconds with the same layers. Caddy's xcaddy build (Go, ~60s)
+          # was the slowest build of all and held up the dev deploy, which doesn't even run Caddy. The broker's image
+          # is left uncached: its dependency layer is refreshed every release.
+          cache-from: ${{ matrix.image != 'countdown-server' && format('type=registry,ref={0}:buildcache-{1}', env.IMAGE, matrix.arch) || '' }}
+          cache-to: ${{ matrix.image != 'countdown-server' && format('type=registry,ref={0}:buildcache-{1},mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE, matrix.arch) || '' }}
 
       - name: Keep the digest for the join
         env:
