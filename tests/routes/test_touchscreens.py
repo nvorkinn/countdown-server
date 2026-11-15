@@ -6,6 +6,7 @@ so the render pool never draws it, it has no frames, and its page has its own se
 
 import re
 from datetime import UTC, datetime
+from html import unescape
 
 from countdown_api import fixtures
 from countdown_api.models import ConfigResponse, DeviceRegistration, TouchscreenConfig
@@ -441,3 +442,61 @@ def test_each_types_page_posts_only_its_own_types_fields(app, client, paired_cli
         others = set().union(*(fields for kind, fields in pages.TYPE_FIELDS.items() if kind != device_type))
         assert posted & pages.TYPE_FIELDS[device_type]
         assert not posted & others, device_type
+
+
+# --- saving a section at a time -------------------------------------------------------------------
+
+
+def test_a_touchscreens_page_saves_a_section_at_a_time_from_the_version_it_shows(app, client):
+    device_id = _paired(app, client)
+
+    html = client.get("/device").get_data(as_text=True)
+    etag = client.get(CONFIG_URL, query_string={"device_id": device_id}).headers["ETag"]
+
+    # No Save bar or whole-form save: config_sections.js saves each section as it changes, from what the page has.
+    assert 'id="saveBar"' not in html
+    assert "static/settings_form.js" not in html
+    assert "static/config_sections.js" in html
+    version = re.search(r'data-version="([^"]+)"', html)
+    assert version is not None
+    assert unescape(version.group(1)) == etag
+    assert f'data-device-id="{device_id}"' in html
+    shown = re.search(r'<script type="application/json" id="deviceConfig">(.*?)</script>', html, re.DOTALL)
+    assert shown is not None
+    assert CONFIGS.validate_json(shown.group(1)) == CONFIGS.validate_python(
+        client.get(CONFIG_URL, query_string={"device_id": device_id}).get_json()
+    )
+
+
+def test_an_epaper_screens_page_still_saves_the_whole_form(paired_client):
+    client, _, _ = paired_client
+
+    html = client.get("/device").get_data(as_text=True)
+
+    assert 'id="saveBar"' in html
+    assert "static/settings_form.js" in html
+    assert "static/config_sections.js" not in html
+    assert 'id="deviceConfig"' not in html
+
+
+def test_a_screens_name_is_saved_on_its_own(app, client):
+    device_id = _paired(app, client)
+
+    response = client.post(f"/device/{device_id}/name", data={"screen_name": "  Kitchen  "})
+
+    assert response.status_code == 200
+    assert response.get_json() == {"label": "Kitchen"}
+    with app.app_context():
+        assert db.session.get_one(Device, device_id).device_name == "Kitchen"
+
+
+def test_a_name_too_long_or_missing_isnt_saved(app, client):
+    device_id = _paired(app, client)
+
+    too_long = client.post(f"/device/{device_id}/name", data={"screen_name": "x" * (pages.assignments.NAME_MAX + 1)})
+    missing = client.post(f"/device/{device_id}/name", data={})
+
+    assert too_long.status_code == missing.status_code == 400
+    assert "at most" in too_long.get_json()["error"]
+    with app.app_context():
+        assert db.session.get_one(Device, device_id).device_name != "x" * (pages.assignments.NAME_MAX + 1)
