@@ -72,6 +72,19 @@ def _pair(device: Device, user: str) -> str | None:
     return previous
 
 
+def claim(device: Device, user: str) -> str | None:
+    """Make `user` the device's owner (not committed), as pairing does; return the owner it had.
+
+    For registering and claiming in one transaction (registration.register_and_claim); call after_claim once committed.
+    """
+    return _pair(device, user)
+
+
+def after_claim(device_id: str, previous: str | None, user: str) -> None:
+    """After claim's commit: what pairing does once the device is someone's (_after_pairing)."""
+    _after_pairing(device_id, previous, user)
+
+
 def _after_pairing(device_id: str, previous: str | None, user: str) -> None:
     """After the commit: take the device's code out of the store, and what it has from before a change of owner.
 

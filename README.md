@@ -101,6 +101,12 @@ incoming request). The sign-up page (`/pair`) and the device endpoints stay publ
   owner enters at `/pair`. The render pool draws it on the screen if the screen has been paired before (it only draws
   named screens); for a new screen, read it from the command's output. A code can also hand a device to a new owner.
   Wrong codes are throttled per IP.
+- **A touchscreen, through the login.** The tablet opens
+  `https://<APP_HOST>/register?secret_hash=<sha256hex(secret)>&width=<px>&height=<px>`. The login signs the person in
+  (or signs them up in Pocket ID and has them add a passkey), and the same request then registers the touchscreen and
+  makes them its owner in one transaction, with no code. Only the secret's hash is sent. A visit that the browser says
+  came from another site (`Sec-Fetch-Site`) gets a confirm button instead, so a link elsewhere can't add a device to a
+  signed-in person's account. Someone else's touchscreen is a `409`.
 
 Pairing gives the screen its internal name (its slug, which is its device id), puts it on the render pool's list and
 queues its first render. Its owner can give it a friendly name on its settings page.
