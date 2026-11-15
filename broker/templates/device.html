@@ -20,19 +20,27 @@
             {% else %}
                 <li class="chip-status">Unlinked</li>
             {% endif %}
-            <li>{{ styles[config.style][0] }}</li>
-            <li>{{ orientation_labels[config.orientation if hd_screen else page_orientation] }}</li>
+            {% if touchscreen %}
+                <li>{{ themes[config.theme] }}</li>
+            {% else %}
+                <li>{{ styles[config.style][0] }}</li>
+                <li>{{ orientation_labels[config.orientation if hd_screen else page_orientation] }}</li>
+            {% endif %}
             <li>{{ languages[config.language] }}</li>
             <li>{{ stops | length }} {{ 'stop' if stops | length == 1 else 'stops' }}</li>
             {# "24-hour (13:00)" without its example. #}
             <li>{{ clock_formats[config.clock_format].split(' (')[0] }}</li>
         </ul>
         <div class="hero-links">
-            <a href="{{ url_for('pages.screen_view', device_id=device_id) }}">See what's on the screen ›</a>
+            {% if not touchscreen %}
+                <a href="{{ url_for('pages.screen_view', device_id=device_id) }}">See what's on the screen ›</a>
+            {% endif %}
             <p class="tour-start"><button type="button" id="tourStart">Take the tour ›</button></p>
         </div>
     </div>
-    {# The page keeps asking for the picture (the script below), so it shows a save's new one, and the first one. #}
+    {# The page keeps asking for the picture (the script below), so it shows a save's new one, and the first one. A
+       touchscreen has no picture: it draws itself. #}
+    {% if not touchscreen %}
     <figure class="preview{% if not has_frame %} empty{% endif %}" id="preview" data-frame-url="{{ url_for('pages.screen_frame', device_id=device_id) }}"{% if frame_etag %} data-frame-etag='"{{ frame_etag }}"'{% endif %}>
         <a class="bezel{% if frame_height > frame_width %} portrait{% endif %}" href="{{ url_for('pages.screen_view', device_id=device_id) }}" aria-label="See what's on the screen">
             {% if has_frame %}
@@ -48,6 +56,7 @@
         </a>
         <figcaption id="previewDrawn"{% if not has_frame %} hidden{% endif %}>{% if has_frame %}Drawn {{ frame_drawn }}{% endif %}</figcaption>
     </figure>
+    {% endif %}
 </section>
 {% endblock %}
 
@@ -169,18 +178,43 @@
             </fieldset>
 
             <!-- Only an HD screen picks its orientation; elsewhere the page locks it, and as a disabled
-                 fieldset isn't submitted, the orientation goes in this hidden input instead. -->
-            {% set shown_orientation = config.orientation if hd_screen else page_orientation %}
-            {% if not hd_screen %}
-                <input type="hidden" name="orientation" value="{{ page_orientation }}">
+                 fieldset isn't submitted, the orientation goes in this hidden input instead. A touchscreen
+                 has none: it isn't posted, so what's stored is kept. -->
+            {% if not touchscreen %}
+                {% set shown_orientation = config.orientation if hd_screen else page_orientation %}
+                {% if not hd_screen %}
+                    <input type="hidden" name="orientation" value="{{ page_orientation }}">
+                {% endif %}
+                <fieldset class="form-group"{% if not hd_screen %} disabled{% endif %}>
+                    <legend class="form-legend">Orientation</legend>
+                    {{ segmented("orientation", orientation_labels, shown_orientation, required=False) }}
+                </fieldset>
             {% endif %}
-            <fieldset class="form-group"{% if not hd_screen %} disabled{% endif %}>
-                <legend class="form-legend">Orientation</legend>
-                {{ segmented("orientation", orientation_labels, shown_orientation, required=False) }}
-            </fieldset>
         </div>
     </section>
 
+    {% if touchscreen %}
+    <section class="section" data-tour="touchscreen">
+        <header class="card-header">
+            <h2 class="card-title">Touchscreen</h2>
+        </header>
+        <div class="field-row">
+            <fieldset class="form-group">
+                <legend class="form-legend">Theme</legend>
+                {{ segmented("theme", themes, config.theme) }}
+            </fieldset>
+
+            <fieldset class="form-group">
+                <legend class="form-legend">Screen sleep</legend>
+                {{ segmented("screen_sleep_minutes", screen_sleep_minutes, config.screen_sleep_minutes | string) }}
+            </fieldset>
+        </div>
+        <fieldset class="form-group">
+            <legend class="form-legend">Theme colour</legend>
+            {{ segmented("theme_colour", theme_colours, config.theme_colour) }}
+        </fieldset>
+    </section>
+    {% else %}
     <section class="section section-showcase" data-tour="style">
         <header class="card-header">
             <h2 class="card-title">Style</h2>
@@ -204,6 +238,7 @@
                 {{ style_picker("layout", "How your screen arranges its panels.", layouts, layout, "layouts", 240, 400, legend="Layout", prefix="small-", option_min=190, legend_shown=false) }}
             {% endif %}
         </section>
+    {% endif %}
     {% endif %}
 
     <div class="section-pair">
@@ -380,6 +415,7 @@
 <script src="{{ url_for('static', filename='config_tour.js') }}" data-picture="{{ url_for('static', filename='display/tour.png') }}"></script>
 <script src="{{ url_for('static', filename='settings_form.js') }}"></script>
 <script src="{{ url_for('static', filename='settings_choices.js') }}"></script>
+{% if not touchscreen %}
 <script src="{{ url_for('static', filename='frame_poll.js') }}"></script>
 <script>
 (() => {
@@ -415,6 +451,7 @@
     });
 })();
 </script>
+{% endif %}
 <script>
     const settingsForm = document.getElementById('settingsForm');
 

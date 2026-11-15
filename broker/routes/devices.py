@@ -1,4 +1,7 @@
-"""A screen's registration (its frames are routes/frames.py's)."""
+"""A device's registration.
+
+An e-paper screen then polls for its frames (routes/frames.py), a touchscreen for its config (routes/config_api.py).
+"""
 
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -7,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from broker.auth import hash_secret, with_retry_after
 from broker.db import db
-from broker.models import FRAME_FORMATS, FrameFormat
+from broker.models import DEVICE_TYPES, FRAME_FORMATS, DeviceType, FrameFormat
 from broker.services import registration
 
 if TYPE_CHECKING:
@@ -20,12 +23,14 @@ MIN_SECRET_LENGTH = 16
 
 @bp.post("/register")
 def register() -> ResponseReturnValue:
-    """Give a screen its identity.
+    """Give a device its identity.
 
-    {"secret": ..., "width": ..., "height": ..., "format": ...}, the secret the screen generated and keeps, its size in
-    pixels and the format it takes its frame in (one of FRAME_FORMATS), becomes a device at once (201 {device_id});
-    only the secret's hash is stored, and identifies the device. A repeat, e.g. on every boot, is a 200, and changes
-    nothing. A new device's weather location is guessed from the screen's IP.
+    {"secret": ..., "type": ..., "width": ..., "height": ..., "format": ...} (the store contract's DeviceRegistration):
+    the secret the device generated and keeps, what it is (one of DEVICE_TYPES; an e-paper screen if it doesn't say),
+    its size in pixels and, for an e-paper screen only, the format it takes its frame in (one of FRAME_FORMATS). A
+    touchscreen draws itself, so says no format. It becomes a device at once (201 {device_id}); only the secret's hash
+    is stored, and identifies the device. A repeat, e.g. on every boot, is a 200, and changes nothing. A new device's
+    weather location is guessed from its IP.
 
     Throttled per IP, every call counting, as anyone can call it.
     """
@@ -41,21 +46,29 @@ def register() -> ResponseReturnValue:
 
     body = request.get_json(silent=True) or {}
     secret = body.get("secret", "")
+    device_type = body.get("type", "epaper")
     width, height, frame_format = body.get("width"), body.get("height"), body.get("format")
     if not isinstance(secret, str) or len(secret) < MIN_SECRET_LENGTH:
         return jsonify(error="secret must be a random string of at least 16 characters"), 400
+    if not _is_device_type(device_type):
+        return jsonify(error=f"type must be one of {', '.join(DEVICE_TYPES)}"), 400
     if not (_is_size(width) and _is_size(height)):
         return jsonify(error="width and height must be positive integers"), 400
-    if not _is_frame_format(frame_format):
+    if device_type == "touchscreen":
+        if "format" in body:
+            return jsonify(error="a touchscreen draws itself, so takes no format"), 400
+        frame_format = None
+    elif not _is_frame_format(frame_format):
         return jsonify(error=f"format must be one of {', '.join(FRAME_FORMATS)}"), 400
 
     secret_hash = hash_secret(secret)
+    screen = registration.Screen(device_type, width, height, frame_format)
     try:
-        found = registration.register_screen(secret_hash, width, height, frame_format, ip=request.remote_addr)
+        found = registration.register_screen(secret_hash, screen, ip=request.remote_addr)
     except IntegrityError:
         # The same secret registered by a simultaneous request that got in first: answer as for any repeat.
         db.session.rollback()
-        found = registration.register_screen(secret_hash, width, height, frame_format, ip=request.remote_addr)
+        found = registration.register_screen(secret_hash, screen, ip=request.remote_addr)
 
     if found is None:
         return with_retry_after(jsonify(error="too many devices waiting"), 60), 503
@@ -65,6 +78,11 @@ def register() -> ResponseReturnValue:
 def _is_size(value: object) -> TypeGuard[int]:
     """Whether a reported width or height is a positive int (and not a bool, which is one to Python)."""
     return type(value) is int and value > 0
+
+
+def _is_device_type(value: object) -> TypeGuard[DeviceType]:
+    """Whether a device said it is a kind the broker knows."""
+    return value in DEVICE_TYPES
 
 
 def _is_frame_format(value: object) -> TypeGuard[FrameFormat]:

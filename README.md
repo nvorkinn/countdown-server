@@ -44,7 +44,8 @@ A screen generates a long random secret on first boot and keeps it. The broker s
 identifies the device. Two calls are all a screen needs:
 
 1. **`POST /api/devices/register`** `{"secret", "width", "height", "format"}`, on every boot and after any 401.
-   `format` is the format the screen takes its frame in, `mono-1bpp-packed` or `png`; the renderer draws in it. A new
+   `format` is the format the screen takes its frame in, `mono-1bpp-packed` or `png`; the renderer draws in it. A
+   touchscreen also sends `"type": "touchscreen"` and no `format` (see [Touchscreens](#touchscreens)). A new
    secret becomes a device at once (`201 {device_id}`); a known one is a `200`, which changes nothing. Anyone can call
    it, so it's throttled: 5 calls a minute per IP (`429` with `Retry-After`), at most 20 unpaired screens at once
    (`503`), and a screen still unpaired after 24 hours is dropped.
@@ -65,6 +66,16 @@ identifies the device. Two calls are all a screen needs:
 The body of the poll carries the screen's report: `{"metrics": "<InfluxDB line protocol>", "logs": [...]}`. The broker
 forwards metrics to VictoriaMetrics (replacing `{device_id}` in them) and logs to VictoriaLogs, in the background; a
 failure never fails the poll.
+
+
+### Touchscreens
+
+A touchscreen draws itself, so the render pool never draws it and it has no frames (`POST /api/frame` is a `409`). It
+registers like an e-paper screen, with its size and `"type": "touchscreen"`, is paired the same way, then polls
+**`GET /api/config`** with `Authorization: Bearer <secret>`: its config (the store contract's `ConfigResponse`), with
+`pairing_code` set while it's waiting to be paired, and its own settings in `touchscreen` (theme, theme colour, screen
+sleep). Its owner changes them on its settings page, which shows them instead of the pool's style, layout and
+orientation, and saves the config whole. A `401` means register again.
 
 ## Pairing and settings
 

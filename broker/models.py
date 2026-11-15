@@ -16,6 +16,10 @@ from .crypto import decrypt, encrypt
 from .db import Model, UTCDateTime
 
 
+# What kind of device it is (Device.type, DEVICE_TYPES below), the store contract's DeviceType.
+type DeviceType = Literal["epaper", "touchscreen"]
+
+
 class Device(Model):
     """A screen, known by its secret, and who it is paired with."""
 
@@ -36,6 +40,9 @@ class Device(Model):
     # The same for the screen's own requests, which decides whether the render pool still draws it
     # (services/assignments.is_quiet).
     display_last_seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # What kind of device it is, one of DEVICE_TYPES, as it said at registration: an e-paper screen, which shows the
+    # frames the render pool draws, or a touchscreen, which draws itself from its config (GET /api/config).
+    type: Mapped[DeviceType] = mapped_column(String, default="epaper", server_default=text("'epaper'"))
 
     config: Mapped[DeviceConfig | None] = relationship(back_populates="device", cascade="all, delete-orphan")
     pairing_codes: Mapped[list[PairingCode]] = relationship(back_populates="device", cascade="all, delete-orphan")
@@ -74,6 +81,9 @@ type Language = Literal["en", "nb"]
 type Style = Literal["airy", "hero", "card"]
 type WeatherDesign = Literal["columns", "timeline", "overview", "poster"]
 type FrameFormat = Literal["mono-1bpp-packed", "png"]
+type Theme = Literal["day", "auto", "night"]
+type ThemeColour = Literal["forest", "navy", "teal", "plum", "terracotta", "pink", "yellow", "black", "dynamic"]
+type ScreenSleepMinutes = Literal[0, 2, 5, 15, 30]
 type Layout = Literal[
     "classic",
     "masthead",
@@ -97,6 +107,23 @@ PARCEL_DAYS_AHEAD = {"0": "Today", "1": "Tomorrow", "2": "Day after", "": "Any d
 PARCEL_KEPT_HOURS = {"0": "Not kept", "1": "1 hour", "4": "4 hours", "24": "A day"}
 # What a screen may report at registration, not a setting the config page shows.
 FRAME_FORMATS: tuple[FrameFormat, ...] = ("mono-1bpp-packed", "png")
+# What a device may say it is at registration (Device.type); a device that doesn't say is an e-paper screen.
+DEVICE_TYPES: tuple[DeviceType, ...] = ("epaper", "touchscreen")
+# A touchscreen's own settings (the store contract's Touchscreen), each by its form value with what the config page
+# calls it. Only a touchscreen's page shows them.
+THEMES = {"day": "Day", "auto": "Auto", "night": "Night"}
+THEME_COLOURS = {
+    "forest": "Forest",
+    "navy": "Navy",
+    "teal": "Teal",
+    "plum": "Plum",
+    "terracotta": "Terracotta",
+    "pink": "Pink",
+    "yellow": "Yellow",
+    "black": "Black",
+    "dynamic": "Dynamic",
+}
+SCREEN_SLEEP_MINUTES = {"0": "Never", "2": "2 minutes", "5": "5 minutes", "15": "15 minutes", "30": "30 minutes"}
 CLOCK_FORMATS = {"24h": "24-hour (13:00)", "12h": "12-hour (1:00 PM)"}
 # The store contract's languages, each with its name in itself for the config page.
 LANGUAGES = {"en": "English", "nb": "Norsk"}
@@ -238,6 +265,12 @@ class DeviceConfig(Model):
     # The format the screen takes its frame in, one of FRAME_FORMATS, as it reported at registration;
     # mono-1bpp-packed (the e-paper's 800x480 1-bit buffer) after `devices unpair --config`.
     format: Mapped[FrameFormat] = mapped_column(String, server_default=text("'mono-1bpp-packed'"))
+    # A touchscreen's own settings (THEMES, THEME_COLOURS, SCREEN_SLEEP_MINUTES), the config's `touchscreen` block.
+    # Every device has them, at their defaults, but only a touchscreen's config carries them, or its page shows them.
+    theme: Mapped[Theme] = mapped_column(String, default="day", server_default=text("'day'"))
+    theme_colour: Mapped[ThemeColour] = mapped_column(String, default="forest", server_default=text("'forest'"))
+    # How long the touchscreen waits untouched before it sleeps; 0 for never.
+    screen_sleep_minutes: Mapped[ScreenSleepMinutes] = mapped_column(Integer, default=5, server_default=text("5"))
 
     device: Mapped[Device] = relationship(back_populates="config")
 

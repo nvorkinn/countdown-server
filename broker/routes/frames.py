@@ -11,6 +11,8 @@ import requests
 from flask import Blueprint, Response, jsonify, request
 
 from broker.auth import require_device_auth
+from broker.db import db
+from broker.models import Device
 from broker.services import frame_record, pace, pairing
 
 if TYPE_CHECKING:
@@ -50,7 +52,12 @@ def post_frame(device_id: str) -> ResponseReturnValue:
     The screen polls this, with If-None-Match once it has a frame: 200 with the frame, 304 if it has it, 404 with none
     yet. Every answer carries Retry-After (services/pace.py), so its loop is just "handle the status, sleep
     Retry-After". Its logs and metrics are forwarded without making it wait.
+
+    A touchscreen has no frames (it draws itself, from GET /api/config): it's a 409.
     """
+    device = db.session.get_one(Device, device_id)
+    if device.type == "touchscreen":
+        return jsonify(error="a touchscreen has no frames; it reads its config from GET /api/config"), 409
     # A screen still waiting to be paired always has a code to show, however long its owner takes.
     pairing.ensure_code(device_id)
     body = request.get_json(silent=True)

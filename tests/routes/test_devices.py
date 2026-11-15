@@ -32,7 +32,6 @@ def test_the_per_screen_routes_are_gone(client, register_device):
     device_id, secret = register_device()
     headers = {"Authorization": f"Bearer {secret}"}
 
-    assert client.get("/api/config", headers=headers).status_code == 404
     assert client.post("/api/devices/pairing-code", headers=headers).status_code == 404
     assert client.put("/api/frame", data=b"0" * 48_000, headers=headers).status_code == 405
     assert client.post("/api/renderers/claim", json={"secret": "x" * 20, "claim_token": "t"}).status_code == 404
@@ -85,6 +84,8 @@ def test_the_config_returns_defaults(app, register_device):
     body = response.get_json()
     assert body == {
         "device_id": device_id,
+        "type": "epaper",
+        "touchscreen": None,
         "interval": 60,
         "clock_format": "24h",
         "language": "en",
