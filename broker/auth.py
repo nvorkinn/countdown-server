@@ -25,11 +25,6 @@ type View = Callable[..., ResponseReturnValue]
 LAST_SEEN_RESOLUTION = timedelta(minutes=1)
 
 
-# The roles a device's secrets can hold, in the order a presented secret is checked against them, each with its own
-# column, devices.<role>_secret_hash. There is one: the screen's.
-ROLES = ("display",)
-
-
 def hash_secret(secret: str) -> str:
     """Return the stored form of a device secret.
 
@@ -61,29 +56,28 @@ class DeviceAuthError(Exception):
 def authenticate_device(authorization: str) -> Device:
     """Identify the device behind an `Authorization: Bearer <secret>` header, whose secret alone finds it.
 
-    The secret that matches decides the caller's role; no match is a 401 (DeviceAuthError). Sets g.device_id and
-    g.role, logs the request and records the device as seen. The prefix is case-sensitive: `bearer x` is refused.
+    It is the screen's secret (devices.display_secret_hash); no match is a 401 (DeviceAuthError). Sets g.device_id,
+    logs the request and records the device as seen. The prefix is case-sensitive: `bearer x` is refused.
     """
     secret = authorization.removeprefix("Bearer ")
     if not authorization.startswith("Bearer ") or not secret:
         raise DeviceAuthError(401, "unauthorized")
 
-    device, role = _find_by_secret(secret)
-    if device is None or role is None:
+    device = _find_by_secret(secret)
+    if device is None:
         raise DeviceAuthError(401, "unauthorized")
 
-    g.device_id, g.role = device.device_id, role
+    g.device_id = device.device_id
     # The slug, not the friendly name (device_name): that's whatever its owner typed, which could name a place, and
     # nothing logged may.
     current_app.logger.info(
-        "%s %s device=%s (%s) role=%s",
+        "%s %s device=%s (%s)",
         request.method,
         request.path,
         device.assignment.slug if device.assignment else "unnamed",
         device.device_id,
-        role,
     )
-    _mark_seen(device, role)
+    _mark_seen(device)
     return device
 
 
@@ -104,23 +98,15 @@ def require_device_auth(view: View) -> View:
     return wrapped
 
 
-def _find_by_secret(secret: str) -> tuple[Device | None, str | None]:
+def _find_by_secret(secret: str) -> Device | None:
     # An indexed lookup rather than a constant-time compare: the timing can only reveal something
     # about the hash, and no one can work back from a hash to a secret that produces it.
-    secret_hash = hash_secret(secret)
-    for role in ROLES:
-        column = getattr(Device, f"{role}_secret_hash")
-        device = db.session.scalar(select(Device).where(column == secret_hash))
-        if device is not None:
-            return device, role
-    return None, None
+    return db.session.scalar(select(Device).where(Device.display_secret_hash == hash_secret(secret)))
 
 
-def _mark_seen(device: Device, role: str) -> None:
+def _mark_seen(device: Device) -> None:
     now = datetime.now(UTC)
-    stale = {"last_seen_at": device.last_seen_at}
-    if role == "display":
-        stale["display_last_seen_at"] = device.display_last_seen_at
+    stale = {"last_seen_at": device.last_seen_at, "display_last_seen_at": device.display_last_seen_at}
     changed = False
     for column, seen in stale.items():
         if seen is None or now - LAST_SEEN_RESOLUTION >= seen:

@@ -146,7 +146,7 @@ def test_the_screens_name_is_never_logged(client, paired, caplog):
     with caplog.at_level("INFO"):
         client.post("/api/frame", headers=_bearer(DISPLAY))
 
-    assert f"POST /api/frame device={paired} ({paired}) role=display" in caplog.messages
+    assert f"POST /api/frame device={paired} ({paired})" in caplog.messages
     assert not any("Kennington" in message for message in caplog.messages)
 
 
