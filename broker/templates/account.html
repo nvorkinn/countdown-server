@@ -41,6 +41,9 @@
                 <h2 class="card-title">Music</h2>
             </header>
             {% call service_row('Spotify', spotify_linked) %}
+                {% if spotify_relink %}
+                    <a href="{{ url_for('spotify_oauth.login') }}" class="btn-action" style="text-decoration:none;">Reconnect</a>
+                {% endif %}
                 {% if spotify_linked %}
                     <button type="submit" form="spotifyDisconnectForm" class="btn-action btn-delete" data-confirm="Disconnect Spotify from all your screens?">Disconnect</button>
                 {% else %}
@@ -56,6 +59,9 @@
                     {% endif %}
                 {% endcall %}
                 <p id="apple_music_error" class="form-hint" role="alert" hidden></p>
+            {% endif %}
+            {% if spotify_relink %}
+                <p class="form-hint">Reconnect Spotify so your touchscreen can play it.</p>
             {% endif %}
             <p class="form-hint">What's playing, and your top tracks and artists between songs.</p>
         </section>

@@ -103,7 +103,7 @@ erDiagram
 | `device_config` | screen | Created at registration with the size the screen reported. `tfl_stop_ids` holds TfL and Entur (`NSR:...`) stops in the owner's order. |
 | `pairing_codes` | live code | 10 minutes, one use. Expired codes are swept whenever a new one is issued. |
 | `renderer_assignments` | paired screen | The screen's slug (its device id), which names it in `v1:render:screens` and in metrics. It never changes. |
-| `spotify_tokens` | linked Spotify account | Plaintext. Refreshed by the music provider. |
+| `spotify_tokens` | linked Spotify account | Plaintext, with the scopes Spotify granted (`scope`, null for a link made before touchscreens). Refreshed by the music provider and the touchscreen token route. |
 | `apple_music_tokens` | linked Apple Music account | The token is encrypted. `seen_ids` is how far the play log has got. |
 | `apple_music_plays` | play seen | Apple Music has no top lists, so the music provider logs plays and counts them. |
 | `glowmarkt_credentials` | linked Glowmarkt account | The password is encrypted. |

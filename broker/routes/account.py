@@ -9,7 +9,7 @@ from cryptography.fernet import InvalidToken
 from flask import Blueprint, current_app, redirect, render_template, request, url_for
 
 from broker.auth import require_paired_user, signed_in_user
-from broker.clients import apple_music
+from broker.clients import apple_music, spotify
 from broker.db import db
 from broker.models import GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
 from broker.routes.pages import _write_subscriptions_to_redis
@@ -140,9 +140,14 @@ def _parcel_status(user_id: str) -> ParcelsLinkStatus | None:
 def _render_account() -> str:
     user_id = signed_in_user()
     creds = db.session.get(GlowmarktCredentials, user_id)
+    spotify_link = db.session.get(SpotifyToken, user_id)
     return render_template(
         "account.html",
-        spotify_linked=db.session.get(SpotifyToken, user_id) is not None,
+        spotify_linked=spotify_link is not None,
+        # A touchscreen plays the account's Spotify itself, which a link made before it was asked for can't do.
+        spotify_relink=spotify_link is not None
+        and spotify.lacks_touchscreen_scopes(spotify_link)
+        and accounts.has_touchscreen(user_id),
         apple_music_available=apple_music.configured(),
         apple_music_linked=apple_music.account_linked(user_id),
         github_linked=db.session.get(GitHubToken, user_id) is not None,

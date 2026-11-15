@@ -1,4 +1,4 @@
-"""A device's routes: its registration, and its config.
+"""A device's routes: its registration, its config, and a touchscreen's Spotify token.
 
 Once registered, a device reads its config here (GET /config, the store contract's getConfig), and a touchscreen
 saves what its own settings panel shows (PUT /config, putConfig). A touchscreen draws itself from that config, as the
@@ -7,17 +7,22 @@ built the same way (renderer_config.build), and never has a pairing code, as a t
 token, not a code it shows. Its owner sets it up on the settings site; a PUT sends the whole config as it got it and
 may change only SAVED_HERE, and one that changes anything else is refused and saves nothing. An e-paper screen polls
 for its frames (routes/frames.py).
+
+A touchscreen plays its owner's Spotify itself (its Web Playback SDK), so it asks for a short-lived access token for
+the account's link (GET /spotify/token); the refresh token and the app's secret stay here.
 """
 
 from typing import TYPE_CHECKING, TypeGuard
 
+import requests
 from countdown_api.models import EpaperConfig, TouchscreenConfig
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy.exc import IntegrityError
 
 from broker.auth import hash_secret, require_device_auth, with_retry_after
+from broker.clients import spotify
 from broker.db import db
-from broker.models import DEVICE_TYPES, FRAME_FORMATS, Device, DeviceConfig, DeviceType, FrameFormat
+from broker.models import DEVICE_TYPES, FRAME_FORMATS, Device, DeviceConfig, DeviceType, FrameFormat, SpotifyToken
 from broker.services import config_store, registration, renderer_config
 
 if TYPE_CHECKING:
@@ -156,3 +161,31 @@ def put_config(device_id: str) -> ResponseReturnValue:
     # nothing to queue).
     config_store.publish_all()
     return renderer_config.build(config, pairing_code=None).model_dump(mode="json"), 200
+
+
+@bp.get("/spotify/token")
+@require_device_auth()
+def spotify_token(device_id: str) -> ResponseReturnValue:
+    """Answer a paired touchscreen an access token for its owner's Spotify (SpotifyAccessToken).
+
+    404 when the owner's account hasn't linked Spotify, 403 when the link was made without the scopes a touchscreen
+    plays with (linking it again on the Account page grants them), 409 for a device no one has paired yet or an e-paper
+    screen, and 502 when Spotify won't renew the token.
+    """
+    device = db.session.get_one(Device, device_id)
+    if device.paired_at is None or device.type != "touchscreen" or device.owner is None:
+        return jsonify(error="only a paired touchscreen gets a Spotify token"), 409
+    link = db.session.get(SpotifyToken, device.owner)
+    if link is None:
+        return jsonify(error="the owner's account hasn't linked Spotify"), 404
+    if spotify.lacks_touchscreen_scopes(link):
+        return jsonify(error="link Spotify again on the Account page to play it on a touchscreen"), 403
+    try:
+        token = spotify.touchscreen_token(device_id)
+    except requests.RequestException as error:
+        # Its type only: the error's text may carry the request, and so the refresh token.
+        current_app.logger.warning("Spotify didn't renew a touchscreen's token: %s", type(error).__name__)
+        return jsonify(error="Spotify couldn't renew the token"), 502
+    if token is None:  # unlinked in between
+        return jsonify(error="the owner's account hasn't linked Spotify"), 404
+    return token.model_dump(mode="json"), 200

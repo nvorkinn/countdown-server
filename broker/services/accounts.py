@@ -29,6 +29,12 @@ def screens(user_id: str) -> list[str]:
     return list(db.session.scalars(select(Device.device_id).where(Device.owner == user_id).order_by(Device.device_id)))
 
 
+def has_touchscreen(user_id: str) -> bool:
+    """Whether the user owns a touchscreen."""
+    owned = select(Device.device_id).where(Device.owner == user_id, Device.type == "touchscreen").limit(1)
+    return db.session.scalar(owned) is not None
+
+
 def forget_keys(user_id: str, keys_of: Callable[[str], list[str]]) -> None:
     """Delete what the providers made from one of the user's services for every screen of theirs (device_keys)."""
     device_keys.delete([key for device_id in screens(user_id) for key in keys_of(device_id)])

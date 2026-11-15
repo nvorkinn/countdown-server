@@ -301,6 +301,8 @@ class SpotifyToken(Model):
     access_token: Mapped[str | None] = mapped_column(String)
     # A Unix timestamp, as Spotify's expires_in is counted from "now".
     expires_at: Mapped[float | None] = mapped_column(Float)
+    # The scopes Spotify granted, space-separated; null for a link made before they were kept (migration 0034).
+    scope: Mapped[str | None] = mapped_column(String)
 
 
 class GlowmarktCredentials(Model):

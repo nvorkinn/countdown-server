@@ -80,6 +80,12 @@ settings panel saves with **`PUT /api/devices/config`**: the whole config as it 
 `language`, `style` and `display` changed (anything else is a `400`, and a device not yet paired a `409`). A `401`
 means register again.
 
+It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the Spotify link on its owner's Account page.
+**`GET /api/devices/spotify/token`** answers it a short-lived access token in Spotify's own shape (`SpotifyAccessToken`:
+`access_token`, `expires_in`, `scope`), renewed here when it has under 10 minutes left; the refresh token and the app's
+secret never leave the broker. `404` means the account hasn't linked Spotify, and `403` that the link predates
+touchscreens and lacks their scopes: the Account page then asks to reconnect it.
+
 ## Pairing and settings
 
 Every browser page needs a Pocket ID login as a member of the group `countdown`. Caddy forward-auths the request to
