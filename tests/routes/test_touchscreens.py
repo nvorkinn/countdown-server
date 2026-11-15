@@ -127,13 +127,13 @@ def test_a_touchscreen_gets_no_pairing_code(app, client):
     assert isinstance(config, TouchscreenConfig)
     assert config.device_id == device_id
     assert (config.width, config.height) == (1280, 800)
-    # Unpaired, it's still not issued one, by registering or by asking for its config.
-    assert config.pairing_code is None
+    # Unpaired, it's still not issued one, by registering or by asking for its config, which has no field for one.
+    assert "pairing_code" not in response.get_json()
     with app.app_context():
         assert pairing.live_code(device_id) is None
-    # Its own settings, at the contract's defaults.
-    assert response.get_json()["style"] == TOUCHSCREEN["pairing"]["style"]
-    assert response.get_json()["display"] == TOUCHSCREEN["pairing"]["display"]
+    # Its own settings, at their defaults.
+    assert response.get_json()["style"] == {"skin": "day", "colour": "forest"}
+    assert response.get_json()["display"] == {"sleep_minutes": 5}
 
 
 def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
@@ -147,8 +147,9 @@ def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
 
     assert response.status_code == 200
     body = response.get_json()
-    assert body["pairing_code"] is None
     assert body["type"] == "touchscreen"
+    # Only what it shows itself: the contract's touchscreen config, field for field.
+    assert set(body) == set(TOUCHSCREEN["config"]) == set(TouchscreenConfig.model_fields)
     assert body["style"] == TOUCHSCREEN["config"]["style"]
     assert body["display"] == TOUCHSCREEN["config"]["display"]
     CONFIGS.validate_python(body)
@@ -175,7 +176,6 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
     sent = _saved_with(
         client,
         clock_format="12h",
-        language="nb",
         style=TOUCHSCREEN["save"]["style"],
         display=TOUCHSCREEN["save"]["display"],
     )
@@ -187,8 +187,25 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
         assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("night", "dynamic", 30)
-        assert (config.clock_format, config.language) == ("12h", "nb")
+        assert config.clock_format == "12h"
     assert client.get(CONFIG_URL, headers=_auth()).get_json() == sent
+
+
+def test_a_touchscreens_save_ignores_an_epaper_screens_fields(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        language = db.session.get_one(DeviceConfig, device_id).language
+    # A touchscreen's config has no language or integrations, so a save that sends them (an older client's) drops them.
+    sent = _saved_with(client, language="nb" if language == "en" else "en", spotify={"enabled": True})
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert "language" not in response.get_json()
+    assert "spotify" not in response.get_json()
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.language, config.spotify_enabled) == (language, False)
 
 
 def test_a_save_that_changes_what_only_the_settings_site_does_is_refused(app, client):
@@ -200,8 +217,8 @@ def test_a_save_that_changes_what_only_the_settings_site_does_is_refused(app, cl
         {**current, "width": 640},
         {**current, "weather": {"location": "Oslo", "key": "oslo-no-3143244"}},
         {**current, "arrivals": {"stops": [{"source": "tfl", "id": "490000077E"}]}},
-        {**current, "spotify": {"enabled": not current["spotify"]["enabled"]}},
-        {**current, "style": {**current["style"], "skin": "night"}, "interval": 5},
+        {**current, "notice_board": {"postcode": "0150", "country": "NO"}},
+        {**current, "style": {**current["style"], "skin": "night"}, "height": 600},
     ):
         response = client.put(CONFIG_URL, json=wrong, headers=_auth())
         assert response.status_code == 400
