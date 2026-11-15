@@ -12,7 +12,8 @@ from countdown_api.models import ConfigResponse, DeviceRegistration, Touchscreen
 from pydantic import TypeAdapter
 
 from broker.db import db
-from broker.models import Device, DeviceConfig
+from broker.models import THEMES, Device, DeviceConfig
+from broker.routes import pages
 from broker.services import pairing, render_screens
 from tests.conftest import name_screen
 
@@ -325,3 +326,61 @@ def test_settings_the_contract_doesnt_allow_are_refused(app, client):
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
         assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("day", "forest", 5)
+
+
+def test_a_touchscreens_save_with_an_epaper_screens_settings_is_refused(app, client):
+    device_id = _paired(app, client)
+
+    for field, value in (
+        ("orientation", "horizontal"),
+        ("style", "hero"),
+        ("weather_design", "poster"),
+        ("layout", ""),
+    ):
+        response = client.post("/device", data={field: value, "clock_format": "12h"})
+        assert response.status_code == 400, field
+        assert b"isn&#39;t a setting of a touchscreen." in response.data
+        assert b"Nothing was saved." in response.data
+
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).clock_format == "24h"
+
+
+def test_an_epaper_screens_save_with_a_touchscreens_settings_is_refused(app, paired_client):
+    client, device_id, _ = paired_client
+
+    for field, value in (("theme", "night"), ("theme_colour", "plum"), ("screen_sleep_minutes", "0")):
+        response = client.post("/device", data={field: value, "clock_format": "12h", "orientation": "vertical"})
+        assert response.status_code == 400, field
+        assert b"isn&#39;t a setting of an e-paper screen." in response.data
+
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.clock_format, config.theme, config.theme_colour) == ("24h", "day", "forest")
+
+
+def test_a_save_is_checked_against_the_contracts_model_for_the_type(app, client, monkeypatch):
+    """Whatever the page lets through, a save that makes a config the contract refuses is refused, and saves nothing."""
+    device_id = _paired(app, client)
+    # The page taking a skin the contract doesn't have, as if their lists had drifted apart.
+    monkeypatch.setitem(pages.CHOICES, "theme", ({**THEMES, "dusk": "Dusk"}, "The theme"))
+
+    response = client.post("/device", data={"theme": "dusk", "clock_format": "12h"})
+
+    assert response.status_code == 400
+    assert b"These settings aren&#39;t allowed for a touchscreen" in response.data
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.theme, config.clock_format) == ("day", "24h")
+
+
+def test_each_types_page_posts_only_its_own_types_fields(app, client, paired_client):
+    touchscreen = _paired(app, client)
+    _, epaper, _ = paired_client
+
+    for device_id, device_type in ((touchscreen, "touchscreen"), (epaper, "epaper")):
+        html = client.get(f"/device/{device_id}").get_data(as_text=True)
+        posted = set(re.findall(r'<(?:input|select|textarea)[^>]*\sname="([^"]+)"', html))
+        others = set().union(*(fields for kind, fields in pages.TYPE_FIELDS.items() if kind != device_type))
+        assert posted & pages.TYPE_FIELDS[device_type]
+        assert not posted & others, device_type

@@ -6,6 +6,7 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 from countdown_api import keys as store_keys
+from countdown_api.models import EpaperConfig, TouchscreenConfig
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
 from redis import Redis, RedisError
 
@@ -53,6 +54,7 @@ from broker.services import (
     pairing,
     parcel_key,
     render_jobs,
+    renderer_config,
     signup,
     stops,
     weather_place,
@@ -65,7 +67,7 @@ if TYPE_CHECKING:
 
     from flask.typing import ResponseReturnValue
 
-    from broker.models import Layout
+    from broker.models import DeviceType, Layout
 
 bp = Blueprint("pages", __name__)
 logger = logging.getLogger(__name__)
@@ -359,8 +361,39 @@ CHOICES = {
 }
 
 
-def _save_device_config(device_id: str) -> ResponseReturnValue:
-    """Save the settings posted from the page, or show it again with what's wrong and nothing saved."""
+# The page's fields that are one device type's own, each in its config's `style` or `display`: a save from a page of
+# the other type that posts one is refused, as that type's config has nowhere for it.
+TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
+    "epaper": frozenset({"orientation", "style", "weather_design", "layout"}),
+    "touchscreen": frozenset({"theme", "theme_colour", "screen_sleep_minutes"}),
+}
+# What an error calls each type of device.
+TYPE_NAMES: dict[DeviceType, str] = {"epaper": "an e-paper screen", "touchscreen": "a touchscreen"}
+# The config a save must make: the contract's ConfigResponse member for the device's type, as its `type` picks it.
+CONFIG_MODELS: dict[DeviceType, type[EpaperConfig | TouchscreenConfig]] = {
+    "epaper": EpaperConfig,
+    "touchscreen": TouchscreenConfig,
+}
+
+
+def _foreign_fields(device_type: DeviceType) -> list[str]:
+    """Return the errors for the fields posted that belong to another type of device than `device_type`."""
+    labels = {**{field: label for field, (_, label) in CHOICES.items()}, "layout": "The layout"}
+    return [
+        f"{labels[field]} isn't a setting of {TYPE_NAMES[device_type]}."
+        for other, fields in TYPE_FIELDS.items()
+        if other != device_type
+        for field in sorted(fields)
+        if field in request.form
+    ]
+
+
+def _save_device_config(device_id: str) -> ResponseReturnValue:  # noqa: PLR0915 -- one step per kind of setting
+    """Save the settings posted from the page, or show it again with what's wrong and nothing saved.
+
+    The saved settings must make a config the contract allows for the device's type (_contract_errors), and a field
+    that's another type's is refused (TYPE_FIELDS).
+    """
     raw_stops = request.form.get("stops_order", "")
     stop_ids = [s.strip() for s in raw_stops.split(",") if s.strip()]
 
@@ -374,6 +407,7 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     postcode = normalize_postcode(raw_postcode)
 
     config = db.session.get_one(DeviceConfig, device_id)
+    device_type = config.device.type
     choices = {field: request.form.get(field, str(getattr(config, field))) for field in CHOICES}
     # Only on a page with the picker (layout_choices), so a save from one without keeps what's stored. Any of the
     # contract's layouts is taken, whatever the screen's size and whichever way it hangs: one it doesn't have is drawn
@@ -391,6 +425,7 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
         screen_name = assignments.clean_name(request.form["screen_name"]) if "screen_name" in request.form else None
     except assignments.NameTooLongError:
         errors.append(f"The screen's name can be at most {assignments.NAME_MAX} characters.")
+    errors += _foreign_fields(device_type)
     errors += [
         f"{label} must be one of {', '.join(allowed)}."
         for field, (allowed, label) in CHOICES.items()
@@ -420,9 +455,30 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     config.layout = layout
     if "screen_name" in request.form:
         db.session.get_one(Device, device_id).device_name = screen_name
+    if errors := _contract_errors(config):
+        db.session.rollback()
+        return _render_device_config(device_id, errors=[*errors, "Nothing was saved."]), 400
     db.session.commit()
     _publish_saved(device_id, turned=turned)
     return redirect(url_for("pages.device_config", device_id=device_id))
+
+
+def _contract_errors(config: DeviceConfig) -> list[str]:
+    """Return what's wrong with the config the settings now make, by the contract's model for the device's type.
+
+    Every save is checked here, whatever the page checked first: the config is built as the device and the render
+    pool read it (renderer_config.build) and validated as a ConfigResponse, whose `type` picks the model.
+    """
+    device_type = config.device.type
+    try:
+        CONFIG_MODELS[device_type].model_validate(
+            renderer_config.build(config, pairing_code=None).model_dump(mode="json")
+        )
+    except ValueError:  # pydantic's ValidationError is one
+        # Not the error's text: it quotes the values, which are the owner's.
+        current_app.logger.warning("A save of %s made a config the contract refuses", config.device_id)
+        return [f"These settings aren't allowed for {TYPE_NAMES[device_type]}."]
+    return []
 
 
 def _publish_saved(device_id: str, *, turned: bool) -> None:
