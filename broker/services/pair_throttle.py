@@ -32,7 +32,7 @@ MAX_REGISTRATION_LOCKOUT_SECONDS = 10 * 60.0
 
 @dataclass
 class _Client:
-    failures: deque[float] = field(default_factory=deque)
+    events: deque[float] = field(default_factory=deque)
     lockouts: int = 0
     locked_until: float = 0.0
 
@@ -63,8 +63,8 @@ class PairThrottle:
             remaining = client.locked_until - self._clock() if client else 0
             return max(1, round(remaining)) if remaining > 0 else None
 
-    def record_failure(self, ip: str) -> int | None:
-        """Count one event from this IP: a wrong code on /pair, or any call on /register.
+    def record(self, ip: str) -> int | None:
+        """Count one event from this IP: a wrong code on /pair, or any try at /register or the sign-up page.
 
         Returns the lockout in seconds if this event triggered one, otherwise None.
         """
@@ -75,16 +75,16 @@ class PairThrottle:
             if client.lockouts and now - client.locked_until > self._max_lockout:
                 client.lockouts = 0
 
-            client.failures.append(now)
-            while client.failures[0] <= now - self._window:
-                client.failures.popleft()
-            if len(client.failures) < self._max_events:
+            client.events.append(now)
+            while client.events[0] <= now - self._window:
+                client.events.popleft()
+            if len(client.events) < self._max_events:
                 return None
 
             lockout = min(self._window * 2**client.lockouts, self._max_lockout)
             client.lockouts += 1
             client.locked_until = now + lockout
-            client.failures.clear()
+            client.events.clear()
             return round(lockout)
 
     def _prune(self, now: float) -> None:
@@ -96,7 +96,7 @@ class PairThrottle:
             return
         self._last_prune = now
         for ip, client in list(self._clients.items()):
-            stale_failures = not client.failures or client.failures[-1] <= now - self._window
+            stale_events = not client.events or client.events[-1] <= now - self._window
             lockouts_forgotten = not client.lockouts or now - client.locked_until > self._max_lockout
-            if stale_failures and lockouts_forgotten:
+            if stale_events and lockouts_forgotten:
                 del self._clients[ip]

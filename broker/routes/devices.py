@@ -58,7 +58,7 @@ def register() -> ResponseReturnValue:
     if retry_after is not None:
         return with_retry_after(jsonify(error="too many registrations"), retry_after), 429
     # The call that reaches the limit still goes through; it's the next one that's refused.
-    lockout = throttle.record_failure(ip)
+    lockout = throttle.record(ip)
     if lockout is not None:
         current_app.logger.warning("Too many registrations from %s; locked out for %ss", ip, lockout)
 
@@ -116,7 +116,7 @@ def _is_frame_format(value: object) -> TypeGuard[FrameFormat]:
 
 
 @bp.get("/config")
-@require_device_auth()
+@require_device_auth
 def get_config(device_id: str) -> ResponseReturnValue:
     """Answer the device's config (ConfigResponse), paired or not, with no pairing code.
 
@@ -127,7 +127,7 @@ def get_config(device_id: str) -> ResponseReturnValue:
 
 
 @bp.put("/config")
-@require_device_auth()
+@require_device_auth
 def put_config(device_id: str) -> ResponseReturnValue:
     """Save a touchscreen's own settings from the whole config it sends, and answer the config as saved.
 
@@ -167,7 +167,7 @@ def put_config(device_id: str) -> ResponseReturnValue:
 
 
 @bp.get("/spotify/token")
-@require_device_auth()
+@require_device_auth
 def spotify_token(device_id: str) -> ResponseReturnValue:
     """Answer a paired touchscreen an access token for its owner's Spotify (SpotifyAccessToken).
 

@@ -3,7 +3,7 @@
 import functools
 import hashlib
 import hmac
-from collections.abc import Callable, Collection
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -48,8 +48,7 @@ def with_retry_after(response: Response, seconds: int) -> Response:
 class DeviceAuthError(Exception):
     """A request that device auth turns away.
 
-    `status` is 401 for a missing, malformed or unknown secret and 403 for a valid one whose role isn't allowed
-    here; `message` is the `error` it is answered with.
+    `status` is 401, for a missing, malformed or unknown secret; `message` is the `error` it is answered with.
     """
 
     def __init__(self, status: int, message: str) -> None:
@@ -59,12 +58,11 @@ class DeviceAuthError(Exception):
         self.message = message
 
 
-def authenticate_device(authorization: str, roles: Collection[str] = frozenset(ROLES)) -> Device:
+def authenticate_device(authorization: str) -> Device:
     """Identify the device behind an `Authorization: Bearer <secret>` header, whose secret alone finds it.
 
-    The secret that matches decides the caller's role: a valid secret for a role not in `roles` is a 403,
-    anything else a 401 (DeviceAuthError). Sets g.device_id and g.role, logs the request and records the
-    device as seen. The prefix is case-sensitive: `bearer x` is refused.
+    The secret that matches decides the caller's role; no match is a 401 (DeviceAuthError). Sets g.device_id and
+    g.role, logs the request and records the device as seen. The prefix is case-sensitive: `bearer x` is refused.
     """
     secret = authorization.removeprefix("Bearer ")
     if not authorization.startswith("Bearer ") or not secret:
@@ -73,8 +71,6 @@ def authenticate_device(authorization: str, roles: Collection[str] = frozenset(R
     device, role = _find_by_secret(secret)
     if device is None or role is None:
         raise DeviceAuthError(401, "unauthorized")
-    if role not in roles:
-        raise DeviceAuthError(403, "forbidden")
 
     g.device_id, g.role = device.device_id, role
     # The slug, not the friendly name (device_name): that's whatever its owner typed, which could name a place, and
@@ -91,23 +87,21 @@ def authenticate_device(authorization: str, roles: Collection[str] = frozenset(R
     return device
 
 
-def require_device_auth(roles: Collection[str] = frozenset(ROLES)) -> Callable[[View], View]:
+def require_device_auth(view: View) -> View:
     """Protect a device-facing endpoint with the device's bearer secret (authenticate_device), passing device_id."""
 
-    def decorator(view: View) -> View:
-        @functools.wraps(view)
-        def wrapped(*args: object, **kwargs: object) -> ResponseReturnValue:
-            try:
-                device = authenticate_device(request.headers.get("Authorization", ""), roles)
-            except DeviceAuthError as error:
-                return jsonify(error=error.message), error.status
-            return view(*args, device_id=device.device_id, **kwargs)
+    @functools.wraps(view)
+    def wrapped(*args: object, **kwargs: object) -> ResponseReturnValue:
+        try:
+            device = authenticate_device(request.headers.get("Authorization", ""))
+        except DeviceAuthError as error:
+            return jsonify(error=error.message), error.status
+        return view(*args, device_id=device.device_id, **kwargs)
 
-        # For the test that keeps caddy/Caddyfile from putting a device route behind the browser login.
-        wrapped.device_auth = True  # ty: ignore[missing-attribute] -- a marker attribute, not part of the view type
-        return wrapped
-
-    return decorator
+    # For the tests that keep a device route off the browser login (test_caddyfile) and match it to the contract's
+    # deviceSecret (test_api_contract).
+    wrapped.device_auth = True  # ty: ignore[missing-attribute] -- a marker attribute, not part of the view type
+    return wrapped
 
 
 def _find_by_secret(secret: str) -> tuple[Device | None, str | None]:
