@@ -54,9 +54,9 @@ def test_a_touchscreen_registers_with_its_size_and_no_format(app, client):
     device_id = _registered(app, client)
 
     with app.app_context():
-        device = db.session.get_one(Device, device_id)
-        assert device.type == "touchscreen"
-        assert (device.config.width, device.config.height) == (1280, 800)
+        assert db.session.get_one(Device, device_id).type == "touchscreen"
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.width, config.height) == (1280, 800)
 
 
 def test_an_epaper_screen_registers_as_one_without_saying_so(app, client):
@@ -64,9 +64,9 @@ def test_an_epaper_screen_registers_as_one_without_saying_so(app, client):
 
     assert response.status_code == 201
     with app.app_context():
-        device = db.session.get_one(Device, response.get_json()["device_id"])
-        assert device.type == "epaper"
-        assert device.config.format == TOUCHSCREEN["epaper_registration"]["format"]
+        device_id = response.get_json()["device_id"]
+        assert db.session.get_one(Device, device_id).type == "epaper"
+        assert db.session.get_one(DeviceConfig, device_id).format == TOUCHSCREEN["epaper_registration"]["format"]
 
 
 def test_the_contracts_registrations_are_what_the_route_takes():

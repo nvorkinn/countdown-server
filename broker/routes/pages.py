@@ -354,6 +354,8 @@ CHOICES = {
     # Only on a touchscreen's page, so an e-paper screen's save keeps what's stored (the defaults).
     "theme": (THEMES, "The theme"),
     "theme_colour": (THEME_COLOURS, "The theme colour"),
+    # A number of minutes, picked by its form value (_set_choices stores it as one).
+    "screen_sleep_minutes": (SCREEN_SLEEP_MINUTES, "The screen sleep"),
 }
 
 
@@ -372,7 +374,7 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     postcode = normalize_postcode(raw_postcode)
 
     config = db.session.get_one(DeviceConfig, device_id)
-    choices = {field: request.form.get(field, getattr(config, field)) for field in CHOICES}
+    choices = {field: request.form.get(field, str(getattr(config, field))) for field in CHOICES}
     # Only on a page with the picker (layout_choices), so a save from one without keeps what's stored. Any of the
     # contract's layouts is taken, whatever the screen's size and whichever way it hangs: one it doesn't have is drawn
     # as its default. Empty is the screen's default (None).
@@ -381,8 +383,6 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     # Each kept as stored when it isn't posted, like the choices.
     days_ahead = request.form.get("parcels_days_ahead", _form_value(config.parcels_days_ahead))
     kept_hours = request.form.get("parcels_kept_hours", _form_value(config.parcels_kept_hours))
-    # A touchscreen's: only on its page, like the theme.
-    sleep_minutes = request.form.get("screen_sleep_minutes", str(config.screen_sleep_minutes))
 
     place, errors = _weather_place(config)
     if postcode is None:
@@ -402,8 +402,6 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
         errors.append(f"The parcels shown must be one of {', '.join(PARCEL_DAYS_AHEAD.values())}.")
     if kept_hours not in PARCEL_KEPT_HOURS:
         errors.append(f"How long delivered parcels stay must be one of {', '.join(PARCEL_KEPT_HOURS.values())}.")
-    if sleep_minutes not in SCREEN_SLEEP_MINUTES:
-        errors.append(f"The screen sleep must be one of {', '.join(SCREEN_SLEEP_MINUTES.values())}.")
     # postcode is never None here (that is an error above), but saying so lets type checkers see it.
     if errors or postcode is None:
         return _render_device_config(device_id, errors=[*errors, "Nothing was saved."]), 400
@@ -417,7 +415,6 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     config.energy_enabled = energy_enabled
     config.parcels_days_ahead = int(days_ahead) if days_ahead else None
     config.parcels_kept_hours = int(kept_hours)
-    config.screen_sleep_minutes = int(sleep_minutes)
     config.tfl_stop_ids = stop_ids
     turned = _set_choices(config, choices)
     config.layout = layout
@@ -449,7 +446,7 @@ def _set_choices(config: DeviceConfig, choices: Mapping[str, str]) -> bool:
     """Set the config's CHOICES to those picked, and return whether that turns the screen (a new orientation)."""
     turned = choices["orientation"] != config.orientation
     for field, value in choices.items():
-        setattr(config, field, value)
+        setattr(config, field, int(value) if field == "screen_sleep_minutes" else value)
     return turned
 
 

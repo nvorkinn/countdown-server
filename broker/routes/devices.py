@@ -46,23 +46,13 @@ def register() -> ResponseReturnValue:
 
     body = request.get_json(silent=True) or {}
     secret = body.get("secret", "")
-    device_type = body.get("type", "epaper")
-    width, height, frame_format = body.get("width"), body.get("height"), body.get("format")
     if not isinstance(secret, str) or len(secret) < MIN_SECRET_LENGTH:
         return jsonify(error="secret must be a random string of at least 16 characters"), 400
-    if not _is_device_type(device_type):
-        return jsonify(error=f"type must be one of {', '.join(DEVICE_TYPES)}"), 400
-    if not (_is_size(width) and _is_size(height)):
-        return jsonify(error="width and height must be positive integers"), 400
-    if device_type == "touchscreen":
-        if "format" in body:
-            return jsonify(error="a touchscreen draws itself, so takes no format"), 400
-        frame_format = None
-    elif not _is_frame_format(frame_format):
-        return jsonify(error=f"format must be one of {', '.join(FRAME_FORMATS)}"), 400
+    screen = _screen(body)
+    if isinstance(screen, str):
+        return jsonify(error=screen), 400
 
     secret_hash = hash_secret(secret)
-    screen = registration.Screen(device_type, width, height, frame_format)
     try:
         found = registration.register_screen(secret_hash, screen, ip=request.remote_addr)
     except IntegrityError:
@@ -73,6 +63,23 @@ def register() -> ResponseReturnValue:
     if found is None:
         return with_retry_after(jsonify(error="too many devices waiting"), 60), 503
     return jsonify(device_id=found.device_id), 201 if found.created else 200
+
+
+def _screen(body: dict) -> registration.Screen | str:
+    """Return what the device says of itself (its type, size and frame format), or what's wrong with it."""
+    device_type = body.get("type", "epaper")
+    width, height, frame_format = body.get("width"), body.get("height"), body.get("format")
+    if not _is_device_type(device_type):
+        return f"type must be one of {', '.join(DEVICE_TYPES)}"
+    if not (_is_size(width) and _is_size(height)):
+        return "width and height must be positive integers"
+    if device_type == "touchscreen":
+        if "format" in body:
+            return "a touchscreen draws itself, so takes no format"
+        return registration.Screen(device_type, width, height)
+    if not _is_frame_format(frame_format):
+        return f"format must be one of {', '.join(FRAME_FORMATS)}"
+    return registration.Screen(device_type, width, height, frame_format)
 
 
 def _is_size(value: object) -> TypeGuard[int]:

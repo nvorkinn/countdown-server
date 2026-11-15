@@ -15,7 +15,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .crypto import decrypt, encrypt
 from .db import Model, UTCDateTime
 
-
 # What kind of device it is (Device.type, DEVICE_TYPES below), the store contract's DeviceType.
 type DeviceType = Literal["epaper", "touchscreen"]
 
