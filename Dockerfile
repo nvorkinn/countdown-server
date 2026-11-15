@@ -2,6 +2,10 @@
 # Data, not code, so it is fetched once on the build machine whatever platform the image is for.
 FROM --platform=$BUILDPLATFORM python:3.14-slim AS geodata
 COPY scripts/fetch_geodata.py /
+# Release builds come from a build cache (release.yml), which would otherwise keep the first download for good. A new
+# value, the day of the build, fetches it again. DB-IP publishes monthly and fetch_geodata.py falls back to last month's
+# file early in a month, so a day keeps the data no more than a day behind.
+ARG GEODATA_DATE
 RUN python /fetch_geodata.py /geodata
 
 FROM ghcr.io/astral-sh/uv:0.13.8 AS uv
