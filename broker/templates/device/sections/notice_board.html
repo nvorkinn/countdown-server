@@ -1,0 +1,23 @@
+{# Every device's notice board (the config's NoticeBoard). #}
+<section class="section" data-tour="notice_board">
+    <header class="card-header">
+        <h2 class="card-title">Notice board</h2>
+    </header>
+    <div class="form-group">
+        <label for="postcode">Postcode</label>
+        <input
+            type="text"
+            id="postcode"
+            name="postcode"
+            value="{{ config.postcode }}"
+            placeholder="e.g. SW1A 1AA or 0150"
+            pattern="\s*([A-Za-z]{1,2}[0-9][A-Za-z0-9]?\s*[0-9][A-Za-z]{2}|[0-9]{4})\s*"
+            title="A UK or Norwegian postcode, e.g. SW1A 1AA or 0150"
+            autocapitalize="characters"
+            autocomplete="postal-code"
+            maxlength="10"
+            aria-describedby="postcode_hint"
+        >
+        <p id="postcode_hint" class="form-hint">Picks the local notices, in the UK or Norway.</p>
+    </div>
+</section>

@@ -266,7 +266,10 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
 
     html = client.get("/device").get_data(as_text=True)
 
-    assert '<h2 class="card-title">Touchscreen</h2>' in html
+    # Its own style (skin and colour) and display sections, after the ones every device has.
+    titles = re.findall(r'<h2 class="card-title">([^<]+)</h2>', html)
+    assert titles[:3] == ["General", "Style", "Display"]
+    assert titles[-1] == "Screen"
     assert re.findall(r'id="theme_([a-z]+)"[^>]*checked', html) == ["day"]
     assert re.findall(r'id="theme_colour_(\w+)"[^>]*checked', html) == ["forest"]
     assert re.findall(r'id="screen_sleep_minutes_(\w+)"[^>]*checked', html) == ["5"]
@@ -274,6 +277,27 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
     assert 'id="preview"' not in html
     assert 'name="style"' not in html
     assert 'name="orientation"' not in html
+    assert 'name="layout"' not in html
+    # Nor the tour, whose pictures are an e-paper screen's.
+    assert "tourStart" not in html
+    assert "config_tour.js" not in html
+
+
+def test_a_devices_page_shows_what_it_said_at_registration_but_cant_change_it(app, client, paired_client):
+    touchscreen = _paired(app, client)
+    _, epaper, _ = paired_client
+
+    for device_id, kind, size in (
+        (touchscreen, "Touchscreen", "1280 \u00d7 800"),
+        (epaper, "E-paper screen", "480 \u00d7 800"),
+    ):
+        html = client.get(f"/device/{device_id}").get_data(as_text=True)
+        facts = html.split('<dl class="device-facts"')[1].split("</dl>")[0]
+        assert f"<dd>{kind}</dd>" in facts
+        assert f"{size} px" in facts
+        assert f"<code>{device_id}</code>" in facts
+        # Shown, never a field.
+        assert "<input" not in facts
 
 
 def test_an_epaper_screens_page_has_no_touchscreen_settings(paired_client):
@@ -281,8 +305,9 @@ def test_an_epaper_screens_page_has_no_touchscreen_settings(paired_client):
 
     html = client.get("/device").get_data(as_text=True)
 
-    assert "Touchscreen" not in html
     assert 'name="theme"' not in html
+    assert 'name="theme_colour"' not in html
+    assert 'name="screen_sleep_minutes"' not in html
     assert 'id="preview"' in html
 
 

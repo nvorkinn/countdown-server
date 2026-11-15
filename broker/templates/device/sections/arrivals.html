@@ -1,0 +1,53 @@
+{# Every device's departures (the config's Arrivals). #}
+<section class="section section-panel" data-tour="departures">
+    <header class="card-header">
+        <h2 class="card-title">Departures</h2>
+    </header>
+    <div class="departures-grid">
+        <div>
+            <label class="field-caption" for="searchInput">Add a stop</label>
+            <div class="search-container">
+                <input type="text" id="searchInput" class="search-input" placeholder="Search for a station or stop in London or Norway" autocomplete="off">
+                <span id="searchSpinner" class="search-spinner">Searching…</span>
+                <div id="searchResults" class="search-results"></div>
+            </div>
+            <p class="form-hint">Two stops to a page; the screen turns the pages.</p>
+        </div>
+
+        <div>
+            <p class="field-caption">Your stops</p>
+            <input type="hidden" name="stops_order" id="stopsOrderInput" value="{{ stops | map(attribute='id') | join(',') }}">
+
+            <div id="stopsList" class="stops-list">
+                {% if stops %}
+                    {% for stop in stops %}
+                        <div class="stop-card" data-id="{{ stop.id }}">
+                            <div class="stop-order">
+                                <span class="order-badge">{{ loop.index }}</span>
+                                {% set icon = MODE_ICONS.get(stop.mode) %}
+                                <div class="mode-icon mode-{{ icon[0] if icon else 'bus' }}">
+                                    {% if icon %}{{ icon[1] }}{% else %}{{ stop.letter or '🚌' }}{% endif %}
+                                </div>
+                                <div class="item-text">
+                                    <h4>{{ stop.name }}</h4>
+                                    <p>
+                                        {% if stop.source == 'entur' and stop.indent %}{{ stop.subtitle.split(' • ')[0] }}{% if stop.lines %} • {% endif %}{% endif %}
+                                        {{ stop.lines | join(', ') }}
+                                        <span class="page-badge">Page {{ ((loop.index0 // 2) + 1) }}</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="stop-actions">
+                                <button type="button" class="btn-action btn-move-up" title="Move Up">▲</button>
+                                <button type="button" class="btn-action btn-move-down" title="Move Down">▼</button>
+                                <button type="button" class="btn-action btn-delete" title="Remove">✕</button>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-stops">No stops yet. Search for one to add it.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>

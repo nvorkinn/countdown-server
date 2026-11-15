@@ -1,0 +1,27 @@
+{# A touchscreen's style (the config's TouchscreenStyle): its skin, and the day skin's colour, as swatches. #}
+{% from "device/_controls.html" import segmented %}
+<section class="section" data-section="style">
+    <header class="card-header">
+        <h2 class="card-title">Style</h2>
+    </header>
+    <div class="field-row">
+        <fieldset class="form-group">
+            <legend class="form-legend">Skin</legend>
+            {{ segmented("theme", themes, config.theme) }}
+            <p class="form-hint">Auto is day from sunrise to sunset where the screen is.</p>
+        </fieldset>
+        <fieldset class="form-group">
+            <legend class="form-legend">Colour</legend>
+            <div class="swatches">
+                {% for value, label in theme_colours.items() %}
+                    <label class="swatch">
+                        <input type="radio" id="theme_colour_{{ value }}" name="theme_colour" value="{{ value }}" {% if config.theme_colour == value %}checked{% endif %} required>
+                        <span class="swatch-chip swatch-{{ value }}" aria-hidden="true"></span>
+                        <span class="swatch-name">{{ label }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+            <p class="form-hint">The day skin's; night has its own. Dynamic follows the album art.</p>
+        </fieldset>
+    </div>
+</section>

@@ -658,6 +658,25 @@ def _seen_ago(seen: datetime | None, now: datetime) -> str | None:
     return f"{minutes // (24 * 60)} days ago"
 
 
+# A config page's sections for each type of device, in order: device/sections/<name>.html, each for a section of the
+# device's config (ConfigResponse), the ones every device has and then its type's own style. A pair goes side by side
+# on a wide page.
+PAGE_SECTIONS: dict[DeviceType, tuple[str | tuple[str, str], ...]] = {
+    "epaper": ("general", "style_epaper", "layout", ("weather", "notice_board"), "arrivals", "integrations", "screen"),
+    "touchscreen": (
+        "general",
+        "style_touchscreen",
+        "display",
+        ("weather", "notice_board"),
+        "arrivals",
+        "integrations",
+        "screen",
+    ),
+}
+# What the page calls each type of device.
+DEVICE_TYPE_LABELS: dict[DeviceType, str] = {"epaper": "E-paper screen", "touchscreen": "Touchscreen"}
+
+
 # What's wrong with the account's Parcel key, by what Parcel last said of it for this screen, on the screen's page
 # (the account's page says what to do about it).
 PARCEL_PROBLEMS = {"invalid_key": "Key refused", "rate_limited": "Rate limited"}
@@ -686,6 +705,9 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         # A touchscreen draws itself: its page has its own settings, and none of the render pool's (no picture, style,
         # layout or orientation).
         touchscreen=device.type == "touchscreen",
+        sections=PAGE_SECTIONS[device.type],
+        device_type=device.type,
+        device_types=DEVICE_TYPE_LABELS,
         themes=THEMES,
         theme_colours=THEME_COLOURS,
         screen_sleep_minutes=SCREEN_SLEEP_MINUTES,
