@@ -105,10 +105,10 @@ def test_unpair_with_config_resets_settings_but_leaves_the_owners_logins(app, cl
 
     config = _shown(app, device_id)
     assert config["pairing_code"] is not None
-    assert (config["weather"]["location"], config["tfl"]["stop_ids"]) == ("", [])
+    assert (config["weather"]["location"], config["arrivals"]["stops"]) == ("", [])
     assert config["clock_format"] == "24h"
     assert config["glowmarkt"] == {"enabled": False}
-    assert config["notice_board"] == {"postcode": None, "country": None, "style": "airy"}
+    assert config["notice_board"] == {"postcode": None, "country": None}
     # The logins are the last owner's account's, not the screen's: they stay for their other screens.
     with app.app_context():
         for model in (SpotifyToken, GlowmarktCredentials, GitHubToken, ParcelKey):

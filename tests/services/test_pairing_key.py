@@ -15,6 +15,7 @@ import pytest
 import redis
 from countdown_api import fixtures
 from countdown_api.models import ConfigResponse
+from pydantic import TypeAdapter
 
 from broker.db import db
 from broker.models import Device, DeviceConfig
@@ -46,7 +47,7 @@ def _as_read(value):
 
     Fills in any field the contract defaults that the example omits, which the broker writes.
     """
-    return ConfigResponse.model_validate(value).model_dump(mode="json")
+    return TypeAdapter(ConfigResponse).dump_python(TypeAdapter(ConfigResponse).validate_python(value), mode="json")
 
 
 def _stored(store, device_id):
@@ -67,7 +68,7 @@ def test_the_stored_code_is_the_shape_the_renderer_reads(app, store):
         now = datetime.now(UTC)
         device = Device(device_id=device_id, created_at=now, paired_at=now, owner="user-1")
         # The example's settings don't carry its weather design (the value's), so it's taken from the value.
-        device.config = DeviceConfig(weather_design=FIXTURE["value"]["weather"]["design"], **FIXTURE["settings"])
+        device.config = DeviceConfig(weather_design=FIXTURE["value"]["style"]["weather"], **FIXTURE["settings"])
         db.session.add(device)
         db.session.commit()
 
@@ -99,7 +100,7 @@ def test_the_stored_code_has_the_layout(app, store, register_device):
 
     _ask_for_code(app, device_id)
 
-    assert _stored(store, device_id)["screen"]["layout"] == "masthead"
+    assert _stored(store, device_id)["style"]["layout"] == "masthead"
 
 
 def test_a_device_with_no_settings_has_no_key(app, store):

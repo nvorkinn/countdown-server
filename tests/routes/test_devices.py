@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from countdown_api.models import ConfigResponse
+from pydantic import TypeAdapter
 from sqlalchemy import func, select, update
 
 from broker.db import db
@@ -85,24 +86,18 @@ def test_the_config_returns_defaults(app, register_device):
     assert body == {
         "device_id": device_id,
         "type": "epaper",
-        "touchscreen": None,
+        "width": 480,
+        "height": 800,
+        "format": "mono-1bpp-packed",
         "interval": 60,
         "clock_format": "24h",
         "language": "en",
         "timezone": "Europe/London",
-        "style": "airy",
-        "screen": {
-            "orientation": "vertical",
-            "width": 480,
-            "height": 800,
-            "format": "mono-1bpp-packed",
-            "layout": None,
-        },
-        "weather": {"location": "", "key": None, "design": "columns"},
-        "notice_board": {"postcode": None, "country": None, "style": "airy"},
-        "tfl": {"stop_ids": [], "style": "grouped"},
-        "departures": {"stops": [], "style": "grouped"},
-        "spotify": {"enabled": False, "style": "airy"},
+        "style": {"orientation": "vertical", "drawing": "airy", "weather": "columns", "layout": None},
+        "weather": {"location": "", "key": None},
+        "notice_board": {"postcode": None, "country": None},
+        "arrivals": {"stops": []},
+        "spotify": {"enabled": False},
         "glowmarkt": {"enabled": False},
         "developer": {"enabled": False},
         "parcels": {"enabled": False},
@@ -118,7 +113,7 @@ def test_the_config_never_sends_the_tfl_key(app, client, register_device):
 
     response = _config(app, device_id)
 
-    assert response.get_json()["tfl"] == {"stop_ids": ["940GZZLUEUS"], "style": "grouped"}
+    assert response.get_json()["arrivals"] == {"stops": [{"source": "tfl", "id": "940GZZLUEUS"}]}
     assert app.config["TFL_APP_KEY"] == "test-tfl-key"
     assert b"test-tfl-key" not in response.data
 
@@ -193,7 +188,7 @@ def test_the_config_sends_the_key_the_weather_is_subscribed_under(app, client, r
 
     body = _config(app, device_id).get_json()
 
-    assert body["weather"] == {"location": "London", "key": "london-gb-2643743", "design": "columns"}
+    assert body["weather"] == {"location": "London", "key": "london-gb-2643743"}
 
 
 def test_the_config_sends_the_slug_as_the_key_of_a_location_with_no_place_picked(app, client, register_device):
@@ -219,13 +214,11 @@ def test_the_config_gives_each_stop_its_source(app, client, register_device):
     _set_config(app, device_id, tfl_stop_ids=["490000254W", "NSR:StopPlace:58366", "NSR:Quay:11145"], language="nb")
     body = _config(app, device_id).get_json()
 
-    assert body["departures"]["stops"] == [
+    assert body["arrivals"]["stops"] == [
         {"source": "tfl", "id": "490000254W"},
         {"source": "entur", "id": "NSR:StopPlace:58366"},
         {"source": "entur", "id": "NSR:Quay:11145"},
     ]
-    # A renderer that only knows `tfl` gets only the stops it can show.
-    assert body["tfl"]["stop_ids"] == ["490000254W"]
     assert body["language"] == "nb"
     # No postcode: the first stop says where the screen is.
     assert body["timezone"] == "Europe/London"
@@ -247,7 +240,7 @@ def test_the_config_time_zone_follows_postcode_then_first_stop(
     _set_config(app, device_id, postcode=postcode, tfl_stop_ids=stop_ids)
     body = _config(app, device_id).get_json()
 
-    assert body["notice_board"] == {"postcode": postcode or None, "country": country, "style": "airy"}
+    assert body["notice_board"] == {"postcode": postcode or None, "country": country}
     assert body["timezone"] == timezone
 
 
@@ -365,11 +358,11 @@ def test_the_config_is_valid_with_no_location_postcode_or_stops(app, client, reg
 
     body = _config(app, device_id).get_json()
 
-    ConfigResponse.model_validate(body)
+    TypeAdapter(ConfigResponse).validate_python(body)
     assert "setup_missing" not in body
-    assert body["weather"]["location"] == ""
-    assert body["notice_board"] == {"postcode": None, "country": None, "style": "airy"}
-    assert body["tfl"]["stop_ids"] == []
+    assert body["weather"] == {"location": "", "key": None}
+    assert body["notice_board"] == {"postcode": None, "country": None}
+    assert body["arrivals"]["stops"] == []
 
 
 def test_the_config_returns_the_saved_postcode(app, client, register_device):
@@ -379,7 +372,7 @@ def test_the_config_returns_the_saved_postcode(app, client, register_device):
         db.session.commit()
 
     response = _config(app, device_id)
-    assert response.get_json()["notice_board"] == {"postcode": "SW1A 1AA", "country": "GB", "style": "airy"}
+    assert response.get_json()["notice_board"] == {"postcode": "SW1A 1AA", "country": "GB"}
 
 
 @pytest.mark.parametrize("design", ["columns", "timeline", "overview", "poster"])
@@ -388,14 +381,14 @@ def test_the_config_sends_the_weather_design(app, register_device, design):
     device_id, _secret = register_device()
     _set_config(app, device_id, weather_design=design)
 
-    assert _config(app, device_id).get_json()["weather"]["design"] == design
+    assert _config(app, device_id).get_json()["style"]["weather"] == design
 
 
 def test_the_config_sends_no_layout_by_default(app, register_device):
     """Null, the screen's default, for a screen whose owner never picked one."""
     device_id, _secret = register_device()
 
-    assert _config(app, device_id).get_json()["screen"]["layout"] is None
+    assert _config(app, device_id).get_json()["style"]["layout"] is None
 
 
 @pytest.mark.parametrize(
@@ -421,7 +414,7 @@ def test_the_config_sends_the_layout(app, register_device, layout):
     device_id, _secret = register_device()
     _set_config(app, device_id, layout=layout)
 
-    assert _config(app, device_id).get_json()["screen"]["layout"] == layout
+    assert _config(app, device_id).get_json()["style"]["layout"] == layout
 
 
 def test_the_config_returns_the_saved_orientation(app, client, register_device):
@@ -431,7 +424,7 @@ def test_the_config_returns_the_saved_orientation(app, client, register_device):
         db.session.commit()
 
     response = _config(app, device_id)
-    assert response.get_json()["screen"]["orientation"] == "horizontal"
+    assert response.get_json()["style"]["orientation"] == "horizontal"
 
 
 def test_register_stores_the_size_and_format_it_is_given(app, client):
@@ -470,8 +463,9 @@ def test_the_config_sends_the_frame_format_the_screen_registered_with(app, clien
         json={"secret": "display-secret-0123456789", "width": 800, "height": 480, "format": frame_format},
     )
     assert response.status_code == 201
-    screen = _config(app, response.get_json()["device_id"]).get_json()["screen"]
-    assert screen == {"orientation": "vertical", "width": 800, "height": 480, "format": frame_format, "layout": None}
+    config = _config(app, response.get_json()["device_id"]).get_json()
+    assert (config["width"], config["height"], config["format"]) == (800, 480, frame_format)
+    assert config["style"]["orientation"] == "vertical"
 
 
 @pytest.mark.parametrize(
@@ -486,24 +480,24 @@ def test_register_rejects_a_missing_or_unknown_frame_format(app, client, extra):
         assert db.session.scalar(select(func.count()).select_from(Device)) == 0
 
 
-@pytest.mark.parametrize(("style", "departures_style"), [("airy", "grouped"), ("hero", "hero"), ("card", "card")])
-def test_the_config_returns_the_saved_style_for_every_panel(app, client, register_device, style, departures_style):
-    """The one style, and each panel's own for renderers that predate it: airy is grouped to the departures."""
+@pytest.mark.parametrize("style", ["airy", "hero", "card"])
+def test_the_config_returns_the_saved_style_for_every_panel(app, client, register_device, style):
+    """The one style every panel is drawn in."""
     device_id, _secret = register_device()
     with app.app_context():
         db.session.get_one(DeviceConfig, device_id).style = style
         db.session.commit()
 
     config = _config(app, device_id).get_json()
-    assert config["style"] == style
-    assert (config["spotify"]["style"], config["notice_board"]["style"]) == (style, style)
-    assert (config["tfl"]["style"], config["departures"]["style"]) == (departures_style, departures_style)
+    assert config["style"]["drawing"] == style
+    assert "style" not in config["spotify"]
+    assert "style" not in config["notice_board"]
 
 
 def test_the_config_returns_airy_for_a_new_device(app, register_device):
     device_id, _ = register_device()
     config = _config(app, device_id).get_json()
-    assert config["style"] == "airy"
+    assert config["style"]["drawing"] == "airy"
 
 
 @pytest.mark.parametrize("clock_format", ["12h", "24h"])
@@ -516,4 +510,4 @@ def test_the_config_returns_the_clock_format_saved_on_the_website(app, paired_cl
     assert response.status_code == 200
     body = response.get_json()
     assert body["clock_format"] == clock_format
-    assert ConfigResponse.model_validate(body).clock_format == clock_format
+    assert TypeAdapter(ConfigResponse).validate_python(body).clock_format == clock_format

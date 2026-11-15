@@ -5,7 +5,7 @@ screens listed in `v1:render:screens`, a hash of device id to slug (the slug nam
 of the pool's metrics), and drops a job for any other. The broker is the only one that writes it.
 
 A screen is listed while the pool has something to draw for it. A touchscreen is never listed: it draws itself, from
-its config (GET /api/config). An e-paper screen is listed while:
+its config (GET /api/devices/config). An e-paper screen is listed while:
 
 - it has been named (services/assignments.py), so it has a slug; or it has a live pairing code, which a screen
   waiting to be paired has and which is all it needs: its slug is its device id, as naming it will make it;

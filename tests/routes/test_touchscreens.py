@@ -1,4 +1,4 @@
-"""Test touchscreens: registering one, its config (GET /api/config), and its settings on the settings site.
+"""Test touchscreens: registering one, its config (GET and PUT /api/devices/config), and its settings page.
 
 A touchscreen is a device like an e-paper screen, paired and set up the same way, but it draws itself from its config,
 so the render pool never draws it, it has no frames, and its page has its own settings instead of the pool's.
@@ -8,7 +8,8 @@ import re
 from datetime import UTC, datetime
 
 from countdown_api import fixtures
-from countdown_api.models import ConfigResponse, DeviceRegistration
+from countdown_api.models import ConfigResponse, DeviceRegistration, TouchscreenConfig
+from pydantic import TypeAdapter
 
 from broker.db import db
 from broker.models import Device, DeviceConfig
@@ -18,6 +19,8 @@ from tests.conftest import name_screen
 # The store contract's canonical example of a touchscreen and its routes.
 TOUCHSCREEN = fixtures.load("touchscreen.json")
 SECRET = TOUCHSCREEN["registration"]["secret"]
+CONFIGS = TypeAdapter(ConfigResponse)
+CONFIG_URL = "/api/devices/config"
 
 
 def _auth(secret=SECRET):
@@ -106,25 +109,28 @@ def test_an_epaper_screen_still_needs_its_format(client):
 def test_the_config_needs_the_devices_secret(app, client):
     _registered(app, client)
 
-    assert client.get("/api/config").status_code == 401
-    assert client.get("/api/config", headers=_auth("not-the-secret-of-any-device")).status_code == 401
+    for method in (client.get, client.put):
+        assert method(CONFIG_URL).status_code == 401
+        assert method(CONFIG_URL, headers=_auth("not-the-secret-of-any-device")).status_code == 401
 
 
 def test_a_touchscreen_gets_no_pairing_code(app, client):
     device_id = _registered(app, client)
 
-    response = client.get("/api/config", headers=_auth())
+    response = client.get(CONFIG_URL, headers=_auth())
 
     assert response.status_code == 200
-    config = ConfigResponse.model_validate(response.get_json())
+    config = CONFIGS.validate_python(response.get_json())
+    assert isinstance(config, TouchscreenConfig)
     assert config.device_id == device_id
-    assert config.type == "touchscreen"
+    assert (config.width, config.height) == (1280, 800)
     # Unpaired, it's still not issued one, by registering or by asking for its config.
     assert config.pairing_code is None
     with app.app_context():
         assert pairing.live_code(device_id) is None
     # Its own settings, at the contract's defaults.
-    assert response.get_json()["touchscreen"] == TOUCHSCREEN["pairing"]["touchscreen"]
+    assert response.get_json()["style"] == TOUCHSCREEN["pairing"]["style"]
+    assert response.get_json()["display"] == TOUCHSCREEN["pairing"]["display"]
 
 
 def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
@@ -134,24 +140,102 @@ def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
         config.theme, config.theme_colour, config.screen_sleep_minutes = "auto", "dynamic", 15
         db.session.commit()
 
-    response = client.get("/api/config", headers=_auth())
+    response = client.get(CONFIG_URL, headers=_auth())
 
     assert response.status_code == 200
     body = response.get_json()
     assert body["pairing_code"] is None
     assert body["type"] == "touchscreen"
-    assert body["touchscreen"] == TOUCHSCREEN["config"]["touchscreen"]
-    ConfigResponse.model_validate(body)
+    assert body["style"] == TOUCHSCREEN["config"]["style"]
+    assert body["display"] == TOUCHSCREEN["config"]["display"]
+    CONFIGS.validate_python(body)
 
 
 def test_an_epaper_screens_config_has_no_touchscreen_settings(app, client):
     secret = TOUCHSCREEN["epaper_registration"]["secret"]
     assert _register(client, TOUCHSCREEN["epaper_registration"]).status_code == 201
 
-    body = client.get("/api/config", headers=_auth(secret)).get_json()
+    body = client.get(CONFIG_URL, headers=_auth(secret)).get_json()
 
     assert body["type"] == "epaper"
-    assert body["touchscreen"] is None
+    assert "display" not in body
+    assert set(body["style"]) == {"orientation", "drawing", "weather", "layout"}
+
+
+def _saved_with(client, **changes):
+    """Return the touchscreen's config as GET answers it, with `changes` made to its JSON."""
+    return {**client.get(CONFIG_URL, headers=_auth()).get_json(), **changes}
+
+
+def test_a_paired_touchscreen_saves_its_own_settings(app, client):
+    device_id = _paired(app, client)
+    sent = _saved_with(
+        client,
+        clock_format="12h",
+        language="nb",
+        style=TOUCHSCREEN["save"]["style"],
+        display=TOUCHSCREEN["save"]["display"],
+    )
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json() == sent
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("night", "dynamic", 30)
+        assert (config.clock_format, config.language) == ("12h", "nb")
+    assert client.get(CONFIG_URL, headers=_auth()).get_json() == sent
+
+
+def test_a_save_that_changes_what_only_the_settings_site_does_is_refused(app, client):
+    device_id = _paired(app, client)
+    current = _saved_with(client)
+
+    for wrong in (
+        {**current, "device_id": "ffffffffffff"},
+        {**current, "width": 640},
+        {**current, "weather": {"location": "Oslo", "key": "oslo-no-3143244"}},
+        {**current, "arrivals": {"stops": [{"source": "tfl", "id": "490000077E"}]}},
+        {**current, "spotify": {"enabled": not current["spotify"]["enabled"]}},
+        {**current, "style": {**current["style"], "skin": "night"}, "interval": 5},
+    ):
+        response = client.put(CONFIG_URL, json=wrong, headers=_auth())
+        assert response.status_code == 400
+        assert "only clock_format" in response.get_json()["error"]
+
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).theme == "day"
+
+
+def test_a_save_the_contract_doesnt_allow_is_refused(app, client):
+    _paired(app, client)
+    current = _saved_with(client)
+
+    for wrong in (
+        {**current, "style": {**current["style"], "skin": "dusk"}},
+        {**current, "display": {"sleep_minutes": 10}},
+        {key: value for key, value in current.items() if key != "display"},
+        b"not json",
+    ):
+        kwargs = {"data": wrong} if isinstance(wrong, bytes) else {"json": wrong}
+        assert client.put(CONFIG_URL, headers=_auth(), **kwargs).status_code == 400
+
+
+def test_an_unpaired_touchscreen_or_an_epaper_screen_cant_save(app, client):
+    _registered(app, client)
+    assert client.put(CONFIG_URL, json=_saved_with(client), headers=_auth()).status_code == 409
+
+    secret = TOUCHSCREEN["epaper_registration"]["secret"]
+    assert _register(client, TOUCHSCREEN["epaper_registration"]).status_code == 201
+    body = client.get(CONFIG_URL, headers=_auth(secret)).get_json()
+    assert client.put(CONFIG_URL, json=body, headers=_auth(secret)).status_code == 409
+
+
+def test_the_old_config_route_is_gone(app, client):
+    _registered(app, client)
+
+    assert client.get("/api/config", headers=_auth()).status_code == 404
 
 
 def test_a_touchscreen_has_no_frames(app, client):
@@ -213,8 +297,8 @@ def test_a_touchscreens_settings_are_saved_with_the_rest(app, client):
         config = db.session.get_one(DeviceConfig, device_id)
         assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("night", "plum", 0)
         assert config.clock_format == "12h"
-    body = client.get("/api/config", headers=_auth()).get_json()
-    assert body["touchscreen"] == {"theme": "night", "theme_colour": "plum", "screen_sleep_minutes": 0}
+    body = client.get(CONFIG_URL, headers=_auth()).get_json()
+    assert (body["style"], body["display"]) == ({"skin": "night", "colour": "plum"}, {"sleep_minutes": 0})
     assert body["clock_format"] == "12h"
 
 

@@ -305,7 +305,7 @@ def test_a_turned_screens_picture_is_forgotten_after_its_config_is_stored_and_be
 
     def forget_and_note(forgotten):
         stored = json.loads(fake_redis.get(config_store.key(forgotten)))
-        events.append(("forget", stored["screen"]["orientation"]))
+        events.append(("forget", stored["style"]["orientation"]))
         forget(forgotten)
 
     def enqueue_and_note(redis, device_ids):
