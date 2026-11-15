@@ -707,6 +707,15 @@
             margin: 0 auto;
         }
 
+        /* Embedded in a device's own settings: no sidebar to make room for. */
+        body.embedded {
+            --sidebar-w: 0px;
+        }
+
+        .embedded .main {
+            margin-left: 0;
+        }
+
         :root {
             --sidebar-w: 232px;
         }
@@ -1883,9 +1892,11 @@
     </style>
     {% block head %}{% endblock %}
 </head>
-<body{% if screens %} class="app"{% endif %}>
+{# Embedded (?embed=1, pages.embed_mode) in a device's own settings: the page alone, with no sidebar or top bar. #}
+{% set navigation = screens and not embedded %}
+<body{% if screens %} class="app{% if embedded %} embedded{% endif %}"{% endif %}>
     {% include "_environment_banner.html" %}
-    {% if screens %}
+    {% if navigation %}
     {# The signed-in user's settings: a sidebar of their screens beside the page (a drawer on a phone). #}
     <div class="topbar">
         <a href="{{ url_for('pages.index') }}"><img class="brand-logo" src="{{ url_for('static', filename='countdown-pill.svg') }}" alt="Countdown" width="172" height="34"></a>
@@ -1923,7 +1934,7 @@
         {% block content %}{% endblock %}
     </div>
     </main>
-    {% if screens %}
+    {% if navigation %}
     <script>
         // The sidebar is a drawer on a phone: the menu button opens it; the scrim, Escape or a link closes it.
         (() => {

@@ -13,6 +13,7 @@ from .routes import (
     account,
     apple_music_link,
     devices,
+    embed,
     frames,
     pages,
     place_search,
@@ -77,6 +78,7 @@ def create_app() -> Flask:
     app.register_blueprint(spotify_oauth.bp)
     app.register_blueprint(apple_music_link.bp)
     app.register_blueprint(pages.bp)
+    app.register_blueprint(embed.bp)
     app.register_blueprint(account.bp)
     app.register_blueprint(stop_search.bp)
     app.register_blueprint(place_search.bp)
