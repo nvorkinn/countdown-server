@@ -110,7 +110,7 @@ def test_the_config_needs_the_devices_secret(app, client):
     assert client.get("/api/config", headers=_auth("not-the-secret-of-any-device")).status_code == 401
 
 
-def test_an_unpaired_touchscreen_gets_the_pairing_value(app, client):
+def test_a_touchscreen_gets_no_pairing_code(app, client):
     device_id = _registered(app, client)
 
     response = client.get("/api/config", headers=_auth())
@@ -119,23 +119,12 @@ def test_an_unpaired_touchscreen_gets_the_pairing_value(app, client):
     config = ConfigResponse.model_validate(response.get_json())
     assert config.device_id == device_id
     assert config.type == "touchscreen"
+    # Unpaired, it's still not issued one, by registering or by asking for its config.
+    assert config.pairing_code is None
     with app.app_context():
-        assert config.pairing_code == pairing.live_code(device_id)
-    assert config.pairing_code is not None
-    # Its own settings, at the contract's defaults, as the contract's pairing value has them.
+        assert pairing.live_code(device_id) is None
+    # Its own settings, at the contract's defaults.
     assert response.get_json()["touchscreen"] == TOUCHSCREEN["pairing"]["touchscreen"]
-
-
-def test_a_touchscreen_waiting_long_gets_a_new_code(app, client):
-    device_id = _registered(app, client)
-    with app.app_context():
-        for code in db.session.get_one(Device, device_id).pairing_codes:
-            code.expires_at = datetime(2000, 1, 1, tzinfo=UTC)
-        db.session.commit()
-
-    config = client.get("/api/config", headers=_auth()).get_json()
-
-    assert config["pairing_code"] is not None
 
 
 def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
@@ -179,7 +168,7 @@ def test_the_render_pool_never_draws_a_touchscreen(app, client):
 
         listed = render_screens.listed(datetime.now(UTC))
 
-    # Both have a live code; only the e-paper screen has a pairing screen for the pool to draw.
+    # The e-paper screen has a code, so a pairing screen for the pool to draw; the touchscreen draws itself.
     assert epaper in listed
     assert device_id not in listed
 

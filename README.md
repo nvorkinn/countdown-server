@@ -71,10 +71,10 @@ failure never fails the poll.
 ### Touchscreens
 
 A touchscreen draws itself, so the render pool never draws it and it has no frames (`POST /api/frame` is a `409`). It
-registers like an e-paper screen, with its size and `"type": "touchscreen"`, is paired the same way, then polls
+registers like an e-paper screen, with its size and `"type": "touchscreen"`, then polls
 **`GET /api/config`** with `Authorization: Bearer <secret>`: its config (the store contract's `ConfigResponse`), with
-`pairing_code` set while it's waiting to be paired, and its own settings in `touchscreen` (theme, theme colour, screen
-sleep). Its owner changes them on its settings page, which shows them instead of the pool's style, layout and
+its own settings in `touchscreen` (theme, theme colour, screen sleep). It never gets a pairing code: it's paired by its
+pairing token. Its owner changes them on its settings page, which shows them instead of the pool's style, layout and
 orientation, and saves the config whole. A `401` means register again.
 
 ## Pairing and settings
