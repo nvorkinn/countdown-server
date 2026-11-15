@@ -4,7 +4,8 @@ countdown's render pool (its docs/stateless-renderers.md, "The pool, the queue a
 screens listed in `v1:render:screens`, a hash of device id to slug (the slug names the screen: it's the `device` label
 of the pool's metrics), and drops a job for any other. The broker is the only one that writes it.
 
-A screen is listed while the pool has something to draw for it:
+A screen is listed while the pool has something to draw for it. A touchscreen is never listed: it draws itself, from
+its config (GET /api/config). An e-paper screen is listed while:
 
 - it has been named (services/assignments.py), so it has a slug; or it has a live pairing code, which a screen
   waiting to be paired has and which is all it needs: its slug is its device id, as naming it will make it;
@@ -53,7 +54,8 @@ def listed(now: datetime) -> dict[str, str]:
         # Not named yet (a new screen, which is named when it's paired): its own id, which is what naming it gives it.
         slug = assignment.slug if assignment is not None else device.device_id
         if (
-            device.config is None
+            device.type == "touchscreen"
+            or device.config is None
             or ((device.paired_at is None or assignment is None) and device.device_id not in coded)
             or not assignments.SLUG_RE.match(slug)
             or assignments.screen_is_quiet(device, now, named_at=assignment.created_at if assignment else None)

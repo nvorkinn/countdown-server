@@ -140,7 +140,7 @@ services:
       # connection closes: Caddy's idle timeout, 5 minutes. The screen opens a new connection for every poll anyway,
       # so close each one after its answer.
       caddy_2.header: /api/frame Connection close
-      caddy_2.@screen_api.path: /api/frame /api/frame/* /api/devices/* /api/status/*
+      caddy_2.@screen_api.path: /api/frame /api/frame/* /api/config /api/devices/* /api/status/*
       caddy_2.handle: "@screen_api"
       caddy_2.handle.reverse_proxy: "{{upstreams 5000}}"
       caddy_3: ${API_HOST:?}

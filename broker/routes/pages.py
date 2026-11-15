@@ -28,7 +28,10 @@ from broker.models import (
     ORIENTATIONS,
     PARCEL_DAYS_AHEAD,
     PARCEL_KEPT_HOURS,
+    SCREEN_SLEEP_MINUTES,
     STYLES,
+    THEME_COLOURS,
+    THEMES,
     WEATHER_DESIGNS,
     Device,
     DeviceConfig,
@@ -348,6 +351,11 @@ CHOICES = {
     "style": (STYLES, "The style"),
     # Only on an HD screen's page (is_hd_screen), so another screen's save keeps what's stored, like any field unposted.
     "weather_design": (WEATHER_DESIGNS, "The weather design"),
+    # Only on a touchscreen's page, so an e-paper screen's save keeps what's stored (the defaults).
+    "theme": (THEMES, "The theme"),
+    "theme_colour": (THEME_COLOURS, "The theme colour"),
+    # A number of minutes, picked by its form value (_set_choices stores it as one).
+    "screen_sleep_minutes": (SCREEN_SLEEP_MINUTES, "The screen sleep"),
 }
 
 
@@ -366,7 +374,7 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     postcode = normalize_postcode(raw_postcode)
 
     config = db.session.get_one(DeviceConfig, device_id)
-    choices = {field: request.form.get(field, getattr(config, field)) for field in CHOICES}
+    choices = {field: request.form.get(field, str(getattr(config, field))) for field in CHOICES}
     # Only on a page with the picker (layout_choices), so a save from one without keeps what's stored. Any of the
     # contract's layouts is taken, whatever the screen's size and whichever way it hangs: one it doesn't have is drawn
     # as its default. Empty is the screen's default (None).
@@ -438,7 +446,7 @@ def _set_choices(config: DeviceConfig, choices: Mapping[str, str]) -> bool:
     """Set the config's CHOICES to those picked, and return whether that turns the screen (a new orientation)."""
     turned = choices["orientation"] != config.orientation
     for field, value in choices.items():
-        setattr(config, field, value)
+        setattr(config, field, int(value) if field == "screen_sleep_minutes" else value)
     return turned
 
 
@@ -619,6 +627,12 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         "device.html",
         device_id=device_id,
         display_attached=device.display_secret_hash is not None,
+        # A touchscreen draws itself: its page has its own settings, and none of the render pool's (no picture, style,
+        # layout or orientation).
+        touchscreen=device.type == "touchscreen",
+        themes=THEMES,
+        theme_colours=THEME_COLOURS,
+        screen_sleep_minutes=SCREEN_SLEEP_MINUTES,
         display_seen=_seen_ago(device.display_last_seen_at, now),
         screen_label=screen_label(device),
         has_frame=drawn is not None,

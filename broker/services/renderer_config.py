@@ -19,6 +19,7 @@ from countdown_api.models import (
     Screen,
     Spotify,
     Tfl,
+    Touchscreen,
     Weather,
 )
 from cryptography.fernet import InvalidToken
@@ -45,8 +46,16 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
     parcel_key = db.session.get(ParcelKey, owner) if owner is not None else None
     country = postcode_country(config.postcode)
     stop_ids = config.tfl_stop_ids
+    touchscreen = config.device.type == "touchscreen"
     return ConfigResponse(
         device_id=device_id,
+        type=config.device.type,
+        # Only a touchscreen's config has its own settings (the contract requires them of it, and forbids them else).
+        touchscreen=Touchscreen(
+            theme=config.theme, theme_colour=config.theme_colour, screen_sleep_minutes=config.screen_sleep_minutes
+        )
+        if touchscreen
+        else None,
         # How often the render pool draws (faster while a provider asks). The screen's polls aren't paced by it: the
         # broker's answers are (services/pace.py).
         interval=pace.RENDER_INTERVAL_S,

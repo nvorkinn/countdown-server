@@ -479,14 +479,18 @@ def test_0002_converts_every_string_timestamp_shape_to_utc(app):
     with app.app_context():
         upgrade(revision="0028")
 
-        offset = db.session.get_one(Device, "offset")
-        assert offset.created_at == datetime(2026, 3, 1, 12, 0, 0, 123456, tzinfo=UTC)
-        assert offset.paired_at == datetime(2026, 3, 1, 12, 30, tzinfo=UTC)  # +01:00 moved to UTC
-        zulu = db.session.get_one(Device, "zulu")
-        assert (zulu.created_at, zulu.paired_at) == (datetime(2026, 3, 2, 8, tzinfo=UTC), None)
-        date_only = db.session.get_one(Device, "date-only")
-        assert date_only.created_at == datetime(2026, 1, 1, tzinfo=UTC)
-        assert date_only.paired_at == datetime(2026, 1, 1, 9, 15, tzinfo=UTC)  # no zone: taken as UTC
+        # Only the columns 0028 has, read as the model's types: later migrations add more to devices.
+        times = {
+            row.device_id: (row.created_at, row.paired_at)
+            for row in db.session.execute(select(Device.device_id, Device.created_at, Device.paired_at))
+        }
+        assert times["offset"] == (
+            datetime(2026, 3, 1, 12, 0, 0, 123456, tzinfo=UTC),
+            datetime(2026, 3, 1, 12, 30, tzinfo=UTC),  # +01:00 moved to UTC
+        )
+        assert times["zulu"] == (datetime(2026, 3, 2, 8, tzinfo=UTC), None)
+        # No zone: taken as UTC.
+        assert times["date-only"] == (datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 1, 1, 9, 15, tzinfo=UTC))
 
         assert db.session.get_one(PairingCode, "ABC234").expires_at == datetime(2026, 3, 2, 8, 10, tzinfo=UTC)
         # Read at 0028, before 0029 rekeys them by owner (and drops these, as nobody owns their screens).
