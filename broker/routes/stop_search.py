@@ -1,10 +1,13 @@
-"""Stop search for the settings page's stop picker, across London and Norway. It spends the broker's TfL key."""
+"""Stop search for the stop pickers, the settings site's and a device's own, across London and Norway.
+
+It spends the broker's TfL key, so it needs a signed-in person or a paired device's secret.
+"""
 
 from typing import TYPE_CHECKING
 
 from flask import Blueprint, current_app, jsonify, request
 
-from broker.auth import require_paired_user
+from broker.auth import require_paired_device_or_user
 from broker.services import stops
 
 if TYPE_CHECKING:
@@ -17,9 +20,9 @@ MIN_QUERY_LENGTH = 2
 
 
 @bp.get("/api/stops/search")
-@require_paired_user
+@require_paired_device_or_user
 def search_stops() -> ResponseReturnValue:
-    """Return selectable stations and stops matching ?q=, as JSON, each with its source (tfl or entur)."""
+    """Return the stations and stops matching ?q= (the contract's StopSearchResult each); 502 if no source answered."""
     query = request.args.get("q", "").strip()
     if len(query) < MIN_QUERY_LENGTH:
         return jsonify([])
@@ -28,4 +31,4 @@ def search_stops() -> ResponseReturnValue:
         return jsonify(stops.search(query))
     except Exception:
         current_app.logger.exception("Stop search error")
-        return jsonify([]), 500
+        return jsonify([]), 502
