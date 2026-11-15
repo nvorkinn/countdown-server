@@ -6,9 +6,10 @@ FROM python:3.14-slim
 
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt && rm /tmp/requirements.txt \
-    && useradd --system --no-create-home sqlite-web
+    && useradd --system --no-create-home --uid 10001 --user-group sqlite-web
 
-USER sqlite-web
+# Not root. The broker (root, default umask) leaves broker.db readable by everyone, which is all this needs.
+USER 10001:10001
 
 EXPOSE 8080
 
