@@ -266,10 +266,15 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
 
     html = client.get("/device").get_data(as_text=True)
 
-    # Its own style (skin and colour) and display sections, after the ones every device has.
+    # What the tablet shows (the time format, departures, weather and notice board), then its own style and display.
     titles = re.findall(r'<h2 class="card-title">([^<]+)</h2>', html)
-    assert titles[:3] == ["General", "Style", "Display"]
-    assert titles[-1] == "Screen"
+    assert titles == ["General", "Departures", "Weather", "Notice board", "Style", "Display", "Screen"]
+    # English-only, and its music is its own: no language and no integrations.
+    assert 'name="language"' not in html
+    assert '_enabled"' not in html
+    # Nor an e-paper screen's pages of stops.
+    assert "Two stops to a page" not in html
+    assert "data-pages" not in html
     assert re.findall(r'id="theme_([a-z]+)"[^>]*checked', html) == ["day"]
     assert re.findall(r'id="theme_colour_(\w+)"[^>]*checked', html) == ["forest"]
     assert re.findall(r'id="screen_sleep_minutes_(\w+)"[^>]*checked', html) == ["5"]
@@ -326,6 +331,19 @@ def test_a_touchscreens_settings_are_saved_with_the_rest(app, client):
     body = client.get(CONFIG_URL, headers=_auth()).get_json()
     assert (body["style"], body["display"]) == ({"skin": "night", "colour": "plum"}, {"sleep_minutes": 0})
     assert body["clock_format"] == "12h"
+
+
+def test_a_touchscreens_save_keeps_its_integrations(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        db.session.get_one(DeviceConfig, device_id).spotify_enabled = True
+        db.session.commit()
+
+    # Its page has no integrations, so nothing posted turns them off.
+    assert client.post("/device", data={"clock_format": "12h"}).status_code == 302
+
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).spotify_enabled
 
 
 def test_a_save_without_the_touchscreen_settings_keeps_them(app, client):
