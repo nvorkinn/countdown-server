@@ -1,6 +1,7 @@
 # caddy-docker-proxy: Caddy with the plugin that builds its config from Docker labels (docker-compose.yml). Both
-# versions are pinned, so Dependabot's bump is what changes them: an unchanged caddy/ reuses the previous release's image
-# (release.yml). No DNS plugin: certificates come from the HTTP challenge, the records are DNS-only (infra/cloudflare).
+# versions are pinned, so Dependabot's bump is what changes them: until then each release's build comes from the build
+# cache in the registry (release.yml) instead of compiling Caddy again. No DNS plugin: certificates come from the HTTP
+# challenge, the records are DNS-only (infra/cloudflare).
 FROM caddy:2.11.9-builder AS builder
 RUN xcaddy build --with github.com/lucaslorentz/caddy-docker-proxy/v2@v2.13.1
 
