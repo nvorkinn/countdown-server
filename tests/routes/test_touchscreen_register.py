@@ -5,6 +5,7 @@ here, so the test client's login headers stand in for it.
 """
 
 import hashlib
+from urllib.parse import quote
 
 from broker.auth import hash_secret
 from broker.db import db
@@ -160,3 +161,82 @@ def test_too_many_from_one_ip_are_throttled_like_the_device_apis_register(app, c
     statuses = [_open(client, url).status_code for url in urls]
 
     assert statuses == [200] * REGISTRATIONS_PER_MINUTE + [429]
+
+
+# --- going back to the tablet's app -----------------------------------------------------------------
+
+APP_ORIGIN = "https://tablet.example"
+
+
+def _allow_return(app, *origins):
+    app.config["TOUCHSCREEN_RETURN_ORIGINS"] = frozenset(origins or (APP_ORIGIN,))
+
+
+def test_it_goes_back_to_the_tablets_app_with_the_device_id(app, client):
+    _allow_return(app)
+
+    response = _open(client, _url() + f"&return_to={quote(APP_ORIGIN + '/setup?step=2', safe='')}")
+
+    assert response.status_code == 303
+    device_id = _device(app).device_id
+    assert response.headers["Location"] == f"{APP_ORIGIN}/setup?step=2&device_id={device_id}"
+    assert _device(app).owner == USER
+
+
+def test_a_custom_scheme_app_is_allowed_by_its_origin(app, client):
+    _allow_return(app, "maxmix://callback")
+
+    response = _open(client, _url() + "&return_to=maxmix://callback/registered")
+
+    assert response.status_code == 303
+    assert response.headers["Location"].startswith("maxmix://callback/registered?device_id=")
+
+
+def test_someone_elses_touchscreen_goes_back_with_an_error(app, client):
+    _allow_return(app)
+    _open(client)
+    other = app.test_client()
+    other.environ_base["HTTP_REMOTE_SUB"] = OTHER_USER
+
+    response = _open(other, _url() + f"&return_to={APP_ORIGIN}/done")
+
+    assert response.status_code == 303
+    assert response.headers["Location"] == f"{APP_ORIGIN}/done?error=taken"
+    assert _device(app).owner == USER
+
+
+def test_a_return_url_off_the_allowed_origins_is_refused_before_registering(app, client):
+    _allow_return(app)
+    for return_to in (
+        "https://evil.example/",
+        "https://tablet.example.evil.example/",
+        "https://user@tablet.example/",
+        "https://tablet.example:8443/",
+        "http://tablet.example/",
+        "//tablet.example/",
+        "/device",
+        "javascript:alert(1)",
+    ):
+        response = _open(client, _url() + f"&return_to={quote(return_to, safe='')}")
+        assert response.status_code == 400, return_to
+    assert _device(app) is None
+
+
+def test_with_no_origins_allowed_no_return_url_is_taken(app, client):
+    response = _open(client, _url() + f"&return_to={APP_ORIGIN}/")
+
+    assert response.status_code == 400
+    assert _device(app) is None
+
+
+def test_the_confirm_button_keeps_the_return_url(app, client):
+    _allow_return(app)
+    return_to = f"{APP_ORIGIN}/done"
+
+    page = _open(client, _url() + f"&return_to={return_to}", site="cross-site")
+    assert f'name="return_to" value="{return_to}"'.encode() in page.data
+
+    form = {"secret_hash": SECRET_HASH, "width": "1280", "height": "800", "return_to": return_to}
+    response = client.post("/register", data=form, headers={"Sec-Fetch-Site": "same-origin"})
+    assert response.status_code == 303
+    assert response.headers["Location"].startswith(f"{return_to}?device_id=")

@@ -106,7 +106,9 @@ incoming request). The sign-up page (`/pair`) and the device endpoints stay publ
   (or signs them up in Pocket ID and has them add a passkey), and the same request then registers the touchscreen and
   makes them its owner in one transaction, with no code. Only the secret's hash is sent. A visit that the browser says
   came from another site (`Sec-Fetch-Site`) gets a confirm button instead, so a link elsewhere can't add a device to a
-  signed-in person's account. Someone else's touchscreen is a `409`.
+  signed-in person's account. Someone else's touchscreen is a `409`. With `&return_to=<url>` the page redirects back
+  to the tablet's app instead, adding `device_id=<id>` (or `error=taken`). The URL's origin must be listed in the
+  setting `TOUCHSCREEN_RETURN_ORIGINS`, or the request is refused before anything is registered.
 
 Pairing gives the screen its internal name (its slug, which is its device id), puts it on the render pool's list and
 queues its first render. Its owner can give it a friendly name on its settings page.

@@ -33,6 +33,12 @@ def load(app: Flask) -> None:
     # Where Pocket ID sends a new user after they've added a passkey: the settings site. Unset, the site the sign-up
     # page was served from.
     app.config["SITE_URL"] = os.environ.get("SITE_URL", "").rstrip("/")
+    # Where /register may send a touchscreen back to once it's registered: the tablet app's origins (scheme://host[:port],
+    # space-separated; a custom scheme like maxmix://callback works the same). Unset (the default), no return URL is
+    # taken, and the page says it's done instead.
+    app.config["TOUCHSCREEN_RETURN_ORIGINS"] = frozenset(
+        origin.rstrip("/").lower() for origin in os.environ.get("TOUCHSCREEN_RETURN_ORIGINS", "").split()
+    )
 
     app.config["SPOTIFY_CLIENT_ID"] = os.environ["SPOTIFY_CLIENT_ID"]
     app.config["SPOTIFY_CLIENT_SECRET"] = os.environ["SPOTIFY_CLIENT_SECRET"]
