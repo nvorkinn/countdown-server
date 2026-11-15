@@ -28,8 +28,8 @@
             {% else %}
                 <li>{{ styles[config.style][0] }}</li>
                 <li>{{ orientation_labels[config.orientation if hd_screen else page_orientation] }}</li>
+                <li>{{ languages[config.language] }}</li>
             {% endif %}
-            <li>{{ languages[config.language] }}</li>
             <li>{{ stops | length }} {{ 'stop' if stops | length == 1 else 'stops' }}</li>
             {# "24-hour (13:00)" without its example. #}
             <li>{{ clock_formats[config.clock_format].split(' (')[0] }}</li>
@@ -362,7 +362,7 @@
                 ${modeIcon(stop)}
                 <div class="item-text">
                     <h4>${escapeHtml(stop.name)}</h4>
-                    <p>${stopDetail(stop)} <span class="page-badge"></span></p>
+                    <p>${stopDetail(stop)}${'pages' in stopsList.dataset ? ' <span class="page-badge"></span>' : ''}</p>
                 </div>
             </div>
             <div class="stop-actions">
