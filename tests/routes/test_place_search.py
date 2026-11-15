@@ -35,12 +35,11 @@ LONDONS = {
 }
 
 
-def test_place_search_requires_a_paired_browser(client):
+def test_place_search_requires_a_paired_screen(client, anonymous_client):
     with patch("broker.clients.weather.requests.get") as get:
-        response = client.get("/api/places/search?q=london")
+        assert client.get("/api/places/search?q=london").status_code == 403
+        assert anonymous_client.get("/api/places/search?q=london").status_code == 401
 
-    assert response.status_code == 302
-    assert response.headers["Location"] == "/pair/add"
     get.assert_not_called()
 
 
@@ -53,24 +52,27 @@ def test_place_search_returns_open_meteos_matches_best_first(paired_client):
     assert get.call_args.kwargs["params"]["name"] == "London"
     assert response.get_json() == [
         {
-            "id": 2643743,
+            "id": "2643743",
             "name": "London",
-            "admin1": "England",
-            "country": "United Kingdom",
+            "subtitle": "England, United Kingdom",
+            "indent": False,
+            # What picking it saves: the whole weather section, as the config answers it with this place.
+            "value": {"location": "London", "key": "london-gb-2643743"},
+            "label": "London, England, United Kingdom",
             "country_code": "GB",
             "latitude": 51.50853,
             "longitude": -0.12574,
-            "label": "London, England, United Kingdom",
         },
         {
-            "id": 6058560,
+            "id": "6058560",
             "name": "London",
-            "admin1": "Ontario",
-            "country": "Canada",
+            "subtitle": "Ontario, Canada",
+            "indent": False,
+            "value": {"location": "London", "key": "london-ca-6058560"},
+            "label": "London, Ontario, Canada",
             "country_code": "CA",
             "latitude": 42.98339,
             "longitude": -81.23304,
-            "label": "London, Ontario, Canada",
         },
     ]
 
@@ -84,9 +86,9 @@ def test_place_search_ignores_a_query_too_short_to_search(paired_client):
     get.assert_not_called()
 
 
-def test_place_search_is_empty_rather_than_an_error_when_open_meteo_is_down(paired_client):
+def test_place_search_is_a_502_with_no_places_when_open_meteo_is_down(paired_client):
     client, _, _ = paired_client
     with patch("broker.clients.weather.requests.get", side_effect=requests.Timeout):
         response = client.get("/api/places/search?q=london")
 
-    assert (response.status_code, response.get_json()) == (200, [])
+    assert (response.status_code, response.get_json()) == (502, [])

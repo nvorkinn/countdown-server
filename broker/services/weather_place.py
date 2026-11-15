@@ -54,11 +54,52 @@ def weather_key(config: DeviceConfig) -> str | None:
     v1:weather:<key>), and renderers are sent it as the Weather config's `key`.
     """
     if config.weather_place_id is not None:
-        slug = slugify(config.weather_place_name or config.weather_location or "")
-        country = (config.weather_country_code or "").lower() or NO_COUNTRY
-        return "-".join(part for part in (slug, country, str(config.weather_place_id)) if part)
+        return _key(
+            config.weather_place_name or config.weather_location or "",
+            config.weather_country_code,
+            config.weather_place_id,
+        )
     normalized = " ".join((config.weather_location or "").casefold().split())
     return slugify(normalized) or normalized or None
+
+
+def place_key(place: dict[str, Any]) -> str:
+    """Return the key a screen's weather would have with this place (one of Open-Meteo's) picked: weather_key()'s."""
+    return _key(place["name"], place["country_code"], place["id"])
+
+
+def search_result(place: dict[str, Any]) -> dict[str, Any]:
+    """Return one of Open-Meteo's places as the place search answers it (the contract's PlaceSearchResult)."""
+    region = ", ".join(
+        dict.fromkeys(part for part in (place["admin1"], place["country"]) if part and part != place["name"])
+    )
+    return {
+        "id": str(place["id"]),
+        "name": place["name"],
+        "subtitle": region,
+        "indent": False,
+        # The weather section a save with this place picked has, as the config answers it.
+        "value": {"location": place["name"], "key": place_key(place)},
+        "label": place["label"],
+        "country_code": place["country_code"],
+        "latitude": place["latitude"],
+        "longitude": place["longitude"],
+    }
+
+
+def _key(name: str, country_code: str | None, place_id: int) -> str:
+    country = (country_code or "").lower() or NO_COUNTRY
+    return "-".join(part for part in (slugify(name), country, str(place_id)) if part)
+
+
+# A placed key's country and Open-Meteo id, at its end.
+_PLACED_KEY = re.compile(r"(?:^|-)[a-z]{2}-([0-9]+)$")
+
+
+def place_id_of(key: str) -> int | None:
+    """Return the Open-Meteo id a weather key ends in (a picked place's, place_key()); None for a typed location's."""
+    match = _PLACED_KEY.search(key)
+    return int(match[1]) if match else None
 
 
 def resolve(place_id: str, text: str, current: DeviceConfig) -> dict[str, Any] | None:

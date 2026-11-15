@@ -11,13 +11,12 @@ def _mock_get(json_data, status_code=200):
     return response
 
 
-def test_search_stops_requires_a_paired_browser(client):
-    """It spends the broker's TfL key, so it isn't open to anyone who finds the URL."""
+def test_search_stops_requires_a_paired_screen(client, anonymous_client):
+    """It spends the broker's TfL key, so it isn't open to anyone who finds the URL, or anyone who signs up."""
     with patch("broker.clients.tfl.requests.Session.get") as get:
-        response = client.get("/api/stops/search?q=kings")
+        assert client.get("/api/stops/search?q=kings").status_code == 403
+        assert anonymous_client.get("/api/stops/search?q=kings").status_code == 401
 
-    assert response.status_code == 302
-    assert response.headers["Location"] == "/pair/add"
     get.assert_not_called()
 
 
@@ -151,13 +150,13 @@ def test_search_stops_searches_as_typed_when_no_stop_has_that_letter(paired_clie
     )
 
 
-def test_search_stops_returns_500_when_tfl_search_fails(paired_client):
+def test_search_stops_returns_502_when_tfl_search_fails(paired_client):
     client, _, _ = paired_client
     with patch("broker.clients.tfl.requests.Session.get", return_value=_mock_get({}, status_code=503)) as get:
         get.return_value.raise_for_status.side_effect = Exception("503")
         response = client.get("/api/stops/search?q=kings")
 
-    assert response.status_code == 500
+    assert response.status_code == 502
     assert response.get_json() == []
 
 
@@ -226,7 +225,10 @@ def test_search_lists_norwegian_stations_with_their_platforms_indented(paired_cl
         "lines": None,
         "subtitle": "T-bane • All platforms • 1, 3",
         "indent": False,
+        # What picking it saves: the stop as the config's arrivals has it.
+        "value": {"source": "entur", "id": "NSR:StopPlace:58366"},
     }
+    assert platform_1["value"] == {"source": "entur", "id": "NSR:Quay:11144"}
     assert platform_1["subtitle"] == "Platform 1 • towards Frognerseteren • 1"
     assert platform_2["subtitle"] == "Platform 2 • towards Mortensrud • 1, 3"
     assert platform_2["name"] == "Majorstuen"

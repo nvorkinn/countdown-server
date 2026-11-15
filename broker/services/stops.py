@@ -52,7 +52,7 @@ def _norwegian_first(query: str) -> bool:
 
 
 def search(query: str) -> list[dict[str, Any]]:
-    """Return stops matching the query from both sources, asked at once.
+    """Return stops matching the query from both sources, asked at once, as the contract's StopSearchResult.
 
     A query with æ, ø or å lists Norway's first, any other London's. Raises only if both searches fail.
     """
@@ -77,4 +77,9 @@ def search(query: str) -> list[dict[str, Any]]:
         msg = "Every stop search failed"
         raise RuntimeError(msg)
     order = ("entur", "tfl") if _norwegian_first(query) else ("tfl", "entur")
-    return [result for source in order for result in results.get(source, [])]
+    # Each with what picking it saves: the stop as the config's arrivals has it (the contract's StopSearchResult).
+    return [
+        result | {"value": {"source": result["source"], "id": result["id"]}}
+        for source in order
+        for result in results.get(source, [])
+    ]

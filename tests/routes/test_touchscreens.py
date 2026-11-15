@@ -107,12 +107,14 @@ def test_an_epaper_screen_still_needs_its_format(client):
 # --- its config -----------------------------------------------------------------------------------
 
 
-def test_the_config_needs_the_devices_secret(app, client):
+def test_the_config_needs_the_devices_secret(app, client, anonymous_client):
     _registered(app, client)
 
-    for method in (client.get, client.put):
+    for method in (anonymous_client.get, client.put):
         assert method(CONFIG_URL).status_code == 401
         assert method(CONFIG_URL, headers=_auth("not-the-secret-of-any-device")).status_code == 401
+    # Signed in to the settings site, a GET without a secret reads one of the person's devices, named by device_id.
+    assert client.get(CONFIG_URL).status_code == 400
 
 
 def test_a_touchscreen_gets_no_pairing_code(app, client):

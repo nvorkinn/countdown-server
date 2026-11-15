@@ -8,6 +8,11 @@ token, not a code it shows. Its owner sets it up on the settings site; a PUT sen
 may change only SAVED_HERE, and one that changes anything else is refused and saves nothing. An e-paper screen polls
 for its frames (routes/frames.py).
 
+A section at a time is PUT /config/<section> (putConfigSection, services/config_sections.py), which the settings site
+calls too, with its owner's login instead of the secret (auth.require_device_or_owner), and GET /config with it. Every
+answer carries the config's version as its ETag, and a section's save needs it back as If-Match: a stale one is a 409,
+so whoever saved last isn't overwritten unseen.
+
 A touchscreen plays its owner's Spotify itself (its Web Playback SDK), so it asks for a short-lived access token for
 the account's link (GET /spotify/token); the refresh token and the app's secret stay here.
 """
@@ -17,13 +22,15 @@ from typing import TYPE_CHECKING, TypeGuard
 import requests
 from countdown_api.models import EpaperConfig, TouchscreenConfig
 from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from broker.auth import hash_secret, require_device_auth, with_retry_after
+from broker.auth import hash_secret, require_device_auth, require_device_or_owner, with_retry_after
 from broker.clients import spotify
 from broker.db import db
 from broker.models import DEVICE_TYPES, FRAME_FORMATS, Device, DeviceConfig, DeviceType, FrameFormat, SpotifyToken
-from broker.services import accounts, config_store, registration, renderer_config
+from broker.routes.pages import _contract_errors, _publish_saved
+from broker.services import accounts, config_sections, config_store, registration, renderer_config
 
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
@@ -116,14 +123,18 @@ def _is_frame_format(value: object) -> TypeGuard[FrameFormat]:
 
 
 @bp.get("/config")
-@require_device_auth()
-def get_config(device_id: str) -> ResponseReturnValue:
-    """Answer the device's config (ConfigResponse), paired or not, with no pairing code.
+@require_device_or_owner
+def get_config(device_id: str, *, by_device: bool) -> ResponseReturnValue:  # noqa: ARG001 -- the same for both
+    """Answer the device's config (ConfigResponse), paired or not, with no pairing code, and its version as the ETag.
 
-    Takes the device's secret as `Authorization: Bearer <secret>`.
+    Takes the device's secret as `Authorization: Bearer <secret>`, or, from the settings site, its owner's login and
+    ?device_id= (auth.require_device_or_owner). With If-None-Match of the version, a 304 while it's still the config.
     """
-    config = db.session.get_one(DeviceConfig, device_id)
-    return renderer_config.build(config, pairing_code=None).model_dump(mode="json"), 200
+    built = renderer_config.build(db.session.get_one(DeviceConfig, device_id), pairing_code=None)
+    etag = config_sections.version_of(built)
+    if etag in _etags(request.headers.get("If-None-Match", ""), weak=True):
+        return "", 304, {"ETag": etag}
+    return built.model_dump(mode="json"), 200, {"ETag": etag}
 
 
 @bp.put("/config")
@@ -132,15 +143,20 @@ def put_config(device_id: str) -> ResponseReturnValue:
     """Save a touchscreen's own settings from the whole config it sends, and answer the config as saved.
 
     400 for a config the contract doesn't allow or that changes anything but SAVED_HERE (read-only fields included),
-    409 for a device no one has paired yet, or an e-paper screen, which has no settings panel of its own; 403 when its
-    owner doesn't approve the save (accounts.approves_device_save).
+    409 for a device no one has paired yet, or an e-paper screen, which has no settings panel of its own, and for an
+    If-Match that isn't the config's version any more; 403 when its owner doesn't approve the save
+    (accounts.approves_device_save).
     """
     device = db.session.get_one(Device, device_id)
-    config = db.session.get_one(DeviceConfig, device_id)
+    config = _locked_config(device_id)
     if device.paired_at is None or device.type != "touchscreen":
         return jsonify(error="only a paired touchscreen saves its own config; set it up on the settings site"), 409
     if not accounts.approves_device_save(device):
         return jsonify(error="the device's owner hasn't approved this save"), 403
+    current = renderer_config.build(config, pairing_code=None)
+    if_match = request.headers.get("If-Match")
+    if if_match is not None and config_sections.version_of(current) not in _etags(if_match):
+        return _stale()
     body = request.get_json(silent=True)
     model = CONFIGS.get(body.get("type")) if isinstance(body, dict) else None
     try:
@@ -149,7 +165,6 @@ def put_config(device_id: str) -> ResponseReturnValue:
         sent = model.model_validate(body)
     except ValueError:  # pydantic's ValidationError is one
         return jsonify(error="not a config the contract allows"), 400
-    current = renderer_config.build(config, pairing_code=None)
     changed = sorted(name for name in type(current).model_fields if getattr(sent, name) != getattr(current, name))
     if not isinstance(sent, TouchscreenConfig) or not set(changed) <= SAVED_HERE:
         refused = [name for name in changed if name not in SAVED_HERE] or ["type"]
@@ -163,7 +178,101 @@ def put_config(device_id: str) -> ResponseReturnValue:
     # Every screen's copy, as a save on the settings site does (the render pool never draws a touchscreen, so there's
     # nothing to queue).
     config_store.publish_all()
-    return renderer_config.build(config, pairing_code=None).model_dump(mode="json"), 200
+    return _saved(config)
+
+
+@bp.put("/config/<section>")
+@require_device_or_owner
+def put_config_section(device_id: str, section: str, *, by_device: bool) -> ResponseReturnValue:  # noqa: PLR0911 -- an answer per failure
+    """Replace one section of the device's config whole (config_sections), and answer the config as saved.
+
+    Needs If-Match, the version the change was made to (428 without): a stale one is a 409, so the caller reloads
+    rather than overwrites what was saved in between. The section is put into the config as it stands and the result
+    validated with the device type's model (400 if it refuses it, or the value can't be saved); one the type doesn't
+    have is a 404. A device saves its own config only as a paired touchscreen whose owner approves (403 otherwise);
+    on the settings site, any device of the person's (auth.require_device_or_owner). 503 when a weather place can't
+    be checked with Open-Meteo right now.
+    """
+    device = db.session.get_one(Device, device_id)
+    if by_device and (refused := _refused_own_save(device)):
+        return refused
+    model = CONFIGS[device.type]
+    if section not in config_sections.sections(model):
+        return jsonify(error=f"a {device.type} config has no section {section!r}"), 404
+    if_match = request.headers.get("If-Match")
+    if if_match is None:
+        return jsonify(error="send the config's version (its ETag) as If-Match"), 428
+    config = _locked_config(device_id)
+    current = renderer_config.build(config, pairing_code=None)
+    if config_sections.version_of(current) not in _etags(if_match):
+        return _stale()
+    body = request.get_json(silent=True)
+    try:
+        if body is None:
+            raise ValueError  # noqa: TRY301 -- the same answer as a section the model refuses
+        spliced = model.model_validate({**current.model_dump(mode="json"), section: body})
+    except ValueError:  # pydantic's ValidationError is one
+        return jsonify(error=f"not a {section} the contract allows for a {device.type}"), 400
+    turned = isinstance(spliced, EpaperConfig) and spliced.style.orientation != config.orientation
+    if refused := _set_section(config, section, getattr(spliced, section)):
+        db.session.rollback()
+        return refused
+    db.session.commit()
+    _publish_saved(device_id, turned=turned)
+    return _saved(config)
+
+
+def _refused_own_save(device: Device) -> ResponseReturnValue | None:
+    """Return the 403 for a device that may not save its own config, or None if it may."""
+    if device.paired_at is None or device.type != "touchscreen":
+        return jsonify(error="only a paired touchscreen saves its own config; set it up on the settings site"), 403
+    if not accounts.approves_device_save(device):
+        return jsonify(error="the device's owner hasn't approved this save"), 403
+    return None
+
+
+def _set_section(config: DeviceConfig, section: str, value: object) -> ResponseReturnValue | None:
+    """Write a section to the device's settings; return the answer if it can't be saved, or None if it was."""
+    try:
+        config_sections.set_section(config, section, value)
+    except config_sections.SectionError as error:
+        return jsonify(error=str(error)), 400
+    except config_sections.SectionUnavailableError:
+        return with_retry_after(jsonify(error="the weather place can't be checked just now"), 60), 503
+    # Every save is checked as the settings page's are: the config it makes, as built, against the type's model.
+    if _contract_errors(config):
+        return jsonify(error=f"not a {section} the contract allows for a {config.device.type}"), 400
+    return None
+
+
+def _locked_config(device_id: str) -> DeviceConfig:
+    """Return the device's settings, read afresh and locked until the save commits.
+
+    So two saves of one version can't both pass the If-Match check. SQLite has no FOR UPDATE (SQLAlchemy leaves it
+    out), but the broker's one sync worker (gunicorn.conf.py) takes one request at a time anyway.
+    """
+    return db.session.scalars(
+        select(DeviceConfig)
+        .where(DeviceConfig.device_id == device_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one()
+
+
+def _etags(header: str, *, weak: bool = False) -> set[str]:
+    """Return the ETags an If-Match header lists; `weak` for If-None-Match's, where W/"x" is "x" too."""
+    tags = {tag.strip() for tag in header.split(",") if tag.strip()}
+    return {tag.removeprefix("W/") for tag in tags} if weak else tags
+
+
+def _stale() -> ResponseReturnValue:
+    return jsonify(error="the config has changed since: read it again"), 409
+
+
+def _saved(config: DeviceConfig) -> ResponseReturnValue:
+    """Answer the config as saved, with its new version."""
+    built = renderer_config.build(config, pairing_code=None)
+    return built.model_dump(mode="json"), 200, {"ETag": config_sections.version_of(built)}
 
 
 @bp.get("/spotify/token")
