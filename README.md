@@ -109,6 +109,8 @@ incoming request). The sign-up page (`/pair`) and the device endpoints stay publ
   signed-in person's account. Someone else's touchscreen is a `409`. With `&return_to=<url>` the page redirects back
   to the tablet's app instead, adding `device_id=<id>` (or `error=taken`). The URL's origin must be listed in the
   setting `TOUCHSCREEN_RETURN_ORIGINS`, or the request is refused before anything is registered.
+  The same origins may call the touchscreen's routes on `API_HOST` from the browser (CORS): `/api/devices/*`,
+  `/api/stops/search` and `/api/places/search` (broker/cors.py).
 
 Pairing gives the screen its internal name (its slug, which is its device id), puts it on the render pool's list and
 queues its first render. Its owner can give it a friendly name on its settings page.

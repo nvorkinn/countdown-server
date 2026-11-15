@@ -6,7 +6,7 @@ import redis
 from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import cli, config, log_format, request_log
+from . import cli, config, cors, log_format, request_log
 from . import db as db_module
 from .auth import current_username
 from .routes import (
@@ -45,6 +45,7 @@ def create_app() -> Flask:
     db_module.init_app(app)
 
     request_log.init_app(app)
+    cors.init_app(app)
     app.context_processor(
         lambda: {"username": current_username(), "environment_label": app.config["ENVIRONMENT_LABEL"]}
     )
