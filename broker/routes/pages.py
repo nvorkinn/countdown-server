@@ -6,9 +6,8 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 from countdown_api import keys as store_keys
-from countdown_api.models import ConfigResponse
+from countdown_api.models import EpaperConfig, TouchscreenConfig
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
-from pydantic import TypeAdapter, ValidationError
 from redis import Redis, RedisError
 
 from broker.auth import (
@@ -370,8 +369,11 @@ TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
 }
 # What an error calls each type of device.
 TYPE_NAMES: dict[DeviceType, str] = {"epaper": "an e-paper screen", "touchscreen": "a touchscreen"}
-# The config a save must make: its type's member of the contract's ConfigResponse, picked by its `type`.
-CONFIG_RESPONSE: TypeAdapter[ConfigResponse] = TypeAdapter(ConfigResponse)
+# The config a save must make: the contract's ConfigResponse member for the device's type, as its `type` picks it.
+CONFIG_MODELS: dict[DeviceType, type[EpaperConfig | TouchscreenConfig]] = {
+    "epaper": EpaperConfig,
+    "touchscreen": TouchscreenConfig,
+}
 
 
 def _foreign_fields(device_type: DeviceType) -> list[str]:
@@ -467,13 +469,15 @@ def _contract_errors(config: DeviceConfig) -> list[str]:
     Every save is checked here, whatever the page checked first: the config is built as the device and the render
     pool read it (renderer_config.build) and validated as a ConfigResponse, whose `type` picks the model.
     """
+    device_type = config.device.type
     try:
-        CONFIG_RESPONSE.validate_python(renderer_config.build(config, pairing_code=None).model_dump(mode="json"))
-    except ValidationError as error:
-        # Where in the config, not the values: they're the owner's.
-        places = sorted({".".join(str(part) for part in issue["loc"]) for issue in error.errors()})
-        current_app.logger.warning("A save of %s made a config the contract refuses: %s", config.device_id, places)
-        return [f"These settings aren't allowed for {TYPE_NAMES[config.device.type]} ({', '.join(places)})."]
+        CONFIG_MODELS[device_type].model_validate(
+            renderer_config.build(config, pairing_code=None).model_dump(mode="json")
+        )
+    except ValueError:  # pydantic's ValidationError is one
+        # Not the error's text: it quotes the values, which are the owner's.
+        current_app.logger.warning("A save of %s made a config the contract refuses", config.device_id)
+        return [f"These settings aren't allowed for {TYPE_NAMES[device_type]}."]
     return []
 
 
