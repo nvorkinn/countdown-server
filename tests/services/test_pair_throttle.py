@@ -23,7 +23,7 @@ def _fail(throttle, ip, times):
     """Record `times` failures and return the last result."""
     result = None
     for _ in range(times):
-        result = throttle.record_failure(ip)
+        result = throttle.record(ip)
     return result
 
 
@@ -52,7 +52,7 @@ def test_failures_spread_over_more_than_a_window_never_lock_out():
     throttle = PairThrottle(clock=clock)
 
     for _ in range(MAX_FAILURES * 3):
-        assert throttle.record_failure("1.2.3.4") is None
+        assert throttle.record("1.2.3.4") is None
         clock.advance(WINDOW_SECONDS / (MAX_FAILURES - 1))
 
 
@@ -100,22 +100,22 @@ def test_ips_are_counted_separately():
 
     assert throttle.retry_after("1.2.3.4") is not None
     assert throttle.retry_after("5.6.7.8") is None
-    assert throttle.record_failure("5.6.7.8") is None
+    assert throttle.record("5.6.7.8") is None
 
 
 def test_forgets_ips_with_nothing_left_to_remember():
     clock = FakeClock()
     throttle = PairThrottle(clock=clock)
-    throttle.record_failure("1.2.3.4")
+    throttle.record("1.2.3.4")
     _fail(throttle, "5.6.7.8", MAX_FAILURES)
 
     clock.advance(WINDOW_SECONDS + 1)
-    throttle.record_failure("9.9.9.9")
+    throttle.record("9.9.9.9")
     # 1.2.3.4's failure is too old to count, but 5.6.7.8's lockout could still grow if it comes back.
     assert set(throttle._clients) == {"5.6.7.8", "9.9.9.9"}
 
     clock.advance(MAX_LOCKOUT_SECONDS + WINDOW_SECONDS + 1)
-    throttle.record_failure("9.9.9.9")
+    throttle.record("9.9.9.9")
     assert set(throttle._clients) == {"9.9.9.9"}
 
 

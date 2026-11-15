@@ -232,7 +232,7 @@ def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way th
     retry_after = max(pair_throttle.retry_after(ip) or 0, signup_throttle.retry_after(ip) or 0)
     if retry_after:
         return _too_many_attempts(retry_after, _render_signup)
-    if (lockout := signup_throttle.record_failure(ip)) is not None:
+    if (lockout := signup_throttle.record(ip)) is not None:
         return _too_many_attempts(lockout, _render_signup)
 
     code = request.form.get("code", "").strip().upper()
@@ -249,7 +249,7 @@ def _sign_up() -> ResponseReturnValue:  # noqa: PLR0911 -- one return per way th
     except signup.SignupError as e:
         if e.wrong_code:
             current_app.logger.warning("Wrong pairing code from %s", ip)
-            if (lockout := pair_throttle.record_failure(ip)) is not None:
+            if (lockout := pair_throttle.record(ip)) is not None:
                 return _too_many_attempts(lockout, _render_signup)
         page = _render_signup(code="" if e.wrong_code else code, error=e.message, name=name, email=email, token=token)
         return page, e.status
@@ -281,7 +281,7 @@ def add_screen(user_id: str) -> ResponseReturnValue:
 
     device_id = pairing.redeem_code(request.form.get("code", "").strip().upper(), user_id)
     if device_id is None:
-        lockout = throttle.record_failure(ip)
+        lockout = throttle.record(ip)
         current_app.logger.warning("Wrong pairing code from %s", ip)
         if lockout is not None:
             current_app.logger.warning("Too many wrong pairing codes from %s; locked out for %ss", ip, lockout)

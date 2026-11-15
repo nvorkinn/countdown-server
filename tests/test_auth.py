@@ -43,26 +43,10 @@ def test_require_device_auth_rejects_an_empty_bearer_secret(client, register_dev
     assert response.status_code == 401
 
 
-def test_require_device_auth_forbids_a_valid_secret_for_a_role_not_allowed(app, register_device):
-    _device_id, secret = register_device()
-
-    @require_device_auth(roles=frozenset())
-    def view(device_id):
-        return jsonify(device_id=device_id)
-
-    with app.test_request_context(headers={"Authorization": f"Bearer {secret}"}):
-        result = view()
-    assert isinstance(result, tuple)
-    response, status = result[0], result[1]
-    assert isinstance(response, Response)
-    assert status == 403
-    assert response.get_json() == {"error": "forbidden"}
-
-
 def test_require_device_auth_sets_device_id_and_role(app, register_device):
     device_id, secret = register_device()
 
-    @require_device_auth()
+    @require_device_auth
     def view(device_id):
         return jsonify(device_id=g.device_id, role=g.role)
 

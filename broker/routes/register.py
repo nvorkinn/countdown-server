@@ -79,7 +79,7 @@ def register(user_id: str) -> ResponseReturnValue:
     if retry_after is not None:
         page = render_template("register.html", error="Too many touchscreens added. Please wait and try again.")
         return with_retry_after(current_app.make_response(page), retry_after), 429
-    throttle.record_failure(ip)
+    throttle.record(ip)
     return _register_and_claim(user_id, secret_hash, registration.Screen("touchscreen", width, height), return_to)
 
 
