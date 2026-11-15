@@ -43,17 +43,17 @@ def test_require_device_auth_rejects_an_empty_bearer_secret(client, register_dev
     assert response.status_code == 401
 
 
-def test_require_device_auth_sets_device_id_and_role(app, register_device):
+def test_require_device_auth_sets_device_id(app, register_device):
     device_id, secret = register_device()
 
     @require_device_auth
     def view(device_id):
-        return jsonify(device_id=g.device_id, role=g.role)
+        return jsonify(device_id=g.device_id)
 
     with app.test_request_context(headers={"Authorization": f"Bearer {secret}"}):
         response = view()
         assert isinstance(response, Response)
-        assert response.get_json() == {"device_id": device_id, "role": "display"}
+        assert response.get_json() == {"device_id": device_id}
 
 
 def test_session_cookie_domain_comes_from_the_environment(monkeypatch, app):

@@ -273,7 +273,7 @@ def test_id_less_requests_are_logged_with_the_device_id(app, client, register_de
     with caplog.at_level("INFO"):
         client.post("/api/frame", headers=_auth(secret))
 
-    assert f"POST /api/frame device={slug} ({device_id}) role=display" in caplog.messages
+    assert f"POST /api/frame device={slug} ({device_id})" in caplog.messages
 
 
 # --- Retry-After: how often to poll (services/pace.py; tests/routes/test_frames.py has the rest) ---------------------
