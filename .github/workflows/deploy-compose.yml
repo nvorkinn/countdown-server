@@ -28,6 +28,10 @@ on:
         description: Set by promote.yml, after its approval, to deploy production for real. A run by hand has no such input.
         type: boolean
         default: false
+      wait_for_images:
+        description: Set by release.yml, which starts this alongside its builds, to wait for the tag's images before pulling.
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       environment:
@@ -66,6 +70,7 @@ jobs:
       TARGET: ${{ inputs.environment }}
       DRY_RUN: ${{ inputs.dry_run }}
       APPROVED: ${{ inputs.approved }}
+      WAIT_FOR_IMAGES: ${{ inputs.wait_for_images }}
       DEPLOY_TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
     steps:
       - name: Only promote.yml deploys production

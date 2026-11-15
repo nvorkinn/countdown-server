@@ -62,6 +62,30 @@ if [ "$db_viewer" = true ]; then profiles="${profiles:+$profiles,}db-viewer"; fi
 )
 echo "Staged $tag for $target ($(docker compose config --services | wc -l | tr -d ' ') services, DOCKER_HOST=${DOCKER_HOST%%@*}@...)"
 
+# WAIT_FOR_IMAGES=true (release.yml's dev deploy): the job starts alongside the builds, so the tailnet, the secrets and
+# the staging above are done by the time the images are, and this waits here for this release's tag of every image the
+# environment runs to be in the registry. The registry is asked from the runner, not through the host's daemon. A build
+# that fails fails the release run anyway; the wait gives up after WAIT_FOR_IMAGES_TIMEOUT seconds.
+if [ "${WAIT_FOR_IMAGES:-false}" = true ]; then
+  mapfile -t waiting < <(docker compose config --images | grep -F ":$tag" | sort -u)
+  deadline=$((SECONDS + ${WAIT_FOR_IMAGES_TIMEOUT:-900}))
+  echo "Waiting for ${#waiting[@]} images at $tag"
+  while [ "${#waiting[@]}" -gt 0 ]; do
+    still=()
+    for image in "${waiting[@]}"; do
+      env -u DOCKER_HOST docker buildx imagetools inspect "$image" >/dev/null 2>&1 || still+=("$image")
+    done
+    waiting=("${still[@]}")
+    [ "${#waiting[@]}" -eq 0 ] && break
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "Gave up waiting for: ${waiting[*]}" >&2
+      exit 1
+    fi
+    sleep 5
+  done
+  echo "Every image is in the registry"
+fi
+
 # docker compose commands that pull (pull itself, and up, which pulls again what it thinks is missing) now and then fail
 # with containerd's "lease does not exist: not found". Another try works, so this runs the command up to three times, but
 # only for that error: anything else (a container that never gets healthy) fails at once, not after three timeouts.
