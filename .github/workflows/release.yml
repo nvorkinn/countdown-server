@@ -102,6 +102,12 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
+      # The day the IP location data is fetched for: a new day misses the build cache for it, an earlier release the same
+      # day reuses it. Only the broker's Dockerfile uses it.
+      - name: Today
+        id: date
+        run: echo "value=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
       # BuildKit's own attestations are pushed beside the image as extra (unknown/unknown platform) manifests in the
       # index of this digest; the join below keeps them, so a pull on either host still picks its own platform's image.
       - name: Build and push by digest
@@ -115,10 +121,12 @@ jobs:
           sbom: true
           # The previous release's layers, from the registry (a tag's run can't read another tag's Actions cache), so an
           # image whose inputs haven't changed is rebuilt in seconds with the same layers. Caddy's xcaddy build (Go, ~60s)
-          # was the slowest build of all and held up the dev deploy, which doesn't even run Caddy. The broker's image
-          # is left uncached: its dependency layer is refreshed every release.
-          cache-from: ${{ matrix.image != 'countdown-server' && format('type=registry,ref={0}:buildcache-{1}', env.IMAGE, matrix.arch) || '' }}
-          cache-to: ${{ matrix.image != 'countdown-server' && format('type=registry,ref={0}:buildcache-{1},mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE, matrix.arch) || '' }}
+          # was the slowest build of all and held up the dev deploy, which doesn't even run Caddy. In the broker's image
+          # the dependencies (uv.lock) and the IP location data keep their layers too, so a host pulls only the code
+          # that changed; GEODATA_DATE refetches the data once a day (Dockerfile).
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }},mode=max,image-manifest=true,oci-mediatypes=true
+          build-args: GEODATA_DATE=${{ steps.date.outputs.value }}
 
       - name: Keep the digest for the join
         env:
