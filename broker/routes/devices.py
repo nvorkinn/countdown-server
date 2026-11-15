@@ -1,17 +1,24 @@
-"""A device's registration.
+"""A device's routes: its registration, and its config.
 
-An e-paper screen then polls for its frames (routes/frames.py), a touchscreen for its config (routes/config_api.py).
+Once registered, a device reads its config here (GET /config, the store contract's getConfig), and a touchscreen
+saves what its own settings panel shows (PUT /config, putConfig). A touchscreen draws itself from that config, as the
+render pool draws an e-paper screen from the store's copy of one (services/config_store.py): it's the same config,
+built the same way (renderer_config.build), and never has a pairing code, as a touchscreen is paired by its pairing
+token, not a code it shows. Its owner sets it up on the settings site; a PUT sends the whole config as it got it and
+may change only SAVED_HERE, and one that changes anything else is refused and saves nothing. An e-paper screen polls
+for its frames (routes/frames.py).
 """
 
 from typing import TYPE_CHECKING, TypeGuard
 
+from countdown_api.models import EpaperConfig, TouchscreenConfig
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy.exc import IntegrityError
 
-from broker.auth import hash_secret, with_retry_after
+from broker.auth import hash_secret, require_device_auth, with_retry_after
 from broker.db import db
-from broker.models import DEVICE_TYPES, FRAME_FORMATS, DeviceType, FrameFormat
-from broker.services import registration
+from broker.models import DEVICE_TYPES, FRAME_FORMATS, Device, DeviceConfig, DeviceType, FrameFormat
+from broker.services import config_store, registration, renderer_config
 
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
@@ -19,6 +26,12 @@ if TYPE_CHECKING:
 bp = Blueprint("devices", __name__, url_prefix="/api/devices")
 
 MIN_SECRET_LENGTH = 16
+
+# ConfigResponse's members, by their tag, `type`.
+CONFIGS = {"epaper": EpaperConfig, "touchscreen": TouchscreenConfig}
+# What a touchscreen's own settings panel changes, and so what a PUT may: its look, when it sleeps, and the clock and
+# language every panel shares.
+SAVED_HERE = frozenset({"clock_format", "language", "style", "display"})
 
 
 @bp.post("/register")
@@ -95,3 +108,51 @@ def _is_device_type(value: object) -> TypeGuard[DeviceType]:
 def _is_frame_format(value: object) -> TypeGuard[FrameFormat]:
     """Whether a reported frame format is one the renderer can draw."""
     return value in FRAME_FORMATS
+
+
+@bp.get("/config")
+@require_device_auth()
+def get_config(device_id: str) -> ResponseReturnValue:
+    """Answer the device's config (ConfigResponse), paired or not, with no pairing code.
+
+    Takes the device's secret as `Authorization: Bearer <secret>`.
+    """
+    config = db.session.get_one(DeviceConfig, device_id)
+    return renderer_config.build(config, pairing_code=None).model_dump(mode="json"), 200
+
+
+@bp.put("/config")
+@require_device_auth()
+def put_config(device_id: str) -> ResponseReturnValue:
+    """Save a touchscreen's own settings from the whole config it sends, and answer the config as saved.
+
+    400 for a config the contract doesn't allow or that changes anything but SAVED_HERE (read-only fields included),
+    409 for a device no one has paired yet, or an e-paper screen, which has no settings panel of its own.
+    """
+    device = db.session.get_one(Device, device_id)
+    config = db.session.get_one(DeviceConfig, device_id)
+    if device.paired_at is None or device.type != "touchscreen":
+        return jsonify(error="only a paired touchscreen saves its own config; set it up on the settings site"), 409
+    body = request.get_json(silent=True)
+    model = CONFIGS.get(body.get("type")) if isinstance(body, dict) else None
+    try:
+        if model is None:
+            raise ValueError  # noqa: TRY301 -- the same answer as a config its model refuses
+        sent = model.model_validate(body)
+    except ValueError:  # pydantic's ValidationError is one
+        return jsonify(error="not a config the contract allows"), 400
+    current = renderer_config.build(config, pairing_code=None)
+    changed = sorted(name for name in type(current).model_fields if getattr(sent, name) != getattr(current, name))
+    if not isinstance(sent, TouchscreenConfig) or not set(changed) <= SAVED_HERE:
+        refused = [name for name in changed if name not in SAVED_HERE] or ["type"]
+        return jsonify(error=f"only {', '.join(sorted(SAVED_HERE))} can be saved here, not {', '.join(refused)}"), 400
+    config.clock_format = sent.clock_format
+    config.language = sent.language
+    config.theme = sent.style.skin
+    config.theme_colour = sent.style.colour
+    config.screen_sleep_minutes = sent.display.sleep_minutes
+    db.session.commit()
+    # Every screen's copy, as a save on the settings site does (the render pool never draws a touchscreen, so there's
+    # nothing to queue).
+    config_store.publish_all()
+    return renderer_config.build(config, pairing_code=None).model_dump(mode="json"), 200
