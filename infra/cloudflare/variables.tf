@@ -33,3 +33,11 @@ variable "cname_targets" {
     dev = "home.vorkinn.org"
   }
 }
+
+variable "extra_names" {
+  type        = map(list(string))
+  description = "Names an environment's records point at its host, besides the ones its config/<environment>.env lists: sites the same Caddy serves that aren't countdown-server's. The Max Mix (the kiosk tablet app) is a static site on the home server, served by home-stack's Caddy."
+  default = {
+    dev = ["the-max-mix.countdown.build"]
+  }
+}

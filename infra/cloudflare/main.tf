@@ -14,11 +14,12 @@ locals {
   # APEX_HOST and www. redirect to APP_HOST (config/*.env), but all of them need a record. API_HOST is the screens' API,
   # and LEGACY_HOST the name the settings site and the API shared before (still the API for boards flashed then).
   # TAUTH_HOST is Tinyauth and ID_HOST Pocket ID, which every environment runs for itself.
-  names = toset([
+  # Plus any extra_names of the environment's (other sites on the same host).
+  names = setunion([
     local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.APP_HOST, local.settings.API_HOST,
     local.settings.LEGACY_HOST, local.settings.LOGS_HOST, local.settings.METRICS_HOST, local.settings.TAUTH_HOST,
     local.settings.ID_HOST,
-  ])
+  ], lookup(var.extra_names, var.environment, []))
 }
 
 resource "cloudflare_dns_record" "host" {
