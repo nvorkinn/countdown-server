@@ -236,11 +236,11 @@ def _refused_own_save(device: Device) -> ResponseReturnValue | None:
 def _set_section(config: DeviceConfig, section: str, value: object) -> ResponseReturnValue | None:
     """Write a section to the device's settings; return the answer if it can't be saved, or None if it was."""
     try:
-        config_sections.set_section(config, section, value)
-    except config_sections.SectionError as error:
-        return jsonify(error=str(error)), 400
+        reason = config_sections.set_section(config, section, value)
     except config_sections.SectionUnavailableError:
         return with_retry_after(jsonify(error="the weather place can't be checked just now"), 60), 503
+    if reason is not None:
+        return jsonify(error=reason), 400
     # Every save is checked as the settings page's are: the config it makes, as built, against the type's model.
     if _contract_errors(config):
         return jsonify(error=f"not a {section} the contract allows for a {config.device.type}"), 400
