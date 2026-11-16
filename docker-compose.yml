@@ -467,7 +467,7 @@ services:
   # volume (SQLite database, keys, uploads) holds every user and passkey: deploy-context.sh backs it up before each
   # deploy; copy those off the host.
   countdown-pocket-id:
-    image: ghcr.io/pocket-id/pocket-id:v2.19.2
+    image: ghcr.io/pocket-id/pocket-id:v2.19.3
     container_name: countdown-pocket-id
     logging: *logging
     restart: unless-stopped
