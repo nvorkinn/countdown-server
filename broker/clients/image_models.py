@@ -12,8 +12,8 @@ from typing import Protocol
 import requests
 
 OPENAI_URL = "https://api.openai.com/v1/images"
-# Landscape, the widest OpenAI makes; the screens are 1024x600 and 1280x800 and crop it to cover.
-OPENAI_SIZE = "1536x1024"
+# The bigger touchscreen's own size (16:10), which gpt-image-2 makes as asked; the 1024x600 one crops it to cover.
+OPENAI_SIZE = "1280x800"
 # A JPEG this compressed is a few hundred KB at that size, which the screens load over Wi-Fi.
 OPENAI_COMPRESSION = 85
 # gpt-image-2 took 65 s for one at high quality, 2.6-sunburst about 35 s at medium: well inside this.

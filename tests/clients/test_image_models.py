@@ -34,7 +34,7 @@ def test_openai_makes_a_landscape_jpeg_with_the_key():
     assert sent | {"prompt": "a prompt"} == sent
     assert (sent["model"], sent["size"], sent["quality"], sent["output_format"]) == (
         "gpt-image-2",
-        "1536x1024",
+        "1280x800",
         "high",
         "jpeg",
     )

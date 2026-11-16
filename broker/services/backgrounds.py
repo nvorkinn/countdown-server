@@ -5,9 +5,12 @@ sunrise, day 90 minutes after it, dusk an hour before sunset and night 45 minute
 sunrise and sunset. Each is made LEAD before it starts, from the forecast for that hour, so a change in the weather is
 caught; dawn is a new picture, and each later one relights the one before, so the view is the same all day.
 
-A picture's prompt is the place's view in that part of the day's light and that hour's weather, the day's occasions (a
-hand-kept calendar: Halloween, Christmas, Eurovision... never the news), a UK bank holiday, and the Met Office's
-warnings for the place, all kept subtle, with the upper left kept dark and empty for the temperature written over it.
+A picture's prompt is the day's scene (a place with scenes of its own, like London, goes through them a day at a time,
+each with its subject up high and a calm foreground), in that part of the day's light, the season and that hour's
+weather, the day's occasions (a hand-kept calendar: Halloween, Christmas, Eurovision... never the news), a UK bank
+holiday, and the Met Office's warnings for the place, all kept subtle. It asks for the subject along the top, from the
+middle to the right, and keeps the left third, the bottom half and the top edge calm, because the Dashboard's weather
+and notices, departure boards, and tab bar and hourly forecast are laid over them.
 """
 
 from dataclasses import dataclass, field
@@ -294,13 +297,86 @@ def warnings(stored: list[StoredMetOfficeWarnings]) -> list[str]:
 
 # --------------------------------------------------------------------------------------------------- the prompt
 
-# The view each place is painted from; a place not here gets a recognisable everyday view of itself.
-SCENES = {"london-gb-2643743": "the London skyline seen from the river Thames, the river in the foreground"}
+
+@dataclass(frozen=True)
+class Scene:
+    """A view a place's pictures show: its subject, kept high up, and the calm foreground below it."""
+
+    subject: str
+    foreground: str
 
 
-def scene(place: Place) -> str:
-    """Return the view the place's pictures show."""
-    return SCENES.get(place.key) or f"a recognisable everyday view of {place.name}, as people who live there know it"
+# London's scenes, one a day in turn (scene_of): each has its subject up high and a naturally calm, plain foreground for
+# the departure boards to sit on. Left to itself the model paints the Houses of Parliament almost every time. Neighbours
+# in the list are unlike each other (river, park, aerial), so two days running look different.
+LONDON_SCENES = (
+    Scene(
+        "Tower Bridge, with the towers of the City rising behind it, seen from far downstream",
+        "the wide, calm river Thames",
+    ),
+    Scene(
+        "the view from the top of Greenwich Park: the Old Royal Naval College's twin domes and the river below, "
+        "Canary Wharf's towers beyond",
+        "the park's broad, open lawn sloping away, smooth and plain",
+    ),
+    Scene(
+        "the trees and rooftops along the far shore of the Serpentine in Hyde Park, Knightsbridge's buildings "
+        "rising above them",
+        "the lake's open, still water",
+    ),
+    Scene(
+        "an aerial view from high over the river of the City of London's towers: the Gherkin, the Walkie-Talkie, "
+        "the Cheesegrater and their glass neighbours, St Paul's dome among them",
+        "the river and the low, dark streets beneath, simple and in shadow",
+    ),
+    Scene(
+        "the Houses of Parliament and Elizabeth Tower, seen from the far bank of the Thames",
+        "the wide, calm river",
+    ),
+    Scene(
+        "the view from the top of Primrose Hill: London's skyline along the horizon, from the BT Tower to the Shard",
+        "the hill's open grass sloping down, smooth and plain",
+    ),
+    Scene(
+        "Regent's Canal at King's Cross: the old gasholder frames and canal-side buildings rising on the far side",
+        "the canal's still, dark water",
+    ),
+    Scene(
+        "St Paul's Cathedral's dome rising above the north bank, seen across the Thames from Bankside",
+        "the wide, calm river",
+    ),
+)
+SCENES: dict[str, tuple[Scene, ...]] = {"london-gb-2643743": LONDON_SCENES}
+
+
+def scene_of(place: Place, day: date) -> Scene:
+    """Return the scene the place's pictures show on `day`: its own scenes in turn, a day each, or its everyday view.
+
+    By date, not part of the day, so a day's later pictures relight the same scene.
+    """
+    if scenes := SCENES.get(place.key):
+        return scenes[day.toordinal() % len(scenes)]
+    return Scene(
+        f"a recognisable everyday view of {place.name}, as people who live there know it",
+        "open water, grass or a plain square",
+    )
+
+
+# The season by month, as the places are all in the northern hemisphere.
+SEASONS = {
+    1: "winter",
+    2: "late winter",
+    3: "early spring",
+    4: "spring",
+    5: "late spring",
+    6: "early summer",
+    7: "summer",
+    8: "late summer",
+    9: "early autumn",
+    10: "autumn",
+    11: "late autumn",
+    12: "early winter",
+}
 
 
 @dataclass(frozen=True)
@@ -318,9 +394,10 @@ def prompt(place: Place, phase: BackgroundPhase, context: Context) -> str:
     """Return the prompt for the place's picture for the part of the day."""
     clear, overcast = LIGHT[phase]
     light = overcast if context.weather.code >= OVERCAST else clear
-    month = context.local_date.strftime("%B")
+    when = f"{SEASONS[context.local_date.month]} ({context.local_date.strftime('%B')})"
+    view = scene_of(place, context.local_date)
     lines = [
-        f"A wide, photographic, landscape-format image of {scene(place)}, on a day in {month}, {light}.",
+        f"A wide, photographic, landscape-format image of {view.subject}, in {when}, {light}.",
         f"Weather: {describe_weather(context.weather)}.",
     ]
     lines += [f"It is {occasion.name}: {occasion.look}." for occasion in context.occasions]
@@ -331,15 +408,32 @@ def prompt(place: Place, phase: BackgroundPhase, context: Context) -> str:
     lines += [
         (
             "Keep any seasonal or festive touches subtle and understated, an everyday photo of the day rather than a "
-            "poster."
+            "poster, and only up near the main subject."
         ),
         (
-            "Composition: the upper-left third is calm, dark and empty (plain sky or water only, nothing in it, no "
-            "birds, bats, fireworks or decorations), because large white text will sit there."
+            "Composition: the picture fills a wide screen, with text laid over its left side, its bottom half and its "
+            "top edge, so:"
         ),
         (
-            "Overall slightly dark, soft and low in contrast so white text stays readable. Natural colours, realistic, "
-            "high detail, no people in close-up."
+            "- The very top of the picture, about its top fifth, is a band of plain sky: even the tallest tower or "
+            "spire stays below it, with nothing reaching up into it."
+        ),
+        (
+            "- The main subject sits high in the picture, in its upper half just under that band of sky, anywhere from "
+            "the centre to the right. It can be smaller and further away rather than fill the frame."
+        ),
+        (
+            "- The left third, from top to bottom, is calm and simple: open sky above, the foreground below, with no "
+            "landmarks, buildings, trees, people, birds, fireworks, decorations or bright lights in it."
+        ),
+        (
+            f"- The bottom half is {view.foreground}: calm, even and low in detail across the whole width, with "
+            "nothing close up in it (no boats, people, railings, benches or objects)."
+        ),
+        (
+            "Moody and atmospheric, with rich natural light, colour and contrast in the subject, while the calm areas "
+            "stay darker and even so white text over them stays readable. Realistic, natural colours, high detail "
+            "in the subject only."
         ),
         "Absolutely no text, letters, numbers, signs, logos, watermarks, borders or user interface.",
     ]
