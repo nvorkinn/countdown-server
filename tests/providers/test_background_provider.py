@@ -158,21 +158,24 @@ def test_the_day_relights_dawn(provider_app, store, touchscreen):
     assert [image["phase"] for image in _stored(store)["images"]] == ["dawn", "day"]
 
 
-def test_a_failed_model_falls_back_to_the_next_then_the_curated_picture(provider_app, store, touchscreen):
+def test_a_failed_model_falls_back_to_the_curated_picture(provider_app, store, touchscreen):
     touchscreen()
-    openai, flux = Model(fails=True), Model("flux-2-pro")
-    provider, _ = _provider(provider_app, store, [openai, flux], DAWN)
-    provider.run_cycle()
-    assert _stored(store)["images"][0]["fallback"] is False
-    assert len(flux.calls) == 1
+    provider, _ = _provider(provider_app, store, [Model(fails=True)], DAWN)
 
-    store.delete(store_keys.background(KEY))
-    flux.fails = True
     provider.run_cycle()
 
     [image] = _stored(store)["images"]
     assert image["fallback"] is True
     assert store.get(store_keys.background_image(image["digest"])) == backgrounds.fallback("dawn")
+
+
+def test_without_a_key_the_pictures_are_the_curated_ones(provider_app, store, touchscreen):
+    touchscreen()
+    provider, _ = _provider(provider_app, store, [], DAWN)
+
+    provider.run_cycle()
+
+    assert _stored(store)["images"][0]["fallback"] is True
 
 
 def test_a_fallback_is_tried_again_after_half_an_hour(provider_app, store, touchscreen):

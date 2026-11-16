@@ -6,7 +6,7 @@ It runs on providers/loop.py's loop, in read_only_app(), with a store that answe
 INTERVAL_S it reads the places the paired touchscreens show (their weather keys: an e-paper screen draws no
 background, so its places cost nothing) and, for each, works out from the stored forecast which part of the day is due
 (services/backgrounds.py: each is made LEAD before it starts). One not made yet is made: dawn new, each later part
-relit from the one before it, by the first model that answers (clients/image_models.py: OpenAI's, then FLUX), else
+relit from the one before it, by the first model that answers (clients/image_models.py: OpenAI's), else
 the curated picture with `fallback: true`, which is tried again after backgrounds.RETRY. Its bytes go to
 `v1:background-image:<sha256>` and the day's list to `v1:background:<weather key>` (the store contract's), both kept
 two days.
@@ -101,7 +101,7 @@ class BackgroundProvider(ProviderLoop):
     def run_cycle(self) -> int:
         """Make every place's due background; return how many were written. Raises RedisError."""
         if not self.models and not self.nudged:
-            logger.warning("No OPENAI_API_KEY or BFL_API_KEY: the backgrounds are the curated ones")
+            logger.warning("No OPENAI_API_KEY: the backgrounds are the curated ones")
         with self.app.app_context():
             wanted = places()
         written = 0
