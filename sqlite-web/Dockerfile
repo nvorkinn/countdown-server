@@ -8,7 +8,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt && rm /tmp/requirements.txt \
     && useradd --system --no-create-home --uid 10001 --user-group sqlite-web
 
-# Not root. The broker (root, default umask) leaves broker.db readable by everyone, which is all this needs.
+# Not root. The broker (root, default umask) leaves broker.db readable by everyone; the directory it is in, on the host
+# (the broker_data volume), has to let everyone in too, or sqlite-web can't open the file and says it doesn't exist.
 USER 10001:10001
 
 EXPOSE 8080
