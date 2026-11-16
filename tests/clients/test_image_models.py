@@ -12,6 +12,13 @@ from broker.clients.image_models import FLUX_URL, OPENAI_URL, FluxImages, ImageM
 JPEG = b"\xff\xd8\xff\xe0 a picture"
 
 
+def _body(call) -> bytes:
+    """Return a faked call's request body, which `responses` types loosely, as the bytes or text it is."""
+    body = call.request.body
+    assert isinstance(body, bytes | str)
+    return body.encode() if isinstance(body, str) else body
+
+
 def _openai_answer():
     return {"data": [{"b64_json": base64.b64encode(JPEG).decode()}]}
 
@@ -23,7 +30,7 @@ def test_openai_makes_a_landscape_jpeg_with_the_key():
     picture = OpenAIImages("sk-test", "gpt-image-2", "high").make("a prompt")
 
     assert picture == JPEG
-    sent = json.loads(call.calls[0].request.body)
+    sent = json.loads(_body(call.calls[0]))
     assert sent | {"prompt": "a prompt"} == sent
     assert (sent["model"], sent["size"], sent["quality"], sent["output_format"]) == (
         "gpt-image-2",
@@ -41,7 +48,7 @@ def test_openai_relights_a_reference_with_an_edit():
     picture = OpenAIImages("sk-test", "gpt-image-2", "high").make("relight", JPEG)
 
     assert picture == JPEG
-    body = call.calls[0].request.body
+    body = _body(call.calls[0])
     assert b'name="image[]"' in body
     assert JPEG in body
 
@@ -71,7 +78,7 @@ def test_flux_starts_a_job_polls_it_and_fetches_the_picture():
     picture = FluxImages("bfl-test", sleep=lambda _s: None).make("a prompt", JPEG)
 
     assert picture == JPEG
-    sent = json.loads(start.calls[0].request.body)
+    sent = json.loads(_body(start.calls[0]))
     assert sent["input_image"] == base64.b64encode(JPEG).decode()
     assert start.calls[0].request.headers["x-key"] == "bfl-test"
 
