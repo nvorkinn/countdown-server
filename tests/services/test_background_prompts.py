@@ -136,7 +136,7 @@ def test_warnings_are_their_titles_in_brief_each_once():
     assert backgrounds.warnings([stored]) == ["yellow warning of snow", "amber warning of wind"]
 
 
-def test_the_prompt_has_the_view_light_weather_occasions_and_the_empty_corner():
+def test_the_prompt_has_the_scene_season_light_weather_occasions_and_the_calm_zones():
     context = Context(
         date(2026, 12, 25),
         Weather(73, 1, 10),
@@ -147,16 +147,41 @@ def test_the_prompt_has_the_view_light_weather_occasions_and_the_empty_corner():
 
     prompt = backgrounds.prompt(LONDON, "night", context)
 
-    assert "London skyline seen from the river Thames" in prompt
-    assert "December" in prompt
+    view = backgrounds.scene_of(LONDON, date(2026, 12, 25))
+    assert view.subject in prompt
+    assert f"The bottom half is {view.foreground}" in prompt
+    assert "early winter (December)" in prompt
     assert "low clouds lit softly" in prompt  # snow is overcast
     assert "falling snow" in prompt
     assert "bitterly cold" in prompt
     assert "It is Christmas: Christmas lights." in prompt
     assert "bank holiday" not in prompt  # Christmas already says it
     assert "yellow warning of snow" in prompt
-    assert "upper-left third is calm, dark and empty" in prompt
+    assert "anywhere from the centre to the right" in prompt
+    assert "The left third, from top to bottom, is calm and simple" in prompt
+    assert "top fifth, is a band of plain sky" in prompt
     assert "no text" in prompt
+    assert "1280" not in prompt  # zones in words, not pixels
+
+
+def test_london_goes_through_its_scenes_a_day_at_a_time():
+    week = [backgrounds.scene_of(LONDON, date(2026, 11, 17) + timedelta(days=n)) for n in range(7)]
+
+    assert len(set(week)) == 7
+    assert all(view in backgrounds.LONDON_SCENES for view in week)
+    later = date(2026, 11, 17) + timedelta(days=len(backgrounds.LONDON_SCENES))
+    assert backgrounds.scene_of(LONDON, later) == week[0]
+
+
+def test_every_part_of_a_day_has_the_same_scene_so_a_relight_keeps_it():
+    context = Context(date(2026, 11, 17), Weather(3, 10, 10), [])
+
+    subjects = {
+        phase: backgrounds.scene_of(LONDON, context.local_date).subject in backgrounds.prompt(LONDON, phase, context)
+        for phase in backgrounds.PHASES
+    }
+
+    assert all(subjects.values())
 
 
 def test_a_place_with_no_scene_of_its_own_is_its_everyday_view():
