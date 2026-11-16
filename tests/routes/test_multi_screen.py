@@ -131,7 +131,7 @@ def test_disconnecting_spotify_unlinks_the_account_and_unlinking_acts_on_the_cho
 def test_a_second_screen_is_named_on_its_own_page(app, client, two_screens):
     first, second = two_screens
 
-    assert client.post(f"/device/{second}", data={"screen_name": "Bedroom"}).headers["Location"] == f"/device/{second}"
+    assert client.post(f"/device/{second}/name", data={"screen_name": "Bedroom"}).status_code == 200
 
     with app.app_context():
         assert db.session.get_one(Device, second).device_name == "Bedroom"
@@ -189,7 +189,7 @@ def test_plain_device_marks_the_most_recent_screen_as_current(client, two_screen
 
 def test_the_switcher_uses_the_screens_name(app, client, two_screens):
     first, _ = two_screens
-    client.post(f"/device/{first}", data={"screen_name": "Kitchen"})
+    client.post(f"/device/{first}/name", data={"screen_name": "Kitchen"})
 
     assert ">Kitchen</a>" in client.get("/device").data.decode()
 

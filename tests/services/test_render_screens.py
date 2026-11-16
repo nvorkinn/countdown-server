@@ -286,10 +286,10 @@ def test_pairing_names_the_screen_and_lists_and_draws_it_at_once(app, store, cli
 
 
 def test_renaming_a_screen_leaves_its_entry_alone(store, client, paired_client):
-    _client, _device_id, _ = paired_client
+    _client, device_id, _ = paired_client
     before = store.hgetall(SCREENS)
 
-    client.post("/device", data={"screen_name": "Kitchen"})
+    client.post(f"/device/{device_id}/name", data={"screen_name": "Kitchen"})
 
     assert store.hgetall(SCREENS) == before
 

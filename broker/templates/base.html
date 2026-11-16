@@ -934,6 +934,119 @@
             margin: 6px 0 8px;
         }
 
+        /* The name, with a pencil beside it that turns it into a box (screen_name.js). */
+        .title-row[hidden], .title-form[hidden] {
+            display: none;
+        }
+
+        /* Every element has the body type (*), so the name keeps the heading's. */
+        .title-row > span {
+            font-family: inherit;
+        }
+
+        .title-edit {
+            display: inline-grid;
+            place-items: center;
+            width: 36px;
+            height: 36px;
+            margin-left: 4px;
+            padding: 0;
+            border: none;
+            border-radius: 8px;
+            background: none;
+            color: var(--text-muted);
+            vertical-align: .1em;
+            cursor: pointer;
+        }
+
+        .title-edit[hidden] {
+            display: none;
+        }
+
+        .title-edit:hover, .title-edit:focus-visible {
+            background: var(--chip);
+            color: var(--ink);
+        }
+
+        .title-edit svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .title-form {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 12px;
+            margin: 6px 0 8px;
+        }
+
+        /* The box keeps the title's look, so the name is edited where it stands. */
+        .title-form input {
+            flex: 1 1 100%;
+            min-width: 0;
+            padding: 0 0 2px;
+            border: none;
+            border-bottom: 2px solid var(--ink);
+            border-radius: 0;
+            background: none;
+            color: var(--ink);
+            font-family: var(--display);
+            font-size: 52px;
+            font-weight: 700;
+            line-height: 1.02;
+            letter-spacing: -.01em;
+            outline: none;
+        }
+
+        .title-form input::placeholder {
+            color: var(--text-muted);
+            opacity: .5;
+        }
+
+        .title-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .title-save, .title-cancel {
+            padding: 9px 16px 7px;
+            border-radius: 8px;
+            font-family: var(--display);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+
+        .title-save {
+            border: 1.5px solid var(--ink);
+            background: var(--ink);
+            color: #fff;
+        }
+
+        .title-save:disabled {
+            opacity: .6;
+            cursor: progress;
+        }
+
+        .title-cancel {
+            border: 1.5px solid var(--border);
+            background: none;
+            color: var(--ink);
+        }
+
+        .title-error {
+            flex-basis: 100%;
+            color: var(--red);
+            font-size: 14px;
+        }
+
+        .title-error:empty {
+            display: none;
+        }
+
         .app .hero:not(:has(.preview)) {
             grid-template-columns: minmax(0, 1fr);
         }
@@ -1904,6 +2017,15 @@
 
             .app .hero h1 {
                 font-size: 34px;
+            }
+
+            .title-form input {
+                font-size: 34px;
+            }
+
+            .title-edit {
+                width: 32px;
+                height: 32px;
             }
 
             .app .hero-lede {

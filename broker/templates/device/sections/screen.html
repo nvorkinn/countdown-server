@@ -1,13 +1,8 @@
-{# Every device's own: its name, what it said of itself at registration, and unlinking it. #}
+{# Every device's own: what it said of itself at registration, and unlinking it. Its name is edited in the page's title. #}
 <section class="section" data-tour="screen">
     <header class="card-header">
         <h2 class="card-title">Screen</h2>
     </header>
-    <div class="form-group">
-        <label for="screen_name">Name</label>
-        <input type="text" id="screen_name" name="screen_name" value="{{ screen_name }}" maxlength="{{ name_max }}" placeholder="e.g. Kitchen" autocomplete="off">
-        <p class="form-hint">What it's called in the list of your screens.</p>
-    </div>
     {# Read-only: the device's id, and what it said of itself when it registered. #}
     <dl class="device-facts" aria-label="About this screen">
         <div><dt>Type</dt><dd>{{ device_types[device_type] }}</dd></div>

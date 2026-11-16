@@ -14,7 +14,21 @@
 <section class="hero" data-tour="hero">
     <div>
         <p class="kicker">Your screen</p>
-        <h1>{{ screen_label }}</h1>
+        {# The name is edited where it's shown: the pencil turns the title into a box, saved on its own (POST
+           /device/<id>/name, screen_name.js), on every type of screen's page. #}
+        <h1 class="title-row" id="screenTitle">{# The pencil follows the name's last word (a word joiner, no space), however it wraps. -#}
+            <span id="screenLabel">{{ screen_label }}</span>&#8288;<button type="button" class="title-edit" id="renameButton" aria-label="Rename this screen" title="Rename" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>
+            </button>
+        </h1>
+        <form class="title-form" id="renameForm" method="POST" action="{{ url_for('pages.name_screen', device_id=device_id) }}" hidden>
+            <input type="text" id="screenNameInput" name="screen_name" value="{{ screen_name }}" maxlength="{{ name_max }}" placeholder="e.g. Kitchen" autocomplete="off" aria-label="Screen name" aria-describedby="renameError">
+            <div class="title-actions">
+                <button type="submit" class="title-save">Save</button>
+                <button type="button" class="title-cancel" id="renameCancel">Cancel</button>
+            </div>
+            <p class="title-error" id="renameError" role="alert"></p>
+        </form>
         <p class="hero-lede">Changes reach the screen on its next refresh.</p>
         <ul class="chips" aria-label="Current settings">
             {% if display_attached %}
@@ -77,7 +91,7 @@
 {# A touchscreen's page saves each setting as it changes, a section at a time (config_sections.js), as the tablet does:
    no Save bar. An e-paper screen's saves the whole form. #}
 <form class="settings" id="settingsForm" method="POST" action="{{ url_for('pages.device_config', device_id=device_id) }}"
-    {%- if touchscreen %} data-config-url="{{ url_for('devices.get_config') }}" data-device-id="{{ device_id }}" data-version="{{ config_version }}" data-name-url="{{ url_for('pages.name_screen', device_id=device_id) }}"{% endif %}>
+    {%- if touchscreen %} data-config-url="{{ url_for('devices.get_config') }}" data-device-id="{{ device_id }}" data-version="{{ config_version }}"{% endif %}>
     {# The device's sections, in order (pages.PAGE_SECTIONS, by its type): each is device/sections/<name>.html, and a
        pair of them goes side by side on a wide page. #}
     {% for section in sections %}
@@ -110,6 +124,7 @@
 <script src="{{ url_for('static', filename='settings_form.js') }}"></script>
 {% endif %}
 <script src="{{ url_for('static', filename='settings_choices.js') }}"></script>
+<script src="{{ url_for('static', filename='screen_name.js') }}"></script>
 {% if not touchscreen %}
 <script src="{{ url_for('static', filename='frame_poll.js') }}"></script>
 <script>

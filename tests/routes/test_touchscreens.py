@@ -502,7 +502,7 @@ def test_a_screens_name_is_saved_on_its_own(app, client):
     response = client.post(f"/device/{device_id}/name", data={"screen_name": "  Kitchen  "})
 
     assert response.status_code == 200
-    assert response.get_json() == {"label": "Kitchen"}
+    assert response.get_json() == {"name": "Kitchen", "label": "Kitchen"}
     with app.app_context():
         assert db.session.get_one(Device, device_id).device_name == "Kitchen"
 

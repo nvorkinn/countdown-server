@@ -416,10 +416,6 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     place, errors = _weather_place(config)
     if postcode is None:
         errors.append(f'"{raw_postcode.strip()}" isn\'t a valid UK or Norwegian postcode.')
-    try:
-        screen_name = assignments.clean_name(request.form["screen_name"]) if "screen_name" in request.form else None
-    except assignments.NameTooLongError:
-        errors.append(f"The screen's name can be at most {assignments.NAME_MAX} characters.")
     errors += _foreign_fields(device_type)
     errors += [
         f"{label} must be one of {', '.join(allowed)}."
@@ -444,8 +440,6 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     config.tfl_stop_ids = stop_ids
     turned = _set_choices(config, choices)
     config.layout = layout
-    if "screen_name" in request.form:
-        db.session.get_one(Device, device_id).device_name = screen_name
     if errors := _contract_errors(config):
         db.session.rollback()
         return _render_device_config(device_id, errors=[*errors, "Nothing was saved."]), 400
@@ -538,11 +532,11 @@ def _weather_place(config: DeviceConfig) -> tuple[dict[str, Any] | None, list[st
 @bp.route("/device/<device_id>/name", methods=["GET", "POST"])
 @require_paired_user
 def name_screen() -> ResponseReturnValue:
-    """Save the screen's name on its own (POST, from a touchscreen's page), or redirect to its settings page (GET).
+    """Save the screen's name on its own (POST, from the title of its settings page), or redirect to that page (GET).
 
-    A touchscreen's page saves each setting as it changes (config_sections.js), and the name isn't in the device's
-    config: it's saved here and answered with what the pages now call the screen. An empty name clears it; a post
-    without one is a 400.
+    The name isn't in the device's config, so every type of screen's page saves it here, from the title
+    (screen_name.js), apart from its settings. It's answered with the name as saved and what the pages now call the
+    screen. An empty name clears it; a post without one is a 400.
     """
     if request.method == "GET":
         return redirect(url_for("pages.device_config", device_id=g.device_id))
@@ -555,7 +549,7 @@ def name_screen() -> ResponseReturnValue:
     device = db.session.get_one(Device, g.device_id)
     device.device_name = name
     db.session.commit()
-    return jsonify(label=screen_label(device))
+    return jsonify(name=device.device_name or "", label=screen_label(device))
 
 
 @bp.get("/device/screen", defaults={"device_id": None})
