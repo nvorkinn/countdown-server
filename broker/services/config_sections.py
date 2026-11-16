@@ -36,10 +36,6 @@ if TYPE_CHECKING:
     from broker.models import DeviceConfig
 
 
-class SectionError(ValueError):
-    """A section's value that can't be saved, and why (the message, which never quotes the value)."""
-
-
 class SectionUnavailableError(Exception):
     """A section that can't be checked right now: Open-Meteo, for a weather place."""
 
@@ -55,41 +51,40 @@ def version_of(built: EpaperConfig | TouchscreenConfig) -> str:
     return f'"{hashlib.sha256(canonical.encode()).hexdigest()[:32]}"'
 
 
-def _arrivals(config: DeviceConfig, value: Arrivals) -> None:
+def _arrivals(config: DeviceConfig, value: Arrivals) -> str | None:
     for stop in value.stops:
         if not stop.id or stops.source_of(stop.id) != stop.source:
-            msg = "each stop's source must be its id's: entur for an NSR: id, tfl for any other"
-            raise SectionError(msg)
+            return "each stop's source must be its id's: entur for an NSR: id, tfl for any other"
     config.tfl_stop_ids = [stop.id for stop in value.stops]
+    return None
 
 
-def _weather(config: DeviceConfig, value: Weather) -> None:
+def _weather(config: DeviceConfig, value: Weather) -> str | None:
     """Pick the place the key is of: the one saved, one Open-Meteo has (by the id the key ends in), or none (null)."""
     if value.key is None:
         if value.location.strip():
-            msg = "pick a place from the place search: its value has the key"
-            raise SectionError(msg)
+            return "pick a place from the place search: its value has the key"
         weather_place.store(config, None)
-        return
+        return None
     if value.key == weather_place.weather_key(config):
-        return  # the place already saved: nothing to ask Open-Meteo
+        return None  # the place already saved: nothing to ask Open-Meteo
     place_id = weather_place.place_id_of(value.key)
     try:
         place = weather.get_place(place_id) if place_id is not None else None
     except weather.GeocodingUnavailableError as error:
         raise SectionUnavailableError from error
     if place is None or weather_place.place_key(place) != value.key:
-        msg = "not the key of a place: use one the place search answered"
-        raise SectionError(msg)
+        return "not the key of a place: use one the place search answered"
     weather_place.store(config, place)
+    return None
 
 
-def _notice_board(config: DeviceConfig, value: NoticeBoard) -> None:
+def _notice_board(config: DeviceConfig, value: NoticeBoard) -> str | None:
     postcode = normalize_postcode(value.postcode or "")
     if postcode is None:
-        msg = "the postcode must be a UK or a Norwegian one"
-        raise SectionError(msg)
+        return "the postcode must be a UK or a Norwegian one"
     config.postcode = postcode
+    return None
 
 
 def _style(config: DeviceConfig, value: EpaperStyle | TouchscreenStyle) -> None:
@@ -123,8 +118,9 @@ def _flat(column: str) -> Callable[[DeviceConfig, Any], None]:
 
 
 # Each section's setter, by its name in ConfigResponse (the contract's ConfigSection). A device's type has the
-# sections its model has fields for (sections()).
-SETTERS: dict[str, Callable[[DeviceConfig, Any], None]] = {
+# sections its model has fields for (sections()). A setter returns why a value can't be saved (a fixed message, which
+# never quotes the value), or None once it's written.
+SETTERS: dict[str, Callable[[DeviceConfig, Any], str | None]] = {
     "clock_format": _flat("clock_format"),
     "language": _flat("language"),
     "arrivals": _arrivals,
@@ -145,9 +141,10 @@ def sections(model: type[EpaperConfig | TouchscreenConfig]) -> frozenset[str]:
     return frozenset(SETTERS.keys() & model.model_fields.keys())
 
 
-def set_section(config: DeviceConfig, section: str, value: object) -> None:
+def set_section(config: DeviceConfig, section: str, value: object) -> str | None:
     """Write a section's value (validated by the device type's model) to the device's settings.
 
-    Raises SectionError for a value that can't be saved, and SectionUnavailableError when it can't be checked now.
+    Returns why a value can't be saved (a message fit to answer with), or None once it's written. Raises
+    SectionUnavailableError when it can't be checked now.
     """
-    SETTERS[section](config, value)
+    return SETTERS[section](config, value)

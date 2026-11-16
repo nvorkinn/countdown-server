@@ -94,10 +94,14 @@ def test_summary_revalidates_what_it_read_last_time():
         assert (headers or {})["If-None-Match"] == f'"{url}"'
         return _response(None, 304)
 
-    with patch("requests.Session.get", side_effect=first):
-        before = github.summary("github_pat_abc", cache)
-    with patch("requests.Session.get", side_effect=unchanged):
-        assert github.summary("github_pat_abc", cache) == before
+    # One clock for both polls: the releases' call asks for the runs since a time to the second, so a second ticking
+    # over between the polls would make it a call the cache hasn't seen.
+    with patch("broker.clients.github.datetime", wraps=datetime) as clock:
+        clock.now.return_value = datetime.now(UTC)
+        with patch("requests.Session.get", side_effect=first):
+            before = github.summary("github_pat_abc", cache)
+        with patch("requests.Session.get", side_effect=unchanged):
+            assert github.summary("github_pat_abc", cache) == before
 
 
 def test_summary_sends_the_token():
