@@ -20,7 +20,7 @@ OPENAI_URL = "https://api.openai.com/v1/images"
 OPENAI_SIZE = "1536x1024"
 # A JPEG this compressed is a few hundred KB at that size, which the screens load over Wi-Fi.
 OPENAI_COMPRESSION = 85
-# OpenAI took 65 s for one at high quality: well inside this.
+# gpt-image-2 took 65 s for one at high quality, 2.6-sunburst about 35 s at medium: well inside this.
 OPENAI_TIMEOUT_S = 300
 
 FLUX_URL = "https://api.bfl.ai/v1/flux-2-pro"
@@ -156,8 +156,8 @@ class FluxImages:
 
 
 # The settings (config/<environment>.env) and their defaults.
-DEFAULT_OPENAI_MODEL = "gpt-image-2"
-DEFAULT_OPENAI_QUALITY = "high"
+DEFAULT_OPENAI_MODEL = "gpt-image-2.6-sunburst"
+DEFAULT_OPENAI_QUALITY = "medium"
 
 
 def configured() -> list[ImageModel]:
