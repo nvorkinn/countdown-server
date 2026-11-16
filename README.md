@@ -30,13 +30,14 @@ Routes and access rules are Docker labels on the service they belong to, not a s
 | `spotify-provider` | Fetches what each screen's Spotify and Apple Music are playing (every minute), their top lists (every 30 minutes) and the playing tracks' covers. |
 | `developer-provider` | Polls each screen's GitHub and AI plans for the developer panel (every 2 minutes, every 20 seconds while a release runs). |
 | `parcel-provider` | Reads each screen's active deliveries from the owner's Parcel account (every 20 minutes by day, not overnight) into `v1:parcels:<device id>`, and whether Parcel took the key into `v1:parcels-status:<device id>`. |
+| `background-provider` | Makes the weather panel's photos for the touchscreens' places, one per part of each day, 45 minutes before it starts (OpenAI's `OPENAI_IMAGE_MODEL`, FLUX as the fallback, a curated picture if both fail), into `v1:background:<weather key>` and `v1:background-image:<sha256>`. |
 | `caddy`, `tinyauth`, `pocket-id`, `socket-proxy` | The edge, in the compose profile `edge` (prod only): [caddy-docker-proxy](https://github.com/lucaslorentz/caddy-docker-proxy), the login in front of protected routes, the passkey-only identity provider behind it, and the read-only Docker socket proxy the first two use. |
 | `redis` | The store shared with countdown. A cache only: nothing on disk. On the compose network as `redis`, and on the host's `127.0.0.1:6379` for countdown. |
 | `fluent-bit`, `victoria-logs`, `victoria-metrics` | Logs and metrics from every container, the render pool and the screens. |
 | `db-viewer` | [sqlite-web](https://github.com/coleifer/sqlite-web) on the broker's database, read-only, in the compose profile `db-viewer` (dev/QA only; see [Database](#database)). |
 
-The four providers run the broker's own image with another command and the broker's secrets. The glow, developer and parcel
-providers open the database read-only; the music provider writes refreshed Spotify tokens back. Each wakes at once when
+The five providers run the broker's own image with another command and the broker's secrets. The glow, developer, parcel
+and background providers open the database read-only; the music provider writes refreshed Spotify tokens back. Each wakes at once when
 a config is saved (`v1:sub:changed`).
 
 ## The screen API

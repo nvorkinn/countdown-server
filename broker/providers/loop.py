@@ -5,7 +5,7 @@ cycles), or early on a `v1:sub:changed` message (a config was saved). SIGINT and
 failed cycle is logged and the next tick tries again; while Redis is unreachable the subscription is retried every
 RESUBSCRIBE_S, so a missed message only delays a change until the next tick.
 
-Every provider in the broker runs in it: the developer, music and glow providers.
+Every provider in the broker runs in it: the developer, music, glow, parcel and background providers.
 """
 
 import logging
@@ -41,7 +41,7 @@ def next_tick(now: float, interval_s: float) -> float:
 
 
 class ProviderLoop(ABC):
-    """Runs cycles against `store` (made with decode_responses=True), in `app`'s context, until stop().
+    """Runs cycles against `store` (decode_responses=True, or False for bytes), in `app`'s context, until stop().
 
     A provider says what a cycle does (run_cycle) and how far apart the ticks are (interval_s). A cycle can tell from
     `nudged` whether a `v1:sub:changed` message started it early, rather than a tick.
@@ -165,12 +165,12 @@ def read_only_app() -> Flask:
     return app
 
 
-def connect() -> redis.Redis:
-    """Return a client for the store, from REDIS_URL and REDIS_PASSWORD."""
+def connect(*, decode_responses: bool = True) -> redis.Redis:
+    """Return a client for the store, from REDIS_URL and REDIS_PASSWORD (answering bytes if not decode_responses)."""
     return redis.Redis.from_url(
         os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0"),
         password=os.environ.get("REDIS_PASSWORD") or None,
-        decode_responses=True,
+        decode_responses=decode_responses,
         socket_timeout=5,
         socket_connect_timeout=5,
     )
@@ -188,13 +188,16 @@ def configure_logging() -> None:
 def serve(
     make_provider: Callable[[Flask, redis.Redis], ProviderLoop],
     make_app: Callable[[], Flask] = read_only_app,
+    *,
+    decode_responses: bool = True,
 ) -> None:
     """Run the provider `make_provider` makes, in the app `make_app` makes, until SIGINT or SIGTERM.
 
-    The app is made once logging is set up, so its own start is logged too.
+    The app is made once logging is set up, so its own start is logged too. `decode_responses` False gives it a store
+    that answers bytes, for one that writes them (the background provider's pictures).
     """
     configure_logging()
-    provider = make_provider(make_app(), connect())
+    provider = make_provider(make_app(), connect() if decode_responses else connect(decode_responses=False))
     # As a container's PID 1 nothing handles SIGTERM unless we do, and docker stop would have to kill us.
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: provider.stop())

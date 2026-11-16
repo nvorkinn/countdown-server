@@ -207,6 +207,25 @@ services:
     environment: *redis-url
     stop_grace_period: 30s
 
+  # The background provider (broker/providers/background.py): the weather panel's AI-made photos for the touchscreens'
+  # places, into Redis. broker.env for the image models' keys, settings.env for which OpenAI model; it opens the
+  # database read-only, so the data volume is mounted :ro.
+  background-provider:
+    <<: *release-image
+    image: ghcr.io/nvorkinn/countdown-server:${COUNTDOWN_SERVER_VERSION:-latest}
+    container_name: background-provider
+    logging: *logging
+    command: ["python", "-m", "broker.providers.background"]
+    volumes:
+      - broker_data:/app/data:ro
+    env_file:
+      - broker.env
+      - redis.env
+      - settings.env
+    environment: *redis-url
+    # A picture takes about a minute: let the one being made finish.
+    stop_grace_period: 90s
+
   # The glow provider (broker/providers/glow.py): each screen's Glowmarkt readings into Redis. It decrypts the
   # Glowmarkt passwords with the broker's key (broker.env), so they never leave the broker, and opens the database
   # read-only.
