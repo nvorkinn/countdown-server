@@ -6,8 +6,8 @@ The records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, 
 (`zone_ids` in `variables.tf`): dev in `countdown.build`, production in `countdown.run`. Production's are A records to its
 host. Dev/QA runs on the home server, so its are CNAMEs to `home.vorkinn.org` (`cname_targets` in `variables.tf`;
 home-stack's cloudflare-ddns keeps `*.vorkinn.org` on the home's address). Every environment runs its own Tinyauth and
-Pocket ID, so `TAUTH_HOST` and `ID_HOST` get records in both. Keep Countdown's names out of `vorkinn.org` and
-`nikolaivorkinn.com`: a record there overrides the zone's wildcard and takes the name from whatever else uses it. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
+Pocket ID, so `TAUTH_HOST` and `ID_HOST` get records in both. Keep Countdown's names out of `vorkinn.org`:
+a record there overrides the zone's wildcard and takes the name from whatever else uses it. They are DNS-only, so nothing sits in front of the servers: the firmware pins Let's Encrypt's roots.
 
 The zone's other records (Resend's `send`, `rsend` and `resend._domainkey`) are not managed here.
 
