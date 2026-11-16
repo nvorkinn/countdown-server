@@ -21,3 +21,12 @@ def test_gunicorn_accepts_every_setting_in_the_config_file():
     assert "post_worker_init" in settings
     for name, value in settings.items():
         config.set(name, value)  # raises as gunicorn's own start does, for a value it won't take
+
+
+def test_the_broker_answers_on_threads_so_a_live_feed_doesnt_hold_up_the_rest():
+    loaded = runpy.run_path(str(ROOT / "gunicorn.conf.py"))
+
+    # One process (the in-memory throttles), with threads: a touchscreen's feed keeps one for minutes.
+    assert loaded["workers"] == 1
+    assert loaded["worker_class"] == "gthread"
+    assert loaded["threads"] >= 16

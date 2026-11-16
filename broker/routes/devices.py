@@ -13,6 +13,9 @@ calls too, with its owner's login instead of the secret (auth.require_device_or_
 answer carries the config's version as its ETag, and a section's save needs it back as If-Match: a stale one is a 409,
 so whoever saved last isn't overwritten unseen.
 
+A touchscreen draws its own weather, arrivals and notices from the store (GET /weather, /arrivals and /notices), or
+reads all three live as server-sent events (GET /feed, services/feed.py).
+
 A touchscreen plays its owner's Spotify itself (its Web Playback SDK), so it asks for a short-lived access token for
 the account's link (GET /spotify/token); the refresh token and the app's secret stay here.
 """
@@ -21,7 +24,7 @@ from typing import TYPE_CHECKING, Any, TypeGuard
 
 import requests
 from countdown_api.models import EpaperConfig, TouchscreenConfig
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 from redis import RedisError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -31,7 +34,7 @@ from broker.clients import spotify
 from broker.db import db
 from broker.models import DEVICE_TYPES, FRAME_FORMATS, Device, DeviceConfig, DeviceType, FrameFormat, SpotifyToken
 from broker.routes.pages import _contract_errors, _publish_saved
-from broker.services import accounts, config_sections, config_store, panels, registration, renderer_config
+from broker.services import accounts, config_sections, config_store, feed, panels, registration, renderer_config
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -324,6 +327,29 @@ def arrivals(device_id: str) -> ResponseReturnValue:
 def notices(device_id: str) -> ResponseReturnValue:
     """Answer the device's notices (DeviceNotices): their sources for its stops and postcode, as the store has them."""
     return _panel(panels.notices, device_id)
+
+
+@bp.get("/feed")
+@require_device_auth
+def device_feed(device_id: str) -> ResponseReturnValue:
+    """Stream the device's weather, arrivals and notices (getFeed), each again when it changes.
+
+    The first reading is taken here, so a device that isn't paired, or a store that's down, is refused (409, 503) as
+    the other panel routes refuse it, before the stream starts.
+    """
+    store = current_app.extensions["redis"]
+    try:
+        first = feed.read(store, device_id)
+    except panels.NotPairedError:
+        return jsonify(error="the device isn't paired yet"), 409
+    except RedisError as error:
+        current_app.logger.warning("Couldn't read a device's panels from Redis: %s", type(error).__name__)
+        return with_retry_after(jsonify(error="the store couldn't be reached"), 5), 503
+    # The app's own context maker (the proxy's, read now), so the stream reads in contexts of its own.
+    stream = feed.Feed(current_app.app_context, store, device_id, first)
+    # No buffering on the way (Caddy flushes an event stream as it comes), and nothing to cache.
+    headers = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
+    return Response(iter(stream), mimetype="text/event-stream", headers=headers)
 
 
 def _panel(read: Callable[[Redis, str], dict[str, Any]], device_id: str) -> ResponseReturnValue:
