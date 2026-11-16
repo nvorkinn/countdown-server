@@ -162,7 +162,7 @@ def _release_run(run_id=7, *, status="in_progress", conclusion=None, name="Relea
 
 
 def _releasing(runs, *, workflow=WORKFLOW, jobs=None):
-    """Fake a GitHub with `runs` in countdown-server's last few hours, and the given workflow file and jobs for run 7."""
+    """Fake a GitHub with `runs` in countdown-server's last hours, and the given workflow file and jobs for run 7."""
     jobs = (
         jobs
         if jobs is not None
