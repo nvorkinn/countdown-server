@@ -9,7 +9,6 @@
     const form = document.getElementById("settingsForm");
     const configUrl = form.dataset.configUrl;
     const deviceId = form.dataset.deviceId;
-    const nameUrl = form.dataset.nameUrl;
     let version = form.dataset.version;
     // The config as last saved (ConfigResponse), which a section's value starts from.
     let config = JSON.parse(document.getElementById("deviceConfig").textContent);
@@ -98,14 +97,10 @@
     async function save(target, section) {
         const error = errorOf(section);
         try {
-            if (target.name === "screen_name") {
-                await saveName(target.value);
-            } else {
-                const picked = SECTIONS[target.name]();
-                // Nothing to save: a place typed but not picked, or the section as it's saved.
-                if (!picked || JSON.stringify(picked[1]) === JSON.stringify(config[picked[0]])) return;
-                await saveSection(...picked);
-            }
+            const picked = SECTIONS[target.name]();
+            // Nothing to save: a place typed but not picked, or the section as it's saved.
+            if (!picked || JSON.stringify(picked[1]) === JSON.stringify(config[picked[0]])) return;
+            await saveSection(...picked);
             error.textContent = "";
             saved();
         } catch (failure) {
@@ -134,13 +129,6 @@
         config = body;
     }
 
-    async function saveName(name) {
-        const response = await fetch(nameUrl, { method: "POST", body: new URLSearchParams({ screen_name: name }) });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(body.error || "Couldn't save. Try again.");
-        document.querySelector(".hero h1").textContent = body.label;
-    }
-
     // The API's errors are lower-case clauses: make one a sentence.
     function sentence(text) {
         return text ? `${text[0].toUpperCase()}${text.slice(1)}.` : "";
@@ -148,7 +136,7 @@
 
     form.addEventListener("submit", e => e.preventDefault());
     form.addEventListener("change", e => {
-        if (e.target.name in SECTIONS || e.target.name === "screen_name") schedule(e.target, 500);
+        if (e.target.name in SECTIONS) schedule(e.target, 500);
     });
 
     try {

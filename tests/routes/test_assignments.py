@@ -94,13 +94,15 @@ def test_a_new_screen_is_called_screen_and_its_id_until_its_owner_names_it(clien
     assert f">Screen {paired[:6]}</a>" in client.get("/device").data.decode()
 
 
-def test_the_owner_names_and_renames_the_screen_on_its_settings_page(app, client, paired):
-    assert client.post("/device", data={"screen_name": "  Kitchen   wall "}).status_code == 302
+def test_the_owner_names_and_renames_the_screen_from_its_pages_title(app, client, paired):
+    response = client.post(f"/device/{paired}/name", data={"screen_name": "  Kitchen   wall "})
+    assert response.get_json() == {"name": "Kitchen wall", "label": "Kitchen wall"}
     page = client.get("/device").data.decode()
+    assert '<span id="screenLabel">Kitchen wall</span>' in page
     assert ">Kitchen wall</a>" in page
     assert 'name="screen_name" value="Kitchen wall"' in page
 
-    client.post("/device", data={"screen_name": "Hall"})
+    client.post(f"/device/{paired}/name", data={"screen_name": "Hall"})
 
     with app.app_context():
         device = db.session.get_one(Device, paired)
@@ -109,25 +111,24 @@ def test_the_owner_names_and_renames_the_screen_on_its_settings_page(app, client
         assert device.assignment.slug == paired  # the stable name never moves
 
 
-def test_a_blank_name_clears_it_and_a_save_without_one_keeps_it(app, client, paired):
-    client.post("/device", data={"screen_name": "Hall"})
-    client.post("/device", data={"style": "card"})  # a form without the field
+def test_a_blank_name_clears_it_and_a_settings_save_keeps_it(app, client, paired):
+    client.post(f"/device/{paired}/name", data={"screen_name": "Hall"})
+    client.post("/device", data={"style": "card", "screen_name": "Ignored"})  # the settings never carry the name
     with app.app_context():
         assert db.session.get_one(Device, paired).device_name == "Hall"
 
-    client.post("/device", data={"screen_name": "   "})
+    response = client.post(f"/device/{paired}/name", data={"screen_name": "   "})
 
+    assert response.get_json() == {"name": "", "label": f"Screen {paired[:6]}"}
     with app.app_context():
         assert db.session.get_one(Device, paired).device_name is None
 
 
-def test_a_name_too_long_is_refused_and_nothing_is_saved(app, client, paired):
-    response = client.post("/device", data={"screen_name": "x" * (assignments.NAME_MAX + 1), "style": "card"})
-
-    assert response.status_code == 400
-    assert b"at most 40 characters" in response.data
-    with app.app_context():
-        assert db.session.get_one(Device, paired).device_name is None
+def test_the_name_is_edited_in_the_title_not_in_a_section(client, paired):
+    page = client.get("/device").data.decode()
+    assert page.count('name="screen_name"') == 1
+    assert f'id="renameForm" method="POST" action="/device/{paired}/name"' in page
+    assert "static/screen_name.js" in page
 
 
 def test_a_screen_named_by_a_slug_before_keeps_it_as_its_name(app, client, paired):
@@ -141,7 +142,7 @@ def test_a_screen_named_by_a_slug_before_keeps_it_as_its_name(app, client, paire
 
 
 def test_the_screens_name_is_never_logged(client, paired, caplog):
-    client.post("/device", data={"screen_name": "Mum's flat in Kennington"})
+    client.post(f"/device/{paired}/name", data={"screen_name": "Mum's flat in Kennington"})
 
     with caplog.at_level("INFO"):
         client.post("/api/frame", headers=_bearer(DISPLAY))
