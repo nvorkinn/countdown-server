@@ -17,11 +17,12 @@ A touchscreen plays its owner's Spotify itself (its Web Playback SDK), so it ask
 the account's link (GET /spotify/token); the refresh token and the app's secret stay here.
 """
 
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 import requests
 from countdown_api.models import EpaperConfig, TouchscreenConfig
 from flask import Blueprint, current_app, jsonify, request
+from redis import RedisError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -30,10 +31,13 @@ from broker.clients import spotify
 from broker.db import db
 from broker.models import DEVICE_TYPES, FRAME_FORMATS, Device, DeviceConfig, DeviceType, FrameFormat, SpotifyToken
 from broker.routes.pages import _contract_errors, _publish_saved
-from broker.services import accounts, config_sections, config_store, registration, renderer_config
+from broker.services import accounts, config_sections, config_store, panels, registration, renderer_config
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from flask.typing import ResponseReturnValue
+    from redis import Redis
 
 bp = Blueprint("devices", __name__, url_prefix="/api/devices")
 
@@ -299,3 +303,35 @@ def spotify_token(device_id: str) -> ResponseReturnValue:
     if token is None:  # unlinked in between
         return jsonify(error="the owner's account hasn't linked Spotify"), 404
     return token.model_dump(mode="json"), 200
+
+
+@bp.get("/weather")
+@require_device_auth
+def weather(device_id: str) -> ResponseReturnValue:
+    """Answer the device's weather (DeviceWeather): its place's forecast, as the store has it."""
+    return _panel(panels.weather, device_id)
+
+
+@bp.get("/arrivals")
+@require_device_auth
+def arrivals(device_id: str) -> ResponseReturnValue:
+    """Answer the device's live arrivals (DeviceArrivals): each of its stops' departures, as the store has them."""
+    return _panel(panels.arrivals, device_id)
+
+
+@bp.get("/notices")
+@require_device_auth
+def notices(device_id: str) -> ResponseReturnValue:
+    """Answer the device's notices (DeviceNotices): their sources for its stops and postcode, as the store has them."""
+    return _panel(panels.notices, device_id)
+
+
+def _panel(read: Callable[[Redis, str], dict[str, Any]], device_id: str) -> ResponseReturnValue:
+    """Answer what `read` makes of the store for the device: 409 while it isn't paired, 503 while Redis is down."""
+    try:
+        return read(current_app.extensions["redis"], device_id), 200
+    except panels.NotPairedError:
+        return jsonify(error="the device isn't paired yet"), 409
+    except RedisError as error:
+        current_app.logger.warning("Couldn't read a device's panel from Redis: %s", type(error).__name__)
+        return with_retry_after(jsonify(error="the store couldn't be reached"), 5), 503

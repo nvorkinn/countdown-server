@@ -87,6 +87,16 @@ It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the S
 secret never leave the broker. `404` means the account hasn't linked Spotify, and `403` that the link predates
 touchscreens and lacks their scopes: the Account page then asks to reconnect it.
 
+It draws its own weather, arrivals and notices from what countdown's providers keep in Redis for the render pool, which
+the broker reads for it (`broker/services/panels.py`), for the config it published to `v1:config:<device id>`:
+**`GET /api/devices/weather`** (`DeviceWeather`: the place's stored Open-Meteo forecast, `v1:weather:<key>`),
+**`GET /api/devices/arrivals`** (`DeviceArrivals`: each stop's departures, `v1:departures:<stop id>`, in the owner's
+order) and **`GET /api/devices/notices`** (`DeviceNotices`: TfL's line statuses and station disruptions at its TfL
+stops and, for a UK postcode, TfL's roads, the Met Office's warnings and the bank holidays). Each value is answered as
+its provider stored it (the store contract's keys and schemas), not worded as notices; one that's missing, or that the
+contract's model won't read, is `null`. A device that isn't paired is a `409`, and Redis being down a `503` with
+`Retry-After`.
+
 ## Pairing and settings
 
 Every browser page needs a Pocket ID login as a member of the group `countdown`. Caddy forward-auths the request to
