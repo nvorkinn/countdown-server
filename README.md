@@ -18,8 +18,8 @@ The backend for **countdown**, the e-paper screens (an ESP32 driving a Waveshare
 
 ## Services
 
-Everything runs from `docker-compose.yml` on one host, as the Compose project `countdown-server` (it was `auth-broker`,
-the repo's name before it became countdown-server, which is still the name of the host's directory, `/opt/auth-broker/`).
+Everything runs from `docker-compose.yml` on one host, as the Compose project `countdown-server`, with its data in the
+host's `/opt/countdown-server/`.
 Routes and access rules are Docker labels on the service they belong to, not a separate Caddyfile; see
 [The edge](#the-edge).
 
@@ -333,7 +333,7 @@ Nothing is installed on the host but Docker.
     [infra/cloudflare/README.md](infra/cloudflare/README.md).
 - **Secrets,** in each of `dev` and `prod` (an environment's secret takes precedence over a repository's of
   the same name, so a repository-level copy is only a fallback, and best deleted once every target has its own):
-  `DEPLOY_HOST`, `DEPLOY_USER` (in the `docker` group, owning `/opt/auth-broker/`), `ORACLE_SSH_TOKEN` (a
+  `DEPLOY_HOST`, `DEPLOY_USER` (in the `docker` group, owning `/opt/countdown-server/`), `ORACLE_SSH_TOKEN` (a
   private key for that user) and `DEPLOY_SSH_KNOWN_HOSTS` (`ssh-keyscan <host>`), plus the DNS ones in
   [infra/cloudflare/README.md](infra/cloudflare/README.md#setup) and `CODECOV_TOKEN`.
   - **`dev` is the home server,** `nikolai-server` (`DEPLOY_HOST=nikolai-server.tail7c722e.ts.net`, `DEPLOY_USER=ansible`),
@@ -341,7 +341,7 @@ Nothing is installed on the host but Docker.
     skipped where the variable `TAILSCALE_CLIENT_ID` is empty, as in `prod`), so `dev` also needs the variables
     `TAILSCALE_CLIENT_ID` and `TAILSCALE_AUDIENCE`: a Tailscale federated identity (Settings > Trust credentials >
     OpenID Connect, issuer GitHub, subject `repo:nvorkinn/countdown-server:environment:dev`, scope `auth_keys` write with
-    `tag:ci`). Neither is secret, and no Tailscale secret is stored anywhere. The tailnet's ACL must let `tag:ci` SSH to the server. The host's `/opt/auth-broker/` comes from [server-config](https://github.com/nvorkinn/server-config).
+    `tag:ci`). Neither is secret, and no Tailscale secret is stored anywhere. The tailnet's ACL must let `tag:ci` SSH to the server. The host's `/opt/countdown-server/` comes from [server-config](https://github.com/nvorkinn/server-config).
     Dev has no reverse proxy of its own: its containers join home-stack's Docker network `edge` (`EDGE_OWNED=false`), whose
     Caddy serves them. It does run its own Tinyauth (`tauth.countdown.build`) and Pocket ID (`id.countdown.build`), named
     `countdown-tinyauth` and `countdown-pocket-id` so they don't clash with home-stack's. Dev's names (all in
@@ -392,7 +392,7 @@ Spotify app. A test fails if the environments' files don't set the same things.
 
 ### Backups
 
-The `broker_data` volume (the SQLite database, bound to `/opt/auth-broker/data/` on the host) and the `pocket_id_data` volume
+The `broker_data` volume (the SQLite database, bound to `/opt/countdown-server/data/` on the host) and the `pocket_id_data` volume
 (every user and passkey) are the only state worth backing up.
 
 The broker copies its database to `data/broker.db.bak-<revision>` (SQLite's backup API) whenever it starts with a migration
@@ -401,7 +401,7 @@ next migration replaces it, and a start that fails and is restarted keeps the co
 on the same disk, so it guards against a bad migration, not a lost one. To go back after one, redeploy the older tag with that
 copy restored over `data/broker.db` (an older image can't read a newer schema).
 
-`deploy-context.sh` tars Pocket ID's volume into `/opt/auth-broker/backups/` before each
+`deploy-context.sh` tars Pocket ID's volume into `/opt/countdown-server/backups/` before each
 deploy (the newest 5 are kept); copy that folder off the host, since one disk failure takes both. To restore, stop
 `pocket-id`, extract a tarball into the volume (`docker run --rm -v pocket_id_data:/data -v "$PWD/backups:/backup"
 alpine tar -xzf /backup/<file> -C /data`) and start it again. Caddy's certificates are in the `caddy_data` volume: never remove it

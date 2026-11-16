@@ -8,7 +8,7 @@ import requests
 
 from broker.services import developer
 
-SUMMARY = {"login": "nvorkinn", "repos": 9, "open_prs": 3, "review_requests": 1, "failing": ["auth-broker"]}
+SUMMARY = {"login": "nvorkinn", "repos": 9, "open_prs": 3, "review_requests": 1, "failing": ["countdown-server"]}
 TODAY = date(2026, 10, 18)
 
 

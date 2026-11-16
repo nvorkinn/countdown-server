@@ -520,16 +520,16 @@ networks:
 
 volumes:
   # The SQLite database (and its pre-migration copies). A named volume, so no deploy needs the host's directory on the
-  # runner as the project's `./data` did; it is bound to the directory the data was always in, /opt/auth-broker/data,
-  # so nothing is copied and an existing host keeps its database. The directory has to exist (the local driver won't
-  # make it). Back it up from there, not from the volume's own storage.
+  # runner as the project's `./data` did; it is bound to a directory on the host, /opt/countdown-server/data, so the
+  # database outlives the volume. The directory has to exist (the local driver won't make it; deploy-context.sh moves it
+  # there from the old /opt/auth-broker). Back it up from there, not from the volume's own storage.
   broker_data:
     name: broker_data
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/auth-broker/data
+      device: /opt/countdown-server/data
   # Fixed names so the volumes don't depend on the compose project (directory) name.
   caddy_data:
     name: caddy_data

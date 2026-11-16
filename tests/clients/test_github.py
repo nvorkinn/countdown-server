@@ -37,10 +37,10 @@ def _repo(name, pushed_at=RECENT, *, archived=False):
     }
 
 
-REPOS = [_repo("countdown"), _repo("auth-broker"), _repo("old-thing", STALE), _repo("attic", archived=True)]
+REPOS = [_repo("countdown"), _repo("countdown-server"), _repo("old-thing", STALE), _repo("attic", archived=True)]
 RUNS = {
     # One workflow failing, the other's latest passing, though it failed before.
-    "nvorkinn/auth-broker": [
+    "nvorkinn/countdown-server": [
         {"workflow_id": 1, "conclusion": "success"},
         {"workflow_id": 2, "conclusion": "failure"},
         {"workflow_id": 1, "conclusion": "failure"},
@@ -75,7 +75,7 @@ def test_summary():
         "repos": 3,
         "open_prs": 3,
         "review_requests": 1,
-        "failing": ["auth-broker"],
+        "failing": ["countdown-server"],
         "releases": [],
     }
     # The stale repo's builds aren't asked about.
@@ -162,7 +162,7 @@ def _release_run(run_id=7, *, status="in_progress", conclusion=None, name="Relea
 
 
 def _releasing(runs, *, workflow=WORKFLOW, jobs=None):
-    """Fake a GitHub with `runs` in auth-broker's last few hours, and the given workflow file and jobs for run 7."""
+    """Fake a GitHub with `runs` in countdown-server's last hours, and the given workflow file and jobs for run 7."""
     jobs = (
         jobs
         if jobs is not None
@@ -175,11 +175,11 @@ def _releasing(runs, *, workflow=WORKFLOW, jobs=None):
     def get(url, params=None, timeout=None, headers=None):
         params = params or {}
         if url.endswith("/actions/runs") and "created" in params:
-            return _response({"workflow_runs": runs if "auth-broker" in url else []})
+            return _response({"workflow_runs": runs if "countdown-server" in url else []})
         if url.endswith("/actions/runs/7/jobs"):
             return _response({"jobs": jobs})
         if "/contents/" in url:
-            assert url.endswith("/repos/nvorkinn/auth-broker/contents/.github/workflows/release.yml")
+            assert url.endswith("/repos/nvorkinn/countdown-server/contents/.github/workflows/release.yml")
             assert params == {"ref": "abc123"}
             assert headers == {"Accept": "application/vnd.github.raw+json"}
             if workflow is None:
@@ -199,7 +199,7 @@ def test_summary_has_a_running_release_with_its_jobs_as_a_graph():
         (release,) = github.summary("github_pat_abc")["releases"]
 
     assert release == {
-        "repo": "auth-broker",
+        "repo": "countdown-server",
         "title": "v1.27.0",
         "state": "running",
         "started": runs[1]["run_started_at"],
@@ -264,8 +264,8 @@ def test_a_release_that_cant_be_read_is_left_out_and_the_rest_still_shows(caplog
         summary = github.summary("github_pat_abc")
 
     assert summary["releases"] == []
-    assert summary["failing"] == ["auth-broker"]
-    assert "Couldn't read nvorkinn/auth-broker's release" in caplog.text
+    assert summary["failing"] == ["countdown-server"]
+    assert "Couldn't read nvorkinn/countdown-server's release" in caplog.text
 
 
 def _http_error(status, headers=None, text=""):

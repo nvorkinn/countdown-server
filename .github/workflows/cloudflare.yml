@@ -120,7 +120,7 @@ jobs:
       # this bot can't read). Skipped, like the plan, where there are no secrets (a fork or Dependabot pull request).
       - name: Fetch the credentials from Vaultwarden
         if: env.HAVE_SECRETS == 'true'
-        uses: nvorkinn/.github/actions/vaultwarden-secrets@982df4afb99544d566912d4ae4e4133491224ac6 # main
+        uses: nvorkinn/.github/actions/vaultwarden-secrets@6c197255c1066d95a12df083883c332102e42b9b # main
         with:
           # An absolute path: this workflow's steps run in infra/cloudflare, which the map's path would otherwise be relative to.
           map: ${{ github.workspace }}/infra/cloudflare/secrets-map.json
@@ -227,7 +227,7 @@ jobs:
       # are only available once the environment's reviewers have approved, which is what gates a DNS change. (Dev's own
       # bot can't read that collection, so no unapproved job can get the token.) Both targets' DNS is the one zone.
       - name: Fetch the credentials from Vaultwarden
-        uses: nvorkinn/.github/actions/vaultwarden-secrets@982df4afb99544d566912d4ae4e4133491224ac6 # main
+        uses: nvorkinn/.github/actions/vaultwarden-secrets@6c197255c1066d95a12df083883c332102e42b9b # main
         with:
           # An absolute path: this workflow's steps run in infra/cloudflare, which the map's path would otherwise be relative to.
           map: ${{ github.workspace }}/infra/cloudflare/secrets-map.json
