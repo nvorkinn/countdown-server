@@ -97,6 +97,10 @@ its provider stored it (the store contract's keys and schemas), not worded as no
 contract's model won't read, is `null`. A device that isn't paired is a `409`, and Redis being down a `503` with
 `Retry-After`.
 
+The weather also carries the place's backgrounds so far (`background`, `v1:background:<key>`): one AI-made photo per part
+of the day, each named by its SHA-256. The screen loads each as a plain image from **`GET /api/backgrounds/<digest>`**
+(`broker/routes/backgrounds.py`), which takes no secret (an `<img>` can't send one) and is cached as immutable.
+
 ## Pairing and settings
 
 Every browser page needs a Pocket ID login as a member of the group `countdown`. Caddy forward-auths the request to

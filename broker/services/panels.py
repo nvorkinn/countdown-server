@@ -16,6 +16,7 @@ from countdown_api import keys as store_keys
 from countdown_api.models import (
     ConfigResponse,
     StopDepartures,
+    StoredBackground,
     StoredBankHolidays,
     StoredForecast,
     StoredLineStatus,
@@ -45,12 +46,18 @@ def config(store: Redis, device_id: str) -> ConfigResponse:
 
 
 def weather(store: Redis, device_id: str) -> dict[str, Any]:
-    """Return the device's DeviceWeather: its config's place and the place's stored forecast (null without)."""
+    """Return the device's DeviceWeather: its config's place, the place's stored forecast and its backgrounds so far.
+
+    Each is null without: no place set, or nothing stored for it (its provider is down, or hasn't got to it yet).
+    """
     place = config(store, device_id).weather
-    forecast = None
+    forecast = background = None
     if place.key is not None:
-        forecast = _read(store_keys.weather(place.key), store.get(store_keys.weather(place.key)), StoredForecast)
-    return {"location": place.location, "key": place.key, "forecast": forecast}
+        names = [store_keys.weather(place.key), store_keys.background(place.key)]
+        stored_forecast, stored_background = store.mget(names)
+        forecast = _read(names[0], stored_forecast, StoredForecast)
+        background = _read(names[1], stored_background, StoredBackground)
+    return {"location": place.location, "key": place.key, "forecast": forecast, "background": background}
 
 
 def arrivals(store: Redis, device_id: str) -> dict[str, Any]:
