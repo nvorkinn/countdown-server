@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.14"
 
 [[package]]
@@ -248,6 +248,7 @@ dependencies = [
     { name = "flask-sqlalchemy" },
     { name = "gunicorn" },
     { name = "maxminddb" },
+    { name = "pydantic" },
     { name = "pyyaml" },
     { name = "redis" },
     { name = "requests" },
@@ -282,6 +283,7 @@ requires-dist = [
     { name = "flask-sqlalchemy" },
     { name = "gunicorn" },
     { name = "maxminddb" },
+    { name = "pydantic" },
     { name = "pyyaml" },
     { name = "redis" },
     { name = "requests" },
