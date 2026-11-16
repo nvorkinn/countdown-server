@@ -1,19 +1,15 @@
-"""The image models that make the weather panel's backgrounds: OpenAI's, and Black Forest Labs' FLUX as the fallback.
+"""The image model that makes the weather panel's backgrounds: OpenAI's.
 
-Each makes a picture from a prompt, or relights one it's given (the same view with other light and weather), and answers
+It makes a picture from a prompt, or relights one it's given (the same view with other light and weather), and answers
 its JPEG's bytes. A picture takes about a minute either way. A failure of any kind is an ImageModelError, with nothing
 of the request in its text but the model's status: the key goes in a header, and the prompt can name the device's place.
 """
 
 import base64
 import os
-import time
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 import requests
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 OPENAI_URL = "https://api.openai.com/v1/images"
 # Landscape, the widest OpenAI makes; the screens are 1024x600 and 1280x800 and crop it to cover.
@@ -22,12 +18,6 @@ OPENAI_SIZE = "1536x1024"
 OPENAI_COMPRESSION = 85
 # gpt-image-2 took 65 s for one at high quality, 2.6-sunburst about 35 s at medium: well inside this.
 OPENAI_TIMEOUT_S = 300
-
-FLUX_URL = "https://api.bfl.ai/v1/flux-2-pro"
-FLUX_WIDTH, FLUX_HEIGHT = 1920, 1200
-FLUX_POLL_S = 1.0
-FLUX_TIMEOUT_S = 300
-REQUEST_TIMEOUT_S = 30
 
 
 class ImageModelError(Exception):
@@ -97,71 +87,13 @@ def _openai_error(response: requests.Response) -> str:
         return "no code"
 
 
-class FluxImages:
-    """Black Forest Labs' FLUX 2 pro: start a job, poll it, then fetch the picture it signs a URL for."""
-
-    name = "flux-2-pro"
-
-    def __init__(
-        self,
-        api_key: str,
-        session: requests.Session | None = None,
-        sleep: Callable[[float], None] = time.sleep,
-        clock: Callable[[], float] = time.monotonic,
-    ) -> None:
-        """`sleep` and `clock` are parameters for the tests."""
-        self._session = session or requests.Session()
-        self._session.headers.update({"x-key": api_key, "accept": "application/json"})
-        self._sleep = sleep
-        self._clock = clock
-
-    def make(self, prompt: str, reference: bytes | None = None) -> bytes:
-        """Return the picture's JPEG. Raises ImageModelError."""
-        body: dict[str, str | int] = {
-            "prompt": prompt,
-            "width": FLUX_WIDTH,
-            "height": FLUX_HEIGHT,
-            "output_format": "jpeg",
-        }
-        if reference is not None:
-            body["input_image"] = base64.b64encode(reference).decode()
-        try:
-            start = self._session.post(FLUX_URL, json=body, timeout=REQUEST_TIMEOUT_S)
-            if not start.ok:
-                msg = f"FLUX answered {start.status_code}"
-                raise ImageModelError(msg)
-            polling_url = start.json()["polling_url"]
-            deadline = self._clock() + FLUX_TIMEOUT_S
-            while self._clock() < deadline:
-                self._sleep(FLUX_POLL_S)
-                poll = self._session.get(polling_url, timeout=REQUEST_TIMEOUT_S).json()
-                status = poll.get("status", "")
-                if status == "Ready":
-                    picture = requests.get(poll["result"]["sample"], timeout=REQUEST_TIMEOUT_S)
-                    if not picture.ok:
-                        msg = f"FLUX's picture answered {picture.status_code}"
-                        raise ImageModelError(msg)
-                    return picture.content
-                if status in {"Error", "Failed"} or "Moderated" in status:
-                    msg = f"FLUX said {status}"
-                    raise ImageModelError(msg)
-        except requests.RequestException as error:
-            msg = f"FLUX couldn't be reached ({type(error).__name__})"
-            raise ImageModelError(msg) from None
-        except ValueError, KeyError, TypeError:
-            msg = "FLUX's answer wasn't what it should be"
-            raise ImageModelError(msg) from None
-        msg = "FLUX timed out"
-        raise ImageModelError(msg)
-
-
 # The settings (config/<environment>.env) and their defaults.
 DEFAULT_OPENAI_MODEL = "gpt-image-2.6-sunburst"
 DEFAULT_OPENAI_QUALITY = "medium"
 
 
 def configured() -> list[ImageModel]:
-    """Return the models to try, in order, for the keys broker.env has: OpenAI's, then FLUX. None without either key."""
+    """Return the models to try, in order: OpenAI's, if broker.env has its key; none without."""
     models: list[ImageModel] = []
     if key := os.environ.get("OPENAI_API_KEY"):
         models.append(
@@ -171,6 +103,4 @@ def configured() -> list[ImageModel]:
                 os.environ.get("OPENAI_IMAGE_QUALITY") or DEFAULT_OPENAI_QUALITY,
             )
         )
-    if key := os.environ.get("BFL_API_KEY"):
-        models.append(FluxImages(key))
     return models
