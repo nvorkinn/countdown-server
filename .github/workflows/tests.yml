@@ -151,15 +151,18 @@ jobs:
         run: uvx pre-commit run --all-files --show-diff-on-failure
 
   # Builds the images and checks the config baked into each. The infra images
-  # have their program as the entrypoint, so `check` is just its args.
+  # have their program as the entrypoint, so `check` is just its args. Each is built on the architecture it ships
+  # for where that's one only (Caddy: production's arm64 host), else on amd64.
   image:
     name: test image
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - image: caddy
+            # Only production runs it, on arm64, and the release builds it for arm64 only.
+            runner: ubuntu-24.04-arm
             # The plugin is built in, and the binary runs.
             check: docker-proxy --help
           - image: fluent-bit
@@ -179,8 +182,28 @@ jobs:
         with:
           submodules: true
 
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      # As the release's: a new day refetches the broker's IP location data (its Dockerfile's GEODATA_DATE), so the
+      # fetch script still runs here daily rather than coming from the cache for good.
+      - name: Today
+        id: date
+        run: echo "value=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      # Into the runner's Docker, for the steps below. Each image's layers are kept in the Actions cache (its own
+      # scope, every stage's: mode=max), so an image whose inputs haven't changed builds in seconds: without it every
+      # run compiled Caddy with xcaddy again (~60s of Go), though its versions are pinned and change only on a bump.
       - name: Build image
-        run: docker build -t countdown-server-${{ matrix.image }} ${{ matrix.context || matrix.image }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: ${{ matrix.context || matrix.image }}
+          load: true
+          tags: countdown-server-${{ matrix.image }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=image-${{ matrix.image }}
+          cache-to: type=gha,scope=image-${{ matrix.image }},mode=max
+          build-args: GEODATA_DATE=${{ steps.date.outputs.value }}
 
       # Fixable HIGH/CRITICAL vulnerabilities in the image's OS packages, the broker's Python packages and the Go
       # binaries inside the infra images, plus Dockerfile misconfigurations. Accepted findings live in
