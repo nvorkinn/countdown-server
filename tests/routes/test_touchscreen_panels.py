@@ -129,7 +129,7 @@ def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device
     }
 
 
-@pytest.mark.parametrize("route", ["weather", "arrivals", "notices"])
+@pytest.mark.parametrize("route", ["weather", "arrivals", "notices", "feed"])
 def test_a_device_not_paired_has_no_config_in_the_store_so_no_panels(app, client, route):
     device_id = _registered(app, client)
     assert store_keys.config(device_id) not in app.extensions["redis"].strings
@@ -139,7 +139,7 @@ def test_a_device_not_paired_has_no_config_in_the_store_so_no_panels(app, client
     assert response.status_code == 409
 
 
-@pytest.mark.parametrize("route", ["weather", "arrivals", "notices"])
+@pytest.mark.parametrize("route", ["weather", "arrivals", "notices", "feed"])
 def test_redis_down_is_a_503_to_try_again(app, client, device, route):
     app.extensions["redis"].fail = True
 
@@ -149,7 +149,7 @@ def test_redis_down_is_a_503_to_try_again(app, client, device, route):
     assert response.headers["Retry-After"] == "5"
 
 
-@pytest.mark.parametrize("route", ["weather", "arrivals", "notices"])
+@pytest.mark.parametrize("route", ["weather", "arrivals", "notices", "feed"])
 def test_the_panels_need_the_devices_secret(client, device, route):
     assert client.get(f"/api/devices/{route}").status_code == 401
     assert client.get(f"/api/devices/{route}", headers=_auth("not-the-secret-at-all")).status_code == 401

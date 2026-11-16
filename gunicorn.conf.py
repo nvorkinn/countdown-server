@@ -10,6 +10,11 @@ from gunicorn.workers.base import Worker  # noqa: TC002
 # One process: the /pair, /register and sign-up throttles (services/pair_throttle.py) count in memory, so a second
 # worker would give every client a second allowance.
 workers = 1
+# Threads, so one slow answer doesn't hold up the rest: a touchscreen's live feed (services/feed.py) keeps its thread
+# for up to ten minutes. Enough for every screen's poll and feed at once; the in-memory throttles lock (they're shared
+# by the threads, as they would be by a second worker's requests, which is why there is only the one).
+worker_class = "gthread"
+threads = 32
 
 logger_class = "broker.log_format.GunicornLogger"
 logconfig_dict = {
