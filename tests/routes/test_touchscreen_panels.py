@@ -18,6 +18,7 @@ from tests.routes.test_touchscreens import _auth, _paired, _registered
 PANELS = fixtures.load("device_panels.json")
 DEPARTURES = fixtures.load("departures.json")
 WEATHER = fixtures.load("weather.json")
+BACKGROUND = fixtures.load("background.json")
 TFL = fixtures.load("tfl_notices.json")
 MET_OFFICE = fixtures.load("met_office.json")
 BANK_HOLIDAYS = fixtures.load("bank_holidays.json")
@@ -30,6 +31,7 @@ def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
     for stop in DEPARTURES["stops"]:
         store[stop["key"]] = json.dumps(stop["value"])
     store[WEATHER["key"]] = json.dumps(WEATHER["value"])
+    store[BACKGROUND["key"]] = json.dumps(BACKGROUND["value"])
     for kind in ("lines", "stations", "roads"):
         store[TFL[kind]["key"]] = json.dumps(TFL[kind]["value"])
     store[MET_OFFICE["key"]] = json.dumps(MET_OFFICE["value"])
@@ -62,12 +64,13 @@ def test_the_config_is_the_one_in_the_store_not_the_database(app, client, device
 
     response = client.get("/api/devices/weather", headers=_auth())
 
-    assert response.get_json() == {"location": "Somewhere", "key": None, "forecast": None}
+    assert response.get_json() == {"location": "Somewhere", "key": None, "forecast": None, "background": None}
 
 
 def test_whatever_isnt_stored_is_null(app, client, device):
     store = app.extensions["redis"].strings
-    for key in (WEATHER["key"], DEPARTURES["stops"][0]["key"], TFL["lines"]["key"], MET_OFFICE["key"]):
+    gone = (WEATHER["key"], BACKGROUND["key"], DEPARTURES["stops"][0]["key"], TFL["lines"]["key"], MET_OFFICE["key"])
+    for key in gone:
         del store[key]
 
     weather = client.get("/api/devices/weather", headers=_auth()).get_json()
@@ -75,6 +78,7 @@ def test_whatever_isnt_stored_is_null(app, client, device):
     notices = client.get("/api/devices/notices", headers=_auth()).get_json()
 
     assert weather["forecast"] is None
+    assert weather["background"] is None
     stops = {stop["id"]: stop["departures"] for stop in arrivals["stops"]}
     assert stops[DEPARTURES["stops"][0]["value"]["stop_id"]] is None
     assert len(arrivals["stops"]) == len(PANELS["config"]["arrivals"]["stops"])  # the stop is still listed
