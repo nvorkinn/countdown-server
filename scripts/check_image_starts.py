@@ -37,6 +37,7 @@ STARTED = {
     "developer-provider": "Starting the developer provider",
     "glow-provider": "Starting the glow provider",
     "parcel-provider": "Starting the parcel provider",
+    "background-provider": "Starting the background provider",
 }
 
 # Stand-ins for what the deploy fetches from Vaultwarden into each env_file: the secrets broker.create_app() and
