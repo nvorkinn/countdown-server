@@ -109,31 +109,6 @@ retry_lost_lease() {
   done
 }
 
-# One-off, from when the host's directory was /opt/auth-broker (the repo's old name): it moves to $host_dir, and the
-# broker_data volume, which binds its data/ and can't change where it points, is recreated (its containers are removed
-# first, and `up` below starts them again; the database is in the directory, not the volume). The daemon runs as root, so
-# a throwaway container does the move. It fails rather than merge if both directories exist. server-config moves the
-# directory too, on the hosts it manages; whichever runs first does it. Delete this once every host has been deployed to.
-old_host_dir=/opt/auth-broker
-on_host() { docker run --rm -v /opt:/opt docker.io/library/alpine:3.22 sh -c "$1"; }
-if on_host "test -d $old_host_dir"; then
-  if on_host "test -e $host_dir"; then
-    echo "Both $old_host_dir and $host_dir exist on the host: merge them by hand" >&2
-    exit 1
-  fi
-  if [ "$dry_run" = true ]; then
-    echo "Would move $old_host_dir to $host_dir on the host and recreate the broker_data volume"
-  else
-    echo "Moving $old_host_dir to $host_dir on the host"
-    on_host "mv $old_host_dir $host_dir"
-  fi
-fi
-if [ "$dry_run" != true ] && [ "$(docker volume inspect broker_data --format '{{index .Options "device"}}' 2>/dev/null)" = "$old_host_dir/data" ]; then
-  echo "Recreating the broker_data volume at $host_dir/data"
-  docker ps -aq --filter volume=broker_data | xargs -r docker rm -f
-  docker volume rm broker_data
-fi
-
 if [ "$dry_run" != true ] && docker volume inspect pocket_id_data >/dev/null 2>&1; then
   # Pocket ID's data volume holds every user and passkey, so it is copied before each deploy, whether or not Pocket ID
   # changes: a tarball in backups/ on the host (the newest $BACKUPS_KEPT are kept). A copy taken mid-write could be
