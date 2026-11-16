@@ -522,7 +522,8 @@ volumes:
   # The SQLite database (and its pre-migration copies). A named volume, so no deploy needs the host's directory on the
   # runner as the project's `./data` did; it is bound to a directory on the host, /opt/countdown-server/data, so the
   # database outlives the volume. The directory has to exist (the local driver won't make it; server-config creates it on
-  # the dev host). Back it up from there, not from the volume's own storage.
+  # the dev host), and be open to everyone (0755) where the db-viewer runs: it reads the database as a user of its own,
+  # not root. Back it up from there, not from the volume's own storage.
   broker_data:
     name: broker_data
     driver: local
