@@ -21,6 +21,7 @@ from countdown_api.models import (
     StoredForecast,
     StoredLineStatus,
     StoredMetOfficeWarnings,
+    StoredNetworkStatus,
     StoredRoadDisruptions,
     StoredStationDisruptions,
 )
@@ -77,7 +78,8 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
     """Return the device's DeviceNotices: what the store has for its TfL stops and, for a UK postcode, its place.
 
     Its TfL stops' line statuses and station disruptions; then, only for a UK postcode (the sources are the UK's),
-    TfL's road disruptions near it, the Met Office's warnings for it and the UK's bank holidays.
+    TfL's road disruptions near it, the Met Office's warnings for it and the UK's bank holidays; and for a device with
+    either, every Tube line's status (a London device's Tube status panel, shown when its notice board is empty).
     """
     settings = config(store, device_id)
     board = settings.notice_board
@@ -95,6 +97,9 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
             (store_keys.met_office(board.postcode), StoredMetOfficeWarnings),
             (store_keys.BANK_HOLIDAYS, StoredBankHolidays),
         ]
+    london = bool(tfl_stops) or uk
+    if london:
+        wanted.append((store_keys.TFL_NETWORK, StoredNetworkStatus))
     names = [name for name, _ in wanted]
     values = iter(
         _read(name, value, model)
@@ -107,9 +112,12 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
         "tfl_roads": None,
         "met_office": None,
         "bank_holidays": None,
+        "tfl_network": None,
     }
     if uk:
         answer |= {"tfl_roads": next(values), "met_office": next(values), "bank_holidays": next(values)}
+    if london:
+        answer["tfl_network"] = next(values)
     return answer
 
 
