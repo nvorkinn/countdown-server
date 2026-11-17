@@ -157,6 +157,9 @@ SQLite is the source of truth; Redis holds what countdown reads. The broker writ
 
 - `v1:sub:<source>`: what the providers should fetch (stops, weather places, postcodes, devices), then publishes
   `v1:sub:changed`;
+- `v1:background-place:<weather key>`: for each member of `v1:sub:background` (the places the paired touchscreens
+  show), its name, country and the postcodes of their notice boards, written in the subscriptions' transaction and
+  deleted when the place leaves the set;
 - `v1:config:<device id>`: each paired screen's config (no credentials in it);
 - `v1:pairing:<device id>`: the config with the live pairing code, for its 10 minutes;
 - `v1:render:screens`: the screens the pool draws (device id to slug), leaving out any not seen for 24 hours;

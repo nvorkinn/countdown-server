@@ -327,6 +327,7 @@ def test_redis_subs_counts_each_source(app):
         "developer: 0",
         "parcel: 0",
         "postcode: 0",
+        "background: 0",
     ]
 
 
