@@ -230,6 +230,7 @@ dev = [
     { name = "jsonschema", specifier = ">=4.25" },
     { name = "openapi-codegen", extras = ["yaml"], url = "https://github.com/nvorkinn/openapi-codegen/releases/download/v2.1.0/openapi_codegen-2.1.0-py3-none-any.whl" },
     { name = "pre-commit" },
+    { name = "pyicumessageformat", specifier = ">=1.0.0" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "ruff" },
 ]

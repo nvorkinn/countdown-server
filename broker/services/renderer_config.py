@@ -63,7 +63,7 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
             arrivals=arrivals,
             weather=weather,
             notice_board=notice_board,
-            style=TouchscreenStyle(skin=config.theme, colour=config.theme_colour),
+            style=TouchscreenStyle(skin=config.theme, colour=config.theme_colour, dynamic=config.theme_dynamic),
             display=TouchscreenDisplay(sleep_minutes=config.screen_sleep_minutes),
         )
     return EpaperConfig(

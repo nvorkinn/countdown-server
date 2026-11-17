@@ -39,6 +39,7 @@
             {% if touchscreen %}
                 <li>{{ themes[config.theme] }}</li>
                 <li>{{ theme_colours[config.theme_colour] }}</li>
+                {% if config.theme_dynamic %}<li>Dynamic</li>{% endif %}
             {% else %}
                 <li>{{ styles[config.style][0] }}</li>
                 <li>{{ orientation_labels[config.orientation if hd_screen else page_orientation] }}</li>

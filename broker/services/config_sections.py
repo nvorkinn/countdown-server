@@ -33,7 +33,7 @@ from broker.services.postcodes import normalize_postcode
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from broker.models import DeviceConfig
+    from broker.models import DeviceConfig, ThemeColour
 
 
 class SectionUnavailableError(Exception):
@@ -87,9 +87,20 @@ def _notice_board(config: DeviceConfig, value: NoticeBoard) -> str | None:
     return None
 
 
+def touchscreen_colour(style: TouchscreenStyle) -> tuple[ThemeColour, bool]:
+    """Return the colour and whether Dynamic is on, as DeviceConfig keeps them, from a touchscreen's style.
+
+    The contract's old dynamic colour is forest with Dynamic on, which is how it looked without any album art.
+    """
+    if style.colour == "dynamic":
+        return "forest", True
+    return style.colour, style.dynamic
+
+
 def _style(config: DeviceConfig, value: EpaperStyle | TouchscreenStyle) -> None:
     if isinstance(value, TouchscreenStyle):
-        config.theme, config.theme_colour = value.skin, value.colour
+        config.theme = value.skin
+        config.theme_colour, config.theme_dynamic = touchscreen_colour(value)
         return
     config.orientation = value.orientation
     config.style = value.drawing

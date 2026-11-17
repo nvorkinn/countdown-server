@@ -133,7 +133,7 @@ def test_a_touchscreen_gets_no_pairing_code(app, client):
     with app.app_context():
         assert pairing.live_code(device_id) is None
     # Its own settings, at their defaults.
-    assert response.get_json()["style"] == {"skin": "day", "colour": "forest"}
+    assert response.get_json()["style"] == {"skin": "day", "colour": "forest", "dynamic": False}
     assert response.get_json()["display"] == {"sleep_minutes": 5}
 
 
@@ -141,7 +141,8 @@ def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
     device_id = _paired(app, client)
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
-        config.theme, config.theme_colour, config.screen_sleep_minutes = "auto", "dynamic", 15
+        config.theme, config.theme_colour, config.screen_sleep_minutes = "auto", "violet", 15
+        config.theme_dynamic = True
         db.session.commit()
 
     response = client.get(CONFIG_URL, headers=_auth())
@@ -187,9 +188,23 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
     assert response.get_json() == sent
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
-        assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("night", "dynamic", 30)
+        assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("night", "violet", 30)
+        assert config.theme_dynamic
         assert config.clock_format == "12h"
     assert client.get(CONFIG_URL, headers=_auth()).get_json() == sent
+
+
+def test_a_save_with_the_old_dynamic_colour_is_forest_with_dynamic_on(app, client):
+    device_id = _paired(app, client)
+    sent = _saved_with(client, style={"skin": "day", "colour": "dynamic", "dynamic": False})
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["style"] == {"skin": "day", "colour": "forest", "dynamic": True}
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.theme_colour, config.theme_dynamic) == ("forest", True)
 
 
 def test_a_touchscreens_save_ignores_an_epaper_screens_fields(app, client):
@@ -340,7 +355,14 @@ def test_a_touchscreens_settings_are_saved_with_the_rest(app, client):
     device_id = _paired(app, client)
 
     response = client.post(
-        "/device", data={"theme": "night", "theme_colour": "plum", "screen_sleep_minutes": "0", "clock_format": "12h"}
+        "/device",
+        data={
+            "theme": "night",
+            "theme_colour": "plum",
+            "theme_dynamic": "on",
+            "screen_sleep_minutes": "0",
+            "clock_format": "12h",
+        },
     )
 
     assert response.status_code == 302
@@ -349,7 +371,10 @@ def test_a_touchscreens_settings_are_saved_with_the_rest(app, client):
         assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("night", "plum", 0)
         assert config.clock_format == "12h"
     body = client.get(CONFIG_URL, headers=_auth()).get_json()
-    assert (body["style"], body["display"]) == ({"skin": "night", "colour": "plum"}, {"sleep_minutes": 0})
+    assert (body["style"], body["display"]) == (
+        {"skin": "night", "colour": "plum", "dynamic": True},
+        {"sleep_minutes": 0},
+    )
     assert body["clock_format"] == "12h"
 
 

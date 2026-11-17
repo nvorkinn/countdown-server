@@ -62,6 +62,20 @@ def test_downgrading_past_0032_brings_back_the_dashboards_empty_token_table(app)
         assert "github_app_tokens" not in inspect(db.engine).get_table_names()
 
 
+def test_0036_turns_the_dynamic_colour_into_forest_with_dynamic_on(app, register_device):
+    device_id, _ = register_device()
+    with app.app_context():
+        downgrade(revision="0035")
+        with db.engine.begin() as conn:
+            conn.exec_driver_sql("UPDATE device_config SET theme_colour = 'dynamic' WHERE device_id = ?", (device_id,))
+        upgrade()
+        with db.engine.begin() as conn:
+            row = conn.exec_driver_sql(
+                "SELECT theme_colour, theme_dynamic FROM device_config WHERE device_id = ?", (device_id,)
+            ).one()
+    assert tuple(row) == ("forest", 1)
+
+
 def _downgrade(revision: str) -> None:
     """Downgrade to `revision` (needs an app context), giving every device a renderer secret on the way past 0023.
 

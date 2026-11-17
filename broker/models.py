@@ -146,7 +146,7 @@ type Style = Literal["airy", "hero", "card"]
 type WeatherDesign = Literal["columns", "timeline", "overview", "poster"]
 type FrameFormat = Literal["mono-1bpp-packed", "png"]
 type Theme = Literal["day", "auto", "night"]
-type ThemeColour = Literal["forest", "navy", "teal", "plum", "terracotta", "pink", "yellow", "black", "dynamic"]
+type ThemeColour = Literal["forest", "navy", "teal", "plum", "terracotta", "pink", "yellow", "black", "violet"]
 type ScreenSleepMinutes = Literal[0, 2, 5, 15, 30]
 type Layout = Literal[
     "classic",
@@ -185,8 +185,10 @@ THEME_COLOURS = {
     "pink": "Pink",
     "yellow": "Yellow",
     "black": "Black",
-    "dynamic": "Dynamic",
+    "violet": "Violet",
 }
+# Dynamic, on or off: whether the colours follow the album art while music plays (DeviceConfig.theme_dynamic).
+THEME_DYNAMIC = {"off": "Off", "on": "On"}
 SCREEN_SLEEP_MINUTES = {"0": "Never", "2": "2 minutes", "5": "5 minutes", "15": "15 minutes", "30": "30 minutes"}
 CLOCK_FORMATS = {"24h": "24-hour (13:00)", "12h": "12-hour (1:00 PM)"}
 # The store contract's languages, each with its name in itself for the config page.
@@ -333,6 +335,7 @@ class DeviceConfig(Model):
     # Every device has them, at their defaults, but only a touchscreen's config carries them, or its page shows them.
     theme: Mapped[Theme] = mapped_column(String, default="day", server_default=text("'day'"))
     theme_colour: Mapped[ThemeColour] = mapped_column(String, default="forest", server_default=text("'forest'"))
+    theme_dynamic: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # How long the touchscreen waits untouched before it sleeps; 0 for never.
     screen_sleep_minutes: Mapped[ScreenSleepMinutes] = mapped_column(Integer, default=5, server_default=text("5"))
 

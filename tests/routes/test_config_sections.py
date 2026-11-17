@@ -102,7 +102,7 @@ def test_the_settings_site_reads_its_owners_device_by_id(client, anonymous_clien
 
 def test_a_touchscreen_saves_one_section_whole(app, client, touchscreen):
     etag = _version(client, headers=_auth())
-    style = {"skin": "night", "colour": "plum"}
+    style = {"skin": "night", "colour": "plum", "dynamic": True}
 
     response = _save(client, "style", style, etag, headers=_auth())
 
@@ -112,7 +112,7 @@ def test_a_touchscreen_saves_one_section_whole(app, client, touchscreen):
     assert _version(client, headers=_auth()) == response.headers["ETag"]
     with app.app_context():
         config = db.session.get_one(DeviceConfig, touchscreen)
-        assert (config.theme, config.theme_colour) == ("night", "plum")
+        assert (config.theme, config.theme_colour, config.theme_dynamic) == ("night", "plum", True)
 
 
 def test_a_flat_field_is_a_section_of_its_own(client, touchscreen):
