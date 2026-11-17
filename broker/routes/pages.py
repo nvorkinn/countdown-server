@@ -32,6 +32,7 @@ from broker.models import (
     SCREEN_SLEEP_MINUTES,
     STYLES,
     THEME_COLOURS,
+    THEME_DYNAMIC,
     THEMES,
     WEATHER_DESIGNS,
     Device,
@@ -380,6 +381,8 @@ CHOICES = {
     # Only on a touchscreen's page, so an e-paper screen's save keeps what's stored (the defaults).
     "theme": (THEMES, "The theme"),
     "theme_colour": (THEME_COLOURS, "The theme colour"),
+    # Stored as a bool (_set_choices), picked as off or on.
+    "theme_dynamic": (THEME_DYNAMIC, "Dynamic"),
     # A number of minutes, picked by its form value (_set_choices stores it as one).
     "screen_sleep_minutes": (SCREEN_SLEEP_MINUTES, "The screen sleep"),
 }
@@ -389,7 +392,7 @@ CHOICES = {
 # the other type that posts one is refused, as that type's config has nowhere for it.
 TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
     "epaper": frozenset({"orientation", "style", "weather_design", "layout"}),
-    "touchscreen": frozenset({"theme", "theme_colour", "screen_sleep_minutes"}),
+    "touchscreen": frozenset({"theme", "theme_colour", "theme_dynamic", "screen_sleep_minutes"}),
 }
 # What an error calls each type of device.
 TYPE_NAMES: dict[DeviceType, str] = {"epaper": "an e-paper screen", "touchscreen": "a touchscreen"}
@@ -426,7 +429,7 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
 
     config = db.session.get_one(DeviceConfig, device_id)
     device_type = config.device.type
-    choices = {field: request.form.get(field, str(getattr(config, field))) for field in CHOICES}
+    choices = {field: request.form.get(field, _choice_value(config, field)) for field in CHOICES}
     # Only on a page with the picker (layout_choices), so a save from one without keeps what's stored. Any of the
     # contract's layouts is taken, whatever the screen's size and whichever way it hangs: one it doesn't have is drawn
     # as its default. Empty is the screen's default (None).
@@ -516,11 +519,24 @@ def _publish_saved(device_id: str, *, turned: bool) -> None:
     render_jobs.enqueue(current_app.extensions["redis"], [device_id])
 
 
+def _choice_value(config: DeviceConfig, field: str) -> str:
+    """Return a stored CHOICES setting as its form value: Dynamic's bool is off or on."""
+    value = getattr(config, field)
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    return str(value)
+
+
 def _set_choices(config: DeviceConfig, choices: Mapping[str, str]) -> bool:
     """Set the config's CHOICES to those picked, and return whether that turns the screen (a new orientation)."""
     turned = choices["orientation"] != config.orientation
     for field, value in choices.items():
-        setattr(config, field, int(value) if field == "screen_sleep_minutes" else value)
+        if field == "screen_sleep_minutes":
+            setattr(config, field, int(value))
+        elif field == "theme_dynamic":
+            setattr(config, field, value == "on")
+        else:
+            setattr(config, field, value)
     return turned
 
 
@@ -751,6 +767,7 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         device_types=DEVICE_TYPE_LABELS,
         themes=THEMES,
         theme_colours=THEME_COLOURS,
+        theme_dynamic=THEME_DYNAMIC,
         screen_sleep_minutes=SCREEN_SLEEP_MINUTES,
         display_seen=_seen_ago(device.display_last_seen_at, now),
         screen_label=screen_label(device),

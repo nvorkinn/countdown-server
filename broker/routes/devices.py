@@ -177,7 +177,7 @@ def put_config(device_id: str) -> ResponseReturnValue:
         return jsonify(error=f"only {', '.join(sorted(SAVED_HERE))} can be saved here, not {', '.join(refused)}"), 400
     config.clock_format = sent.clock_format
     config.theme = sent.style.skin
-    config.theme_colour = sent.style.colour
+    config.theme_colour, config.theme_dynamic = config_sections.touchscreen_colour(sent.style)
     config.screen_sleep_minutes = sent.display.sleep_minutes
     db.session.commit()
     # Every screen's copy, as a save on the settings site does (the render pool never draws a touchscreen, so there's

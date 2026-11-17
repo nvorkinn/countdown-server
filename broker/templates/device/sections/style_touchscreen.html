@@ -1,4 +1,4 @@
-{# A touchscreen's style (the config's TouchscreenStyle): its skin, and the day skin's colour, as swatches. #}
+{# A touchscreen's style (the config's TouchscreenStyle): its skin, its colour as swatches, and Dynamic off or on. #}
 {% from "device/_controls.html" import segmented %}
 <section class="section" data-section="style">
     <header class="card-header">
@@ -21,7 +21,10 @@
                     </label>
                 {% endfor %}
             </div>
-            <p class="form-hint">The day skin's; night has its own. Dynamic follows the album art.</p>
+        </fieldset>
+        <fieldset class="form-group">
+            <legend class="form-legend">Dynamic</legend>
+            {{ segmented("theme_dynamic", theme_dynamic, "on" if config.theme_dynamic else "off") }}
         </fieldset>
     </div>
 </section>
