@@ -22,6 +22,7 @@ BACKGROUND = fixtures.load("background.json")
 TFL = fixtures.load("tfl_notices.json")
 MET_OFFICE = fixtures.load("met_office.json")
 BANK_HOLIDAYS = fixtures.load("bank_holidays.json")
+NETWORK = fixtures.load("tfl_network.json")
 
 
 def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
@@ -36,6 +37,7 @@ def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
         store[TFL[kind]["key"]] = json.dumps(TFL[kind]["value"])
     store[MET_OFFICE["key"]] = json.dumps(MET_OFFICE["value"])
     store[BANK_HOLIDAYS["key"]] = json.dumps(BANK_HOLIDAYS["value"])
+    store[NETWORK["key"]] = json.dumps(NETWORK["value"])
     return store
 
 
@@ -69,7 +71,14 @@ def test_the_config_is_the_one_in_the_store_not_the_database(app, client, device
 
 def test_whatever_isnt_stored_is_null(app, client, device):
     store = app.extensions["redis"].strings
-    gone = (WEATHER["key"], BACKGROUND["key"], DEPARTURES["stops"][0]["key"], TFL["lines"]["key"], MET_OFFICE["key"])
+    gone = (
+        WEATHER["key"],
+        BACKGROUND["key"],
+        DEPARTURES["stops"][0]["key"],
+        TFL["lines"]["key"],
+        MET_OFFICE["key"],
+        NETWORK["key"],
+    )
     for key in gone:
         del store[key]
 
@@ -86,6 +95,7 @@ def test_whatever_isnt_stored_is_null(app, client, device):
     assert notices["tfl_stops"][0]["stations"] == TFL["stations"]["value"]
     assert notices["met_office"] is None
     assert notices["bank_holidays"] == BANK_HOLIDAYS["value"]
+    assert notices["tfl_network"] is None
 
 
 def test_a_value_the_contract_wont_read_is_null_and_logged_without_the_value(app, client, device, caplog):
@@ -109,8 +119,18 @@ def test_a_norwegian_postcode_has_no_uk_notices_and_the_store_isnt_asked_for_the
 
     assert (notices["postcode"], notices["country"]) == ("0150", "NO")
     assert (notices["tfl_roads"], notices["met_office"], notices["bank_holidays"]) == (None, None, None)
-    # Its TfL stops are still its own.
+    # Its TfL stops are still its own, and so is the Tube's status.
     assert notices["tfl_stops"][0]["lines"] == TFL["lines"]["value"]
+    assert notices["tfl_network"] == NETWORK["value"]
+
+
+def test_a_uk_postcode_without_tfl_stops_still_has_the_tubes_status(app, client, device):
+    _stored(app, device, {**PANELS["config"], "arrivals": {"stops": []}})
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["tfl_stops"] == []
+    assert notices["tfl_network"] == NETWORK["value"]
 
 
 def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device):
@@ -126,6 +146,7 @@ def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device
         "tfl_roads": None,
         "met_office": None,
         "bank_holidays": None,
+        "tfl_network": None,
     }
 
 
