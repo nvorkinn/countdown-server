@@ -114,6 +114,10 @@ class FakeRedis:
         self._check()
         return [self.strings.get(key) for key in keys]
 
+    def smembers(self, key):
+        self._check()
+        return set(self.sets.get(key, ()))
+
     def set(self, key, value, **_expiry):
         self._check()
         self.strings[key] = value

@@ -3,7 +3,7 @@
     python -m broker.providers.background
 
 It runs on providers/loop.py's loop, in read_only_app(), with a store that answers bytes (the pictures). Every
-INTERVAL_S it reads the places the paired touchscreens show (their weather keys: an e-paper screen draws no
+INTERVAL_S it reads the places the paired touchscreens show (services/background_places.py: an e-paper screen draws no
 background, so its places cost nothing) and, for each, works out from the stored forecast which part of the day is due
 (services/backgrounds.py: each is made LEAD before it starts). One not made yet is made: dawn new, each later part
 relit from the one before it, by the first model that answers (clients/image_models.py: OpenAI's), else
@@ -25,15 +25,13 @@ from typing import TYPE_CHECKING, Any
 from countdown_api import keys as store_keys
 from countdown_api.models import StoredBankHolidays, StoredForecast, StoredMetOfficeWarnings
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
 
 from broker.clients import image_models
 from broker.clients.image_models import ImageModel, ImageModelError
-from broker.db import db
-from broker.models import Device, DeviceConfig
 from broker.providers import loop
 from broker.providers.loop import ProviderLoop
-from broker.services import backgrounds, weather_place
+from broker.services import backgrounds
+from broker.services.background_places import places
 from broker.services.backgrounds import Context, Place
 
 if TYPE_CHECKING:
@@ -50,30 +48,6 @@ logger = logging.getLogger(__name__)
 INTERVAL_S = 300
 TTL_S = store_keys.BACKGROUND_TTL_S
 IMAGE_TTL_S = store_keys.BACKGROUND_IMAGE_TTL_S
-
-
-def places() -> list[Place]:
-    """Return the places the paired touchscreens show, each with the postcodes of their notice boards."""
-    rows = db.session.execute(
-        select(DeviceConfig)
-        .join(Device, Device.device_id == DeviceConfig.device_id)
-        .where(Device.type == "touchscreen", Device.paired_at.is_not(None), Device.display_secret_hash.is_not(None))
-        .order_by(DeviceConfig.device_id)
-    ).scalars()
-    found: dict[str, Place] = {}
-    for config in rows:
-        key = weather_place.weather_key(config)
-        if key is None:
-            continue
-        place = found.get(key) or Place(
-            key=key,
-            name=config.weather_place_label or config.weather_place_name or config.weather_location,
-            country=config.weather_country_code,
-        )
-        if config.postcode:
-            place = Place(place.key, place.name, place.country, place.postcodes | {config.postcode})
-        found[key] = place
-    return list(found.values())
 
 
 class BackgroundProvider(ProviderLoop):

@@ -46,6 +46,7 @@ from broker.models import (
 from broker.routes.frames import NO_FRAME_RETRY_S
 from broker.services import (
     assignments,
+    background_places,
     config_sections,
     config_store,
     frame_image,
@@ -76,7 +77,8 @@ logger = logging.getLogger(__name__)
 PAIRING_TOKEN_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def _write_subscriptions_to_redis() -> None:
+def _subscriptions() -> dict[str, set[str]]:
+    """Return what each source's provider should fetch, by source, but the background provider's places."""
     configs = db.session.scalars(db.select(DeviceConfig)).all()
     subs: dict[str, set[str]] = {
         "tfl": set(),
@@ -119,18 +121,39 @@ def _write_subscriptions_to_redis() -> None:
             .where(DeviceConfig.energy_enabled, GlowmarktCredentials.password_encrypted.is_not(None))
         )
     )
+    return subs
+
+
+def _write_subscriptions_to_redis() -> None:
+    subs = _subscriptions()
+    # The places the paired touchscreens show, for the background provider: a subset of the weather's, and beside each
+    # what its key doesn't say (its name, country and the notice boards' postcodes), in the same transaction.
+    places = {place.key: background_places.stored(place) for place in background_places.places()}
+    subs[store_keys.BACKGROUND] = set(places)
     redis: Redis = current_app.extensions["redis"]
     try:
+        # The places written before, to delete those of the members that have left.
+        written = redis.smembers(store_keys.subscription(store_keys.BACKGROUND))
+        left = {str(weather_key) for weather_key in written} - places.keys()
         with redis.pipeline(transaction=True) as pipe:
             for name, members in subs.items():
                 key = store_keys.subscription(name)
                 pipe.delete(key)
                 if members:
                     pipe.sadd(key, *members)
+            for weather_key in left:
+                pipe.delete(store_keys.background_place(weather_key))
+            for weather_key, place in places.items():
+                # One with nothing to call it has no place written, as the contract allows.
+                if place is None:
+                    pipe.delete(store_keys.background_place(weather_key))
+                else:
+                    pipe.set(store_keys.background_place(weather_key), place)
             pipe.publish(store_keys.SUB_CHANGED, "")
             pipe.execute()
     except RedisError as e:
-        # The error's type only: a failed pipeline's text quotes its commands, and SADD v1:sub:postcode's has postcodes.
+        # The error's type only: a failed pipeline's text quotes its commands, and SADD v1:sub:postcode's has postcodes
+        # (as has SET v1:background-place's).
         current_app.logger.warning("Couldn't publish subscriptions to Redis (%s)", type(e).__name__)
 
 
