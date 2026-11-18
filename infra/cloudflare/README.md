@@ -1,7 +1,7 @@
 # Cloudflare DNS
 
 The records for the names each environment's Caddy serves (`APEX_HOST`, `www.`, `APP_HOST`, `API_HOST`,
-`LEGACY_HOST`, `TAUTH_HOST`, `ID_HOST`, `LOGS_HOST`, `METRICS_HOST`, and `DB_VIEWER_HOST` where `DB_VIEWER=true`, in
+`LEGACY_HOST`, `TAUTH_HOST`, `ID_HOST`, `LOGS_HOST`, `METRICS_HOST`, `DB_VIEWER_HOST` where `DB_VIEWER=true` and `REDIS_VIEWER_HOST` where `REDIS_VIEWER=true`, in
 `config/<environment>.env`), each in its own zone
 (`zone_ids` in `variables.tf`): dev in `countdown.build`, production in `countdown.run`. Production's are A records to its
 host. Dev/QA runs on the home server, so its are CNAMEs to `home.vorkinn.org` (`cname_targets` in `variables.tf`;

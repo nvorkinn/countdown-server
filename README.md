@@ -35,6 +35,7 @@ Routes and access rules are Docker labels on the service they belong to, not a s
 | `redis` | The store shared with countdown. A cache only: nothing on disk. On the compose network as `redis`, and on the host's `127.0.0.1:6379` for countdown. |
 | `fluent-bit`, `victoria-logs`, `victoria-metrics` | Logs and metrics from every container, the render pool and the screens. |
 | `db-viewer` | [sqlite-web](https://github.com/coleifer/sqlite-web) on the broker's database, read-only, in the compose profile `db-viewer` (dev/QA only; see [Database](#database)). |
+| `redis-viewer` | [Redis Insight](https://redis.io/insight/) on the store, in the compose profile `redis-viewer` (dev/QA only; see [Redis](#redis)). |
 
 The five providers run the broker's own image with another command and the broker's secrets. The glow, developer, parcel
 and background providers open the database read-only; the music provider writes refreshed Spotify tokens back. Each wakes at once when
@@ -386,7 +387,7 @@ What differs between environments and isn't secret is in `config/<environment>.e
 `LOGS_HOST`, `METRICS_HOST`, the bare `APEX_HOST`, which redirects to `APP_HOST`, and `LEGACY_HOST`, the `auth.` name the
 settings site and the API shared before: it still answers the API for boards flashed then and redirects everything else
 to `APP_HOST`), `POCKET_ID_URL`, whether this environment runs its own edge
-(`EDGE_OWNED`), whether it runs the database viewer (`DB_VIEWER`, at `DB_VIEWER_HOST`) and the Spotify redirect URI. `deploy-context.sh` stages the environment's file as `settings.env`
+(`EDGE_OWNED`), whether it runs the database viewer (`DB_VIEWER`, at `DB_VIEWER_HOST`) and the Redis viewer (`REDIS_VIEWER`, at `REDIS_VIEWER_HOST`), and the Spotify redirect URI. `deploy-context.sh` stages the environment's file as `settings.env`
 next to `docker-compose.yml`, where the services list it in their `env_file`, and copies it into `.env`, where
 Compose fills the names into the labels. One image and one compose file serve every environment. Each name needs an
 A record to its environment's edge before Caddy can get a certificate for it (`infra/cloudflare`), and the Spotify redirect URI has to be registered in the
@@ -443,6 +444,12 @@ on the next settings save or broker restart; run `flask config publish` to resto
 ```bash
 docker exec -it redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli'
 ```
+
+Where `REDIS_VIEWER=true` (dev/QA), [Redis Insight](https://redis.io/insight/) shows the store at
+`https://redis.countdown.build` (Pocket ID group `admins` only), already connected as `countdown`: browse the keys and
+streams (`v1:github:changes`), or run commands in its CLI or Workbench. Unlike the database viewer it can write, which a
+cache can take. It keeps nothing between restarts and can't add other connections. Production doesn't run it
+(`REDIS_VIEWER=false`, and there's no DNS record).
 
 ### The edge
 

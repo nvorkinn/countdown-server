@@ -14,13 +14,19 @@ locals {
   # APEX_HOST and www. redirect to APP_HOST (config/*.env), but all of them need a record. API_HOST is the screens' API,
   # and LEGACY_HOST the name the settings site and the API shared before (still the API for boards flashed then).
   # TAUTH_HOST is Tinyauth and ID_HOST Pocket ID, which every environment runs for itself.
-  # DB_VIEWER_HOST is the database viewer, only where DB_VIEWER turns it on (dev/QA).
+  # DB_VIEWER_HOST is the database viewer, only where DB_VIEWER turns it on (dev/QA), and REDIS_VIEWER_HOST the Redis
+  # viewer, only where REDIS_VIEWER does.
   # Plus any extra_names of the environment's (other sites on the same host).
-  names = setunion([
-    local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.APP_HOST, local.settings.API_HOST,
-    local.settings.LEGACY_HOST, local.settings.LOGS_HOST, local.settings.METRICS_HOST, local.settings.TAUTH_HOST,
-    local.settings.ID_HOST,
-  ], local.settings.DB_VIEWER == "true" ? [local.settings.DB_VIEWER_HOST] : [], lookup(var.extra_names, var.environment, []))
+  names = setunion(
+    [
+      local.settings.APEX_HOST, "www.${local.settings.APEX_HOST}", local.settings.APP_HOST, local.settings.API_HOST,
+      local.settings.LEGACY_HOST, local.settings.LOGS_HOST, local.settings.METRICS_HOST, local.settings.TAUTH_HOST,
+      local.settings.ID_HOST,
+    ],
+    local.settings.DB_VIEWER == "true" ? [local.settings.DB_VIEWER_HOST] : [],
+    local.settings.REDIS_VIEWER == "true" ? [local.settings.REDIS_VIEWER_HOST] : [],
+    lookup(var.extra_names, var.environment, []),
+  )
 }
 
 resource "cloudflare_dns_record" "host" {
