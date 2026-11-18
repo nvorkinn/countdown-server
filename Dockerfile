@@ -8,7 +8,7 @@ COPY scripts/fetch_geodata.py /
 ARG GEODATA_DATE
 RUN python /fetch_geodata.py /geodata
 
-FROM ghcr.io/astral-sh/uv:0.13.8 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
 
 # The Python .python-version pins, which the tests run on (Dependabot leaves its minor version alone).
 FROM python:3.14-slim
