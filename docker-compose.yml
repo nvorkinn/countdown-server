@@ -388,6 +388,61 @@ services:
       tinyauth.apps.db.oauth.groups: admins
       tinyauth.apps.db.oauth.whitelist: /.*/
 
+  # Redis Insight (upstream's image, pinned): the store in the browser, at REDIS_VIEWER_HOST, to Pocket ID's `admins`.
+  # dev/QA only, like the db-viewer: it runs in the profile `redis-viewer`, which deploy-context.sh turns on where
+  # config/<environment>.env has REDIS_VIEWER=true. It connects to `redis` with the store's password (redis.env, handed to
+  # it as RI_REDIS_PASSWORD by the entrypoint, as Compose can't fill a variable in from an env_file), and that one
+  # connection is all it has: adding or editing connections is off. Unlike the db-viewer it can write (its CLI and
+  # Workbench take any command), so it is for people who may change the store; everything in it is a cache, refetched
+  # within minutes. It is on the edge network for Caddy, and anything else there reaches its port without the login, like
+  # every service here. It keeps nothing: its settings and the copy of its tutorials it makes at start are in a tmpfs.
+  redis-viewer:
+    image: docker.io/redis/redisinsight:3.10.1
+    container_name: redis-viewer
+    profiles: [redis-viewer]
+    logging: *logging
+    restart: unless-stopped
+    networks: [default, edge]
+    env_file: redis.env
+    entrypoint:
+      - sh
+      - -c
+      - RI_REDIS_PASSWORD="$$REDIS_PASSWORD" exec ./docker-entry.sh node redisinsight/api/dist/src/main
+    environment:
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: "6379"
+      RI_REDIS_ALIAS: countdown
+      # Skips the first-run terms dialog, with analytics and notifications off.
+      RI_ACCEPT_TERMS_AND_CONDITIONS: "true"
+      RI_DATABASE_MANAGEMENT: "false"
+      # Logs to stdout only (Fluent Bit), no fetching newer tutorials and commands at start, and no OS keychain (there
+      # is none in the image, and the connection comes from the environment at each start anyway).
+      RI_FILES_LOGGER: "false"
+      RI_STDOUT_LOGGER: "true"
+      RI_STATICS_AUTO_UPDATE: "false"
+      RI_ENCRYPTION_KEYTAR: "false"
+    read_only: true
+    # The image's user is node (1000), which has to own /data.
+    tmpfs: [/tmp, "/data:uid=1000,gid=1000"]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5540/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      redis:
+        condition: service_healthy
+    labels:
+      caddy: ${REDIS_VIEWER_HOST:?}
+      caddy.import: countdown_auth
+      caddy.reverse_proxy: "{{upstreams 5540}}"
+      tinyauth.apps.redis.config.domain: ${REDIS_VIEWER_HOST}
+      tinyauth.apps.redis.oauth.groups: admins
+      tinyauth.apps.redis.oauth.whitelist: /.*/
+
   # ---- The login (every environment) and the reverse proxy (profile `edge`: prod's own; dev uses home-stack's). ----
 
   # The only way to the Docker socket, for Caddy (to read the labels) and Tinyauth (to read its apps): read-only

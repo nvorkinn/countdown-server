@@ -102,3 +102,14 @@ def test_the_database_viewer_runs_only_in_its_profile_and_cannot_write():
     assert viewer["labels"]["caddy.import"] == "countdown_auth"
     assert viewer["labels"]["tinyauth.apps.db.oauth.groups"] == "admins"
     assert "--read-only" in (ROOT / "sqlite-web" / "Dockerfile").read_text()
+
+
+def test_the_redis_viewer_runs_only_in_its_profile_behind_the_admins_login():
+    """Off unless deploy-context.sh turns its profile on (REDIS_VIEWER), and only its one preconfigured connection."""
+    viewer = COMPOSE["services"]["redis-viewer"]
+    assert viewer["profiles"] == ["redis-viewer"]
+    assert viewer["labels"]["caddy.import"] == "countdown_auth"
+    assert viewer["labels"]["tinyauth.apps.redis.oauth.groups"] == "admins"
+    assert viewer["environment"]["RI_REDIS_HOST"] == "redis"
+    assert viewer["environment"]["RI_DATABASE_MANAGEMENT"] == "false"
+    assert "REDIS_PASSWORD" in _env_file_names({"env_file": [viewer["env_file"]]})

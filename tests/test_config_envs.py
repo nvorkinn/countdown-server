@@ -78,6 +78,7 @@ def test_each_environment_serves_only_names_in_its_own_domain():
             "LOGS_HOST",
             "METRICS_HOST",
             "DB_VIEWER_HOST",
+            "REDIS_VIEWER_HOST",
         ):
             host = settings[key]
             assert host == domain or host.endswith(f".{domain}"), (environment, key, host)
@@ -87,3 +88,9 @@ def test_only_dev_runs_the_database_viewer():
     """It shows the live database to its group; production's is never served."""
     assert _settings(CONFIG / "prod.env")["DB_VIEWER"] == "false"
     assert _settings(CONFIG / "dev.env")["DB_VIEWER"] == "true"
+
+
+def test_only_dev_runs_the_redis_viewer():
+    """It can change the store; production's is never served."""
+    assert _settings(CONFIG / "prod.env")["REDIS_VIEWER"] == "false"
+    assert _settings(CONFIG / "dev.env")["REDIS_VIEWER"] == "true"
