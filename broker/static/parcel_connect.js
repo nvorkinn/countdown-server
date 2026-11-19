@@ -17,7 +17,8 @@
             // Refused (the browser's own Paste prompt dismissed, or no permission): the box still takes one by hand.
         }
         if (!text) {
-            hint.textContent = "Nothing to paste yet. Copy the key in Parcel, or press and hold the box and choose Paste.";
+            hint.textContent =
+                "Nothing to paste yet. Copy the key in Parcel, or press and hold the box and choose Paste.";
             input.focus();
             return;
         }
