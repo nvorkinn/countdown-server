@@ -12,7 +12,15 @@ from countdown_api.models import DeviceFeedEvent
 from pydantic import TypeAdapter
 
 from broker.services import feed
-from tests.routes.test_touchscreen_panels import DEPARTURES, PANELS, _stored
+from tests.routes.test_touchscreen_panels import (
+    DEPARTURES,
+    METALERTS,
+    NORWAY,
+    PANELS,
+    SITUATIONS,
+    _oslo,
+    _stored,
+)
 from tests.routes.test_touchscreens import _auth, _paired
 
 
@@ -77,6 +85,24 @@ def test_it_opens_with_each_panel_as_the_route_answers_it(client, device, clock)
     ]
     for name, data in events:
         TypeAdapter(DeviceFeedEvent).validate_python({"event": name, "data": data})
+
+
+def test_a_norwegian_devices_notices_are_its_places_weather_warnings_as_getnotices_answers(app, client, clock):
+    device_id = _paired(app, client)
+    store = _stored(app, device_id, _oslo())
+    store[SITUATIONS["key"]] = json.dumps(SITUATIONS["value"])
+    later = {**METALERTS["value"], "fetched_at": "2026-10-18T12:30:00Z"}
+
+    def provider_writes(now):
+        if now == 1000 + feed.POLL_S:
+            store[METALERTS["key"]] = json.dumps(later)
+
+    clock.between = provider_writes
+    events = _events(_messages(client.get("/api/devices/feed", headers=_auth())))
+
+    notices = [data for name, data in events if name == "notices"]
+    narrowed = {**NORWAY["notices"]["metalerts"], "fetched_at": later["fetched_at"]}
+    assert notices == [NORWAY["notices"], {**NORWAY["notices"], "metalerts": narrowed}]
 
 
 def test_nothing_changing_sends_only_pings_and_it_ends_after_its_lifetime(client, device, clock):
