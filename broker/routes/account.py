@@ -1,6 +1,10 @@
 """The signed-in user's account page: the services linked to their account, which all their screens can show.
 
 Each screen's own page only switches each service on or off for that screen (services/accounts.py).
+
+The Parcel API key also has a page of its own (/account/parcel, the contract's connectParcelPage): where to find the
+key and a field to paste it into, and nothing else of the account. A touchscreen whose owner's account has no key
+shows a code that opens it on a phone.
 """
 
 from typing import TYPE_CHECKING
@@ -37,7 +41,12 @@ def account() -> ResponseReturnValue:
 def _save_logins() -> ResponseReturnValue:
     """Save the logins posted, and have every screen of the user's drawn again if any changed."""
     user_id = signed_in_user()
-    changed = _stage_logins(user_id)
+    _commit_logins(user_id, _stage_logins(user_id))
+    return redirect(url_for("account.account"))
+
+
+def _commit_logins(user_id: str, changed: list[Callable[[str], list[str]]]) -> None:
+    """Save the logins staged, and have every screen of the user's drawn again if any changed (`changed`)."""
     db.session.commit()
     if changed:
         # What the store has from an account that's gone or been replaced, before the providers are told to write the
@@ -47,7 +56,6 @@ def _save_logins() -> ResponseReturnValue:
         _write_subscriptions_to_redis()
         config_store.publish_all()
         render_jobs.enqueue(current_app.extensions["redis"], accounts.screens(user_id))
-    return redirect(url_for("account.account"))
 
 
 def _stage_logins(user_id: str) -> list[Callable[[str], list[str]]]:
@@ -187,6 +195,32 @@ def github_disconnect() -> ResponseReturnValue:
         # The developer provider rewrites the panel without the GitHub summary within a cycle.
         accounts.forget_keys(user_id, device_keys.developer)
     return redirect(url_for("account.account"))
+
+
+@bp.route("/parcel", methods=["GET", "POST"])
+@require_paired_user
+def connect_parcel() -> ResponseReturnValue:
+    """Show where the Parcel API key is found and a field to paste it into, and save the one posted.
+
+    The contract's connectParcelPage: the Account page's Parcel key on a page of its own, without the rest of the
+    account or the site's navigation, for a phone sent here by a screen. A save is the Account page's (the same key,
+    for every screen of the user's), and comes back here saying so (`saved=1`); a blank one saves nothing.
+    """
+    user_id = signed_in_user()
+    if request.method == "POST":
+        saved = _save_parcel_key(user_id)
+        _commit_logins(user_id, [device_keys.parcels] if saved else [])
+        return redirect(url_for("account.connect_parcel", saved=1 if saved else None, empty=None if saved else 1))
+    linked = parcel_key.has_key(db, user_id)
+    return render_template(
+        "parcel_connect.html",
+        # The page alone: no sidebar of the user's screens.
+        screens=[],
+        parcel_linked=linked,
+        parcel_status=_parcel_status(user_id) if linked else None,
+        saved=linked and request.args.get("saved") == "1",
+        empty=request.args.get("empty") == "1",
+    )
 
 
 @bp.post("/parcel/disconnect")
