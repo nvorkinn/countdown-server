@@ -8,10 +8,11 @@ so they reach a screen's services through its owner (Device.owner).
 
 from typing import TYPE_CHECKING
 
+from countdown_api.models import AccountLink, DeviceAccount
 from sqlalchemy import select
 
 from broker.db import db
-from broker.models import Device
+from broker.models import Device, ParcelKey, SpotifyToken
 from broker.services import device_keys
 
 if TYPE_CHECKING:
@@ -22,6 +23,18 @@ def owner(device_id: str) -> str | None:
     """Return the user whose account the device's services come from: its owner; None for a device nobody owns."""
     device = db.session.get(Device, device_id)
     return device.owner if device is not None else None
+
+
+def links(user_id: str) -> DeviceAccount:
+    """Return which services the user's account has linked, as a device is told (getAccount): never a login or key.
+
+    Whether each one's row is there, and no more: a screen's own switch for it (a config's `parcels.enabled`) is the
+    screen's, and whether the service still takes the login is its provider's to say.
+    """
+    return DeviceAccount(
+        parcel=AccountLink(linked=db.session.get(ParcelKey, user_id) is not None),
+        spotify=AccountLink(linked=db.session.get(SpotifyToken, user_id) is not None),
+    )
 
 
 def approves_device_save(device: Device) -> bool:
