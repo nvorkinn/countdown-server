@@ -22,6 +22,8 @@
             "display",
             { ...config.display, sleep_minutes: Number(checked("screen_sleep_minutes")) },
         ],
+        lyrics_size: lyrics,
+        lyrics_align: lyrics,
         postcode: () => ["notice_board", { ...config.notice_board, postcode: form.elements.postcode.value.trim() }],
         stops_order: () => ["arrivals", { ...config.arrivals, stops: stops() }],
         weather_location: weather,
@@ -36,6 +38,10 @@
         // The contract names the skin `skin` or, from countdown-api's theme change, `theme`: keep whichever it has.
         const key = "theme" in config.style ? "theme" : "skin";
         return { ...config.style, [key]: checked("theme"), colour: checked("theme_colour") };
+    }
+
+    function lyrics() {
+        return ["lyrics", { size: checked("lyrics_size"), align: checked("lyrics_align") }];
     }
 
     function stops() {

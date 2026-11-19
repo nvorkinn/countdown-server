@@ -19,6 +19,7 @@ from countdown_api.models import (
     Spotify,
     TouchscreenConfig,
     TouchscreenDisplay,
+    TouchscreenLyrics,
     TouchscreenStyle,
     Weather,
 )
@@ -65,6 +66,7 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
             notice_board=notice_board,
             style=TouchscreenStyle(skin=config.theme, colour=config.theme_colour, dynamic=config.theme_dynamic),
             display=TouchscreenDisplay(sleep_minutes=config.screen_sleep_minutes),
+            lyrics=TouchscreenLyrics(size=config.lyrics_size, align=config.lyrics_align),
         )
     return EpaperConfig(
         device_id=device_id,

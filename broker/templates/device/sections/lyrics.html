@@ -1,0 +1,15 @@
+{# How a touchscreen shows a song's synced lyrics (the config's TouchscreenLyrics). #}
+{% from "device/_controls.html" import segmented %}
+<section class="section" data-section="lyrics">
+    <header class="card-header">
+        <h2 class="card-title">Synced Lyrics</h2>
+    </header>
+    <fieldset class="form-group">
+        <legend class="form-legend">Size</legend>
+        {{ segmented("lyrics_size", lyrics_sizes, config.lyrics_size) }}
+    </fieldset>
+    <fieldset class="form-group">
+        <legend class="form-legend">Alignment</legend>
+        {{ segmented("lyrics_align", lyrics_aligns, config.lyrics_align) }}
+    </fieldset>
+</section>
