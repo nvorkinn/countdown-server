@@ -214,6 +214,48 @@ def test_a_save_without_lyrics_keeps_how_they_show(app, client):
     assert response.get_json()["lyrics"] == {"size": "small", "align": "right"}
 
 
+def _parcels_on(app, client, device_id):
+    """Save the account's Parcel key and switch the touchscreen's parcels on from its page, a section save."""
+    client.post("/account", data={"parcel_api_key": "parcel-key-abc"})
+    etag = client.get(CONFIG_URL, query_string={"device_id": device_id}).headers["ETag"]
+    return client.put(
+        f"{CONFIG_URL}/parcels",
+        query_string={"device_id": device_id},
+        json={"enabled": True},
+        headers={"If-Match": etag},
+    )
+
+
+def test_a_touchscreens_parcels_are_switched_on_from_its_page_and_subscribed(app, client):
+    device_id = _paired(app, client)
+    assert client.get(CONFIG_URL, headers=_auth()).get_json()["parcels"] == {"enabled": False}
+
+    response = _parcels_on(app, client, device_id)
+
+    assert response.status_code == 200
+    assert response.get_json()["parcels"] == {"enabled": True}
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).parcels_enabled
+    assert app.extensions["redis"].sets["v1:sub:parcel"] == {device_id}
+    assert client.get(CONFIG_URL, headers=_auth()).get_json()["parcels"] == {"enabled": True}
+
+
+def test_a_save_without_parcels_keeps_them_and_one_that_changes_them_is_refused(app, client):
+    device_id = _paired(app, client)
+    _parcels_on(app, client, device_id)
+    # An older touchscreen's save, from before the config had parcels.
+    sent = {key: value for key, value in _saved_with(client, clock_format="12h").items() if key != "parcels"}
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["parcels"] == {"enabled": True}
+    # Switching them is the settings site's (or a section save's), not the device's whole save.
+    response = client.put(CONFIG_URL, json=_saved_with(client, parcels={"enabled": False}), headers=_auth())
+    assert response.status_code == 400
+    assert "parcels" in response.get_json()["error"]
+
+
 def test_a_save_with_the_old_dynamic_colour_is_forest_with_dynamic_on(app, client):
     device_id = _paired(app, client)
     sent = _saved_with(client, style={"skin": "day", "colour": "dynamic", "dynamic": False})
@@ -321,15 +363,25 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
 
     html = client.get("/device").get_data(as_text=True)
 
-    # What the tablet shows (the time format, departures, weather and notice board), then its own style, display and
-    # lyrics.
+    # What the tablet shows (the time format, departures, weather, notice board and parcels), then its own style,
+    # display and lyrics.
     titles = re.findall(r'<h2 class="card-title">([^<]+)</h2>', html)
-    assert titles == ["General", "Departures", "Weather", "Notice board", "Style", "Display", "Synced Lyrics", "Screen"]
+    assert titles == [
+        "General",
+        "Departures",
+        "Weather",
+        "Notice board",
+        "Parcels",
+        "Style",
+        "Display",
+        "Synced Lyrics",
+        "Screen",
+    ]
     assert re.findall(r'id="lyrics_size_([\w-]+)"[^>]*checked', html) == ["medium"]
     assert re.findall(r'id="lyrics_align_(\w+)"[^>]*checked', html) == ["left"]
-    # English-only, and its music is its own: no language and no integrations.
+    # English-only, and its music is its own: no language and no integrations but its parcel notices.
     assert 'name="language"' not in html
-    assert '_enabled"' not in html
+    assert re.findall(r'name="(\w+_enabled)"', html) == ["parcels_enabled"]
     # Nor an e-paper screen's pages of stops.
     assert "Two stops to a page" not in html
     assert "data-pages" not in html

@@ -1,0 +1,11 @@
+{# A touchscreen's parcel notices (the config's Parcels): its owner's Parcel deliveries on its notice board. The key is
+   the account's, on the Account page; an e-paper screen has this switch, and which parcels it shows, under its
+   integrations. #}
+{% from "device/_controls.html" import service_row %}
+<section class="section" data-section="parcels" data-tour="parcels">
+    <header class="card-header">
+        <h2 class="card-title">Parcels</h2>
+    </header>
+    {{ service_row('parcels_enabled', 'Parcel', config.parcels_enabled, parcel_linked, parcel_problem) }}
+    <p class="form-hint">Your deliveries as notices on the notice board: what's out for delivery or needs you, and what's on its way, by the day it's due, and what's just been delivered. Connect Parcel in <a href="{{ url_for('account.account') }}">your account</a>.</p>
+</section>
