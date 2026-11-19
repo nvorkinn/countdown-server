@@ -2,7 +2,8 @@
 
 A touchscreen draws its own weather, arrivals and notices, from the values countdown's providers keep in Redis for the
 render pool: the store contract's departures, weather and notices keys. The broker reads them for the device's config
-as it published it there, and answers them as stored; device_panels.json is what each route answers for its config.
+as it published it there, and answers them as stored; device_panels.json is what each route answers for its config,
+and device_notices_norway.json what getNotices answers an Oslo one (MET Norway's warnings narrowed to its place).
 """
 
 import json
@@ -25,6 +26,10 @@ BANK_HOLIDAYS = fixtures.load("bank_holidays.json")
 NETWORK = fixtures.load("tfl_network.json")
 PARCELS = fixtures.load("parcels.json")
 SITUATIONS = fixtures.load("entur_situations.json")
+FLOODS = fixtures.load("floods.json")
+LOCATIONS = {place["postcode"]: place for place in fixtures.load("location.json")["locations"]}
+METALERTS = fixtures.load("metalerts.json")
+NORWAY = fixtures.load("device_notices_norway.json")
 
 
 def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
@@ -41,7 +46,22 @@ def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
     store[BANK_HOLIDAYS["key"]] = json.dumps(BANK_HOLIDAYS["value"])
     store[NETWORK["key"]] = json.dumps(NETWORK["value"])
     store[store_keys.parcels(device_id)] = json.dumps(PARCELS["value"])
+    for place in [*FLOODS["places"], *LOCATIONS.values()]:
+        store[place["key"]] = json.dumps(place["value"])
+    store[METALERTS["key"]] = json.dumps(METALERTS["value"])
     return store
+
+
+def _oslo(**changes) -> dict:
+    """Return device_notices_norway.json's Oslo touchscreen's config: postcode 0150, its one Entur stop, no parcels."""
+    stops = [{"source": "entur", "id": stop["stop_id"]} for stop in NORWAY["notices"]["entur_stops"]]
+    return {
+        **PANELS["config"],
+        "arrivals": {"stops": stops},
+        "notice_board": {"postcode": NORWAY["postcode"], "country": "NO"},
+        "parcels": {"enabled": False},
+        **changes,
+    }
 
 
 @pytest.fixture
@@ -81,6 +101,7 @@ def test_whatever_isnt_stored_is_null(app, client, device):
         TFL["lines"]["key"],
         MET_OFFICE["key"],
         NETWORK["key"],
+        FLOODS["places"][0]["key"],
     )
     for key in gone:
         del store[key]
@@ -99,6 +120,7 @@ def test_whatever_isnt_stored_is_null(app, client, device):
     assert notices["met_office"] is None
     assert notices["bank_holidays"] == BANK_HOLIDAYS["value"]
     assert notices["tfl_network"] is None
+    assert notices["floods"] is None
 
 
 def test_a_value_the_contract_wont_read_is_null_and_logged_without_the_value(app, client, device, caplog):
@@ -117,11 +139,13 @@ def test_a_norwegian_postcode_has_no_uk_notices_and_the_store_isnt_asked_for_the
     oslo = {**PANELS["config"], "notice_board": {"postcode": "0150", "country": "NO"}}
     store = _stored(app, device, oslo)
     store[store_keys.met_office("0150")] = json.dumps(MET_OFFICE["value"])
+    store[store_keys.floods("0150")] = json.dumps(FLOODS["places"][0]["value"])
 
     notices = client.get("/api/devices/notices", headers=_auth()).get_json()
 
     assert (notices["postcode"], notices["country"]) == ("0150", "NO")
     assert (notices["tfl_roads"], notices["met_office"], notices["bank_holidays"]) == (None, None, None)
+    assert notices["floods"] is None
     # Its TfL stops are still its own, and so is the Tube's status.
     assert notices["tfl_stops"][0]["lines"] == TFL["lines"]["value"]
     assert notices["tfl_network"] == NETWORK["value"]
@@ -157,6 +181,50 @@ def test_each_entur_stop_has_its_stored_situations_in_the_owners_order(app, clie
     assert DeviceNotices.model_validate(notices).entur_stops
 
 
+def test_a_uk_postcode_has_its_flood_warnings_and_no_norwegian_ones(app, client, device):
+    york = FLOODS["places"][1]
+    _stored(app, device, {**PANELS["config"], "notice_board": {"postcode": york["postcode"], "country": "GB"}})
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["floods"] == york["value"]
+    assert notices["metalerts"] is None
+
+
+def test_a_norwegian_postcode_has_the_weather_warnings_covering_its_place(app, client, device):
+    store = _stored(app, device, _oslo())
+    store[SITUATIONS["key"]] = json.dumps(SITUATIONS["value"])
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices == NORWAY["notices"]
+    warnings = DeviceNotices.model_validate(notices).metalerts
+    assert warnings is not None
+    everywhere = METALERTS["value"]
+    assert 0 < len(warnings.no["features"]) == len(warnings.en["features"]) < len(everywhere["en"]["features"])
+    assert notices["metalerts"]["fetched_at"] == everywhere["fetched_at"]
+
+
+@pytest.mark.parametrize("missing", ["its location", "not a postcode", "the warnings", "a country"])
+def test_norwegian_warnings_are_null_without_a_place_to_narrow_them_to(app, client, device, missing):
+    store = _stored(app, device, _oslo())
+    match missing:
+        case "its location":
+            del store[store_keys.location(NORWAY["postcode"])]  # provider-locations hasn't looked it up yet
+        case "not a postcode":
+            # Kartverket doesn't know it: it's stored as not found, without a location.
+            _stored(app, device, _oslo(notice_board={"postcode": "0001", "country": "NO"}))
+        case "the warnings":
+            del store[METALERTS["key"]]
+        case "a country":
+            _stored(app, device, _oslo(notice_board={"postcode": NORWAY["postcode"], "country": None}))
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["metalerts"] is None
+    assert notices["floods"] is None
+
+
 def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device):
     bare = {
         **PANELS["config"],
@@ -173,10 +241,12 @@ def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device
         "country": None,
         "tfl_stops": [],
         "tfl_roads": None,
+        "floods": None,
         "met_office": None,
         "bank_holidays": None,
         "tfl_network": None,
         "entur_stops": [],
+        "metalerts": None,
         "parcels": None,
     }
 

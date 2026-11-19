@@ -94,11 +94,14 @@ the broker reads for it (`broker/services/panels.py`), for the config it publish
 **`GET /api/devices/weather`** (`DeviceWeather`: the place's stored Open-Meteo forecast, `v1:weather:<key>`),
 **`GET /api/devices/arrivals`** (`DeviceArrivals`: each stop's departures, `v1:departures:<stop id>`, in the owner's
 order) and **`GET /api/devices/notices`** (`DeviceNotices`: TfL's line statuses and station disruptions at its TfL
-stops, Entur's situations at its Entur stops (`v1:notices:entur:<stop id>`) and, for a UK postcode, TfL's roads, the
-Met Office's warnings and the bank holidays; with either, every Tube line's status, `v1:notices:tfl-network`; and with parcels switched on in its config, the parcel provider's
-`v1:parcels:<device id>`, which its owner turns on in the tablet's Parcels section). Each value is answered as
-its provider stored it (the store contract's keys and schemas), not worded as notices; one that's missing, or that the
-contract's model won't read, is `null`. A device that isn't paired is a `409`, and Redis being down a `503` with
+stops, Entur's situations at its Entur stops (`v1:notices:entur:<stop id>`); for a UK postcode, TfL's roads, the
+Environment Agency's flood warnings (`v1:notices:floods:<place>`), the Met Office's warnings and the bank holidays; for
+a Norwegian one, MET Norway's weather warnings whose area covers where it is (`v1:notices:metalerts`, for all of Norway,
+narrowed to its `v1:location:<place>` in both languages, as countdown's notice board narrows them); with TfL stops or
+a UK postcode, every Tube line's status, `v1:notices:tfl-network`; and with parcels switched on in its config, the
+parcel provider's `v1:parcels:<device id>`, which its owner turns on in the tablet's Parcels section). Each value is
+answered as its provider stored it (the store contract's keys and schemas), not worded as notices; one that's missing,
+or that the contract's model won't read, is `null` (and so are the weather warnings while its place isn't known). A device that isn't paired is a `409`, and Redis being down a `503` with
 `Retry-After`.
 
 The weather also carries the place's backgrounds so far (`background`, `v1:background:<key>`): one AI-made photo per part
