@@ -89,6 +89,11 @@ It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the S
 secret never leave the broker. `404` means the account hasn't linked Spotify, and `403` that the link predates
 touchscreens and lacks their scopes: the Account page then asks to reconnect it.
 
+**`GET /api/devices/account`** answers which services its owner's account has linked (`DeviceAccount`: `parcel` and
+`spotify`, each `{"linked": true|false}`), and never a login or key. The links are the account's, so they aren't in the
+config, whose `parcels.enabled` is off both while the screen's switch is off and while the account has no Parcel key:
+with this a touchscreen's settings tell the two apart, and say how to set Parcel up. `409` until the device is paired.
+
 It draws its own weather, arrivals and notices from what countdown's providers keep in Redis for the render pool, which
 the broker reads for it (`broker/services/panels.py`), for the config it published to `v1:config:<device id>`:
 **`GET /api/devices/weather`** (`DeviceWeather`: the place's stored Open-Meteo forecast, `v1:weather:<key>`),

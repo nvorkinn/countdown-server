@@ -48,6 +48,7 @@ def touchscreen(app, client):
         (f"{CONFIG_URL}/style", "PUT"),
         ("/api/devices/register", "POST"),
         ("/api/devices/spotify/token", "GET"),
+        ("/api/devices/account", "GET"),
         ("/api/stops/search", "GET"),
         ("/api/places/search", "GET"),
         ("/api/places/here", "GET"),

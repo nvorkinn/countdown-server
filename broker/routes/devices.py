@@ -1,4 +1,4 @@
-"""A device's routes: its registration, its config, and a touchscreen's Spotify token.
+"""A device's routes: its registration, its config, its owner's account's links, and a touchscreen's Spotify token.
 
 Once registered, a device reads its config here (GET /config, the store contract's getConfig), and a touchscreen
 saves what its own settings panel shows (PUT /config, putConfig). A touchscreen draws itself from that config, as the
@@ -15,6 +15,9 @@ so whoever saved last isn't overwritten unseen.
 
 A touchscreen draws its own weather, arrivals and notices from the store (GET /weather, /arrivals and /notices), or
 reads all three live as server-sent events (GET /feed, services/feed.py).
+
+A device asks which services its owner's account has linked (GET /account, services/accounts.links), as the links
+aren't in its config: a touchscreen's settings then say how to set up one that isn't.
 
 A touchscreen plays its owner's Spotify itself (its Web Playback SDK), so it asks for a short-lived access token for
 the account's link (GET /spotify/token); the refresh token and the app's secret stay here.
@@ -323,6 +326,20 @@ def spotify_token(device_id: str) -> ResponseReturnValue:
     if token is None:  # unlinked in between
         return jsonify(error="the owner's account hasn't linked Spotify"), 404
     return token.model_dump(mode="json"), 200
+
+
+@bp.get("/account")
+@require_device_auth
+def account(device_id: str) -> ResponseReturnValue:
+    """Answer a paired device which services its owner's account has linked (DeviceAccount, getAccount).
+
+    The links are the account's, not the device's, so they aren't in its config: with them a touchscreen tells a
+    service that's switched off from one never set up. Only whether each is linked; 409 for a device no one has paired.
+    """
+    device = db.session.get_one(Device, device_id)
+    if device.paired_at is None or device.owner is None:
+        return jsonify(error="the device isn't paired yet"), 409
+    return accounts.links(device.owner).model_dump(mode="json"), 200
 
 
 @bp.get("/weather")
