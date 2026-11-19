@@ -24,6 +24,7 @@ MET_OFFICE = fixtures.load("met_office.json")
 BANK_HOLIDAYS = fixtures.load("bank_holidays.json")
 NETWORK = fixtures.load("tfl_network.json")
 PARCELS = fixtures.load("parcels.json")
+SITUATIONS = fixtures.load("entur_situations.json")
 
 
 def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
@@ -135,6 +136,27 @@ def test_a_uk_postcode_without_tfl_stops_still_has_the_tubes_status(app, client,
     assert notices["tfl_network"] == NETWORK["value"]
 
 
+def test_each_entur_stop_has_its_stored_situations_in_the_owners_order(app, client, device):
+    jernbanetorget = SITUATIONS["value"]["stop_id"]
+    oslo = {
+        **PANELS["config"],
+        "arrivals": {"stops": [{"source": "entur", "id": jernbanetorget}, {"source": "entur", "id": "NSR:Quay:7333"}]},
+        "notice_board": {"postcode": "0150", "country": "NO"},
+    }
+    store = _stored(app, device, oslo)
+    store[SITUATIONS["key"]] = json.dumps(SITUATIONS["value"])
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["entur_stops"] == [
+        {"stop_id": jernbanetorget, "situations": SITUATIONS["value"]},
+        {"stop_id": "NSR:Quay:7333", "situations": None},  # none stored yet
+    ]
+    assert notices["tfl_stops"] == []
+    assert notices["tfl_network"] is None
+    assert DeviceNotices.model_validate(notices).entur_stops
+
+
 def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device):
     bare = {
         **PANELS["config"],
@@ -154,6 +176,7 @@ def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device
         "met_office": None,
         "bank_holidays": None,
         "tfl_network": None,
+        "entur_stops": [],
         "parcels": None,
     }
 

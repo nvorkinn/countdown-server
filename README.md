@@ -94,8 +94,8 @@ the broker reads for it (`broker/services/panels.py`), for the config it publish
 **`GET /api/devices/weather`** (`DeviceWeather`: the place's stored Open-Meteo forecast, `v1:weather:<key>`),
 **`GET /api/devices/arrivals`** (`DeviceArrivals`: each stop's departures, `v1:departures:<stop id>`, in the owner's
 order) and **`GET /api/devices/notices`** (`DeviceNotices`: TfL's line statuses and station disruptions at its TfL
-stops and, for a UK postcode, TfL's roads, the Met Office's warnings and the bank holidays; with either, every Tube
-line's status, `v1:notices:tfl-network`; and with parcels switched on in its config, the parcel provider's
+stops, Entur's situations at its Entur stops (`v1:notices:entur:<stop id>`) and, for a UK postcode, TfL's roads, the
+Met Office's warnings and the bank holidays; with either, every Tube line's status, `v1:notices:tfl-network`; and with parcels switched on in its config, the parcel provider's
 `v1:parcels:<device id>`, which its owner turns on in the tablet's Parcels section). Each value is answered as
 its provider stored it (the store contract's keys and schemas), not worded as notices; one that's missing, or that the
 contract's model won't read, is `null`. A device that isn't paired is a `409`, and Redis being down a `503` with

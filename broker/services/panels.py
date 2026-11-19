@@ -19,6 +19,7 @@ from countdown_api.models import (
     StopDepartures,
     StoredBackground,
     StoredBankHolidays,
+    StoredEnturSituations,
     StoredForecast,
     StoredLineStatus,
     StoredMetOfficeWarnings,
@@ -82,18 +83,21 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
     TfL's road disruptions near it, the Met Office's warnings for it and the UK's bank holidays; for a device with
     either, every Tube line's status (a London device's Tube status panel, shown when its notice board is empty); and
     for one with parcels switched on, its parcels, as the parcel provider stored them (already narrowed to those its
-    settings show).
+    settings show). Its Entur stops' situations (Entur's disruption messages on each stop and the lines serving it)
+    come whatever its postcode, as its TfL stops' do.
     """
     settings = config(store, device_id)
     board = settings.notice_board
     parcels = settings.parcels is not None and settings.parcels.enabled
     tfl_stops = [stop.id for stop in settings.arrivals.stops if stop.source == "tfl"]
+    entur_stops = [stop.id for stop in settings.arrivals.stops if stop.source == "entur"]
     wanted: list[tuple[str, type[BaseModel]]] = []
     for stop_id in tfl_stops:
         wanted += [
             (store_keys.tfl_line_status(stop_id), StoredLineStatus),
             (store_keys.tfl_stations(stop_id), StoredStationDisruptions),
         ]
+    wanted += [(store_keys.entur_situations(stop_id), StoredEnturSituations) for stop_id in entur_stops]
     uk = board.country == "GB" and board.postcode is not None
     if uk:
         wanted += [
@@ -119,6 +123,7 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
         "met_office": None,
         "bank_holidays": None,
         "tfl_network": None,
+        "entur_stops": [{"stop_id": stop_id, "situations": next(values)} for stop_id in entur_stops],
         "parcels": None,
     }
     if uk:
