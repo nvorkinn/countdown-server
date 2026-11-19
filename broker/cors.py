@@ -12,10 +12,10 @@ Flask answers the preflight (OPTIONS) itself, without calling the route, so it n
 from flask import Flask, Response, current_app, request
 
 # The routes a touchscreen calls (the countdown-api contract's): its registration, config and Spotify token under
-# /api/devices/, and the stop and place pickers' searches. The settings site's pages and the e-paper screens' frames
-# aren't here.
+# /api/devices/, and the stop and place pickers' searches and current location. The settings site's pages and the
+# e-paper screens' frames aren't here.
 PATH_PREFIXES = ("/api/devices/",)
-PATHS = frozenset({"/api/stops/search", "/api/places/search"})
+PATHS = frozenset({"/api/stops/search", "/api/places/search", "/api/places/here"})
 
 ALLOW_METHODS = "GET, POST, PUT, OPTIONS"
 ALLOW_HEADERS = "Authorization, Content-Type, If-Match, If-None-Match"
