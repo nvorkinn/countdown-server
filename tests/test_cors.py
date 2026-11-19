@@ -50,6 +50,7 @@ def touchscreen(app, client):
         ("/api/devices/spotify/token", "GET"),
         ("/api/stops/search", "GET"),
         ("/api/places/search", "GET"),
+        ("/api/places/here", "GET"),
     ],
 )
 def test_the_app_is_answered_a_preflight_without_a_secret(anonymous_client, path, method):

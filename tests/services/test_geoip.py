@@ -69,10 +69,39 @@ def test_no_suggestion_for_an_ip_the_database_cant_place(app, geodata, ip):
         assert geoip.suggest_weather_location(ip) is None
 
 
+def test_locating_an_ip_gives_where_it_is_too(app, geodata):
+    geodata["81.2.69.1"] = _record(51.40, -0.11)
+    with app.app_context():
+        assert geoip.locate_ip("81.2.69.1") == geoip.Located("London", 51.40, -0.11)
+
+
+def test_an_ip_named_but_not_placed_has_no_position(app, geodata):
+    geodata["81.2.69.4"] = {"city": {"names": {"en": "Stornoway"}}}
+    with app.app_context():
+        assert geoip.locate_ip("81.2.69.4") == geoip.Located("Stornoway", None, None)
+
+
+def test_a_position_is_the_biggest_place_nearby(app, geodata):
+    with app.app_context():
+        assert geoip.place_near(51.40, -0.11) == geoip.Located("London", 51.40, -0.11)
+
+
+def test_a_position_out_in_the_country_is_the_nearest_town(app, geodata):
+    with app.app_context():
+        # The Cairngorms: Inverness is some 60 km away, and nothing bigger is within 25.
+        assert geoip.place_near(57.08, -3.67) == geoip.Located("Inverness", 57.08, -3.67)
+
+
+def test_a_position_far_from_every_town_is_no_place(app, geodata):
+    with app.app_context():
+        assert geoip.place_near(0.0, -30.0) is None
+
+
 def test_no_suggestion_without_the_data(app, tmp_path):
     app.config["GEODATA_DIR"] = str(tmp_path)
     with app.app_context():
         assert geoip.suggest_weather_location("81.2.69.1") is None
+        assert geoip.place_near(51.5, -0.1) is None
 
 
 def _fetch_geodata():
