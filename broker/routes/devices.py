@@ -172,7 +172,15 @@ def put_config(device_id: str) -> ResponseReturnValue:
         sent = model.model_validate(body)
     except ValueError:  # pydantic's ValidationError is one
         return jsonify(error="not a config the contract allows"), 400
-    # A field left out (one the device's contract is older than, as parcels) is kept as it is, not a change.
+    # A field left out (one the device's contract is older than, as parcels or parcels' window) is kept as it is, not a
+    # change.
+    if isinstance(sent, TouchscreenConfig) and sent.parcels is not None and isinstance(current, TouchscreenConfig):
+        kept = {
+            name: getattr(current.parcels, name)
+            for name in type(sent.parcels).model_fields
+            if name not in sent.parcels.model_fields_set
+        }
+        sent.parcels = sent.parcels.model_copy(update=kept)
     changed = sorted(
         name
         for name in type(current).model_fields

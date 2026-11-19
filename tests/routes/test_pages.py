@@ -1556,14 +1556,22 @@ def test_removing_the_parcel_key_unsubscribes_the_device_and_switches_the_panel_
     client, device_id, _ = paired_client
     client.post("/account", data={"parcel_api_key": "parcel-key-abc"})
     client.post("/device", data={"interval": "15", "parcels_enabled": "on"})
-    assert json.loads(fake_redis.strings[f"v1:config:{device_id}"])["parcels"] == {"enabled": True}
+    assert json.loads(fake_redis.strings[f"v1:config:{device_id}"])["parcels"] == {
+        "enabled": True,
+        "days_ahead": None,
+        "kept_hours": 4,
+    }
 
     assert client.post("/account/parcel/disconnect").status_code == 302
 
     with app.app_context():
         assert db.session.get(ParcelKey, account_of(device_id)) is None
     assert _subscriptions(fake_redis) == {}
-    assert json.loads(fake_redis.strings[f"v1:config:{device_id}"])["parcels"] == {"enabled": False}
+    assert json.loads(fake_redis.strings[f"v1:config:{device_id}"])["parcels"] == {
+        "enabled": False,
+        "days_ahead": None,
+        "kept_hours": 4,
+    }
 
 
 def test_the_pages_never_show_the_parcel_key(paired_client):

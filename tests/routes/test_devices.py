@@ -100,7 +100,7 @@ def test_the_config_returns_defaults(app, register_device):
         "spotify": {"enabled": False},
         "glowmarkt": {"enabled": False},
         "developer": {"enabled": False},
-        "parcels": {"enabled": False},
+        "parcels": {"enabled": False, "days_ahead": None, "kept_hours": 4},
         "apple_music": {"enabled": False},
         "pairing_code": None,
     }
@@ -152,7 +152,7 @@ def test_the_config_switches_glowmarkt_off_on_a_screen_not_showing_energy(app, p
 
 def test_the_config_sends_the_parcels_switch_but_never_the_parcel_key(app, client, register_device):
     device_id, _secret = register_device()
-    assert _config(app, device_id).get_json()["parcels"] == {"enabled": False}
+    assert _config(app, device_id).get_json()["parcels"] == {"enabled": False, "days_ahead": None, "kept_hours": 4}
     _set_config(app, device_id, parcels_enabled=True)
     with app.app_context():
         key = ParcelKey(user_id=account_of(device_id))
@@ -162,13 +162,13 @@ def test_the_config_sends_the_parcels_switch_but_never_the_parcel_key(app, clien
 
     response = _config(app, device_id)
 
-    assert response.get_json()["parcels"] == {"enabled": True}
+    assert response.get_json()["parcels"] == {"enabled": True, "days_ahead": None, "kept_hours": 4}
     assert b"parcel-secret" not in response.data
     # The switch alone isn't enough: without the account's key there's nothing to show.
     with app.app_context():
         db.session.delete(db.session.get_one(ParcelKey, account_of(device_id)))
         db.session.commit()
-    assert _config(app, device_id).get_json()["parcels"] == {"enabled": False}
+    assert _config(app, device_id).get_json()["parcels"] == {"enabled": False, "days_ahead": None, "kept_hours": 4}
 
 
 def test_the_config_sends_the_key_the_weather_is_subscribed_under(app, client, register_device):

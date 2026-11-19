@@ -228,16 +228,24 @@ def _parcels_on(app, client, device_id):
 
 def test_a_touchscreens_parcels_are_switched_on_from_its_page_and_subscribed(app, client):
     device_id = _paired(app, client)
-    assert client.get(CONFIG_URL, headers=_auth()).get_json()["parcels"] == {"enabled": False}
+    assert client.get(CONFIG_URL, headers=_auth()).get_json()["parcels"] == {
+        "enabled": False,
+        "days_ahead": None,
+        "kept_hours": 4,
+    }
 
     response = _parcels_on(app, client, device_id)
 
     assert response.status_code == 200
-    assert response.get_json()["parcels"] == {"enabled": True}
+    assert response.get_json()["parcels"] == {"enabled": True, "days_ahead": None, "kept_hours": 4}
     with app.app_context():
         assert db.session.get_one(DeviceConfig, device_id).parcels_enabled
     assert app.extensions["redis"].sets["v1:sub:parcel"] == {device_id}
-    assert client.get(CONFIG_URL, headers=_auth()).get_json()["parcels"] == {"enabled": True}
+    assert client.get(CONFIG_URL, headers=_auth()).get_json()["parcels"] == {
+        "enabled": True,
+        "days_ahead": None,
+        "kept_hours": 4,
+    }
 
 
 def test_a_save_without_parcels_keeps_them_and_one_that_changes_them_is_refused(app, client):
@@ -249,11 +257,24 @@ def test_a_save_without_parcels_keeps_them_and_one_that_changes_them_is_refused(
     response = client.put(CONFIG_URL, json=sent, headers=_auth())
 
     assert response.status_code == 200
-    assert response.get_json()["parcels"] == {"enabled": True}
+    assert response.get_json()["parcels"] == {"enabled": True, "days_ahead": None, "kept_hours": 4}
     # Switching them is the settings site's (or a section save's), not the device's whole save.
     response = client.put(CONFIG_URL, json=_saved_with(client, parcels={"enabled": False}), headers=_auth())
     assert response.status_code == 400
     assert "parcels" in response.get_json()["error"]
+
+
+def test_a_save_with_parcels_but_not_their_window_keeps_it(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        db.session.get_one(DeviceConfig, device_id).parcels_days_ahead = 1
+        db.session.commit()
+    sent = _saved_with(client, clock_format="12h", parcels={"enabled": False})
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["parcels"] == {"enabled": False, "days_ahead": 1, "kept_hours": 4}
 
 
 def test_a_save_with_the_old_dynamic_colour_is_forest_with_dynamic_on(app, client):
