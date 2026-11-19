@@ -115,6 +115,20 @@ def test_a_touchscreen_saves_one_section_whole(app, client, touchscreen):
         assert (config.theme, config.theme_colour, config.theme_dynamic) == ("night", "plum", True)
 
 
+def test_a_touchscreen_saves_how_it_shows_lyrics(app, client, touchscreen):
+    assert client.get(CONFIG_URL, headers=_auth()).get_json()["lyrics"] == {"size": "medium", "align": "left"}
+    etag = _version(client, headers=_auth())
+
+    response = _save(client, "lyrics", {"size": "x-large", "align": "center"}, etag, headers=_auth())
+
+    assert (response.status_code, response.get_json()["lyrics"]) == (200, {"size": "x-large", "align": "center"})
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, touchscreen)
+        assert (config.lyrics_size, config.lyrics_align) == ("x-large", "center")
+    refused = _save(client, "lyrics", {"size": "huge", "align": "left"}, response.headers["ETag"], headers=_auth())
+    assert refused.status_code == 400
+
+
 def test_a_flat_field_is_a_section_of_its_own(client, touchscreen):
     etag = _version(client, headers=_auth())
 

@@ -26,6 +26,8 @@ from broker.models import (
     CLOCK_FORMATS,
     LANGUAGES,
     LAYOUTS,
+    LYRICS_ALIGNS,
+    LYRICS_SIZES,
     ORIENTATIONS,
     PARCEL_DAYS_AHEAD,
     PARCEL_KEPT_HOURS,
@@ -385,14 +387,18 @@ CHOICES = {
     "theme_dynamic": (THEME_DYNAMIC, "Dynamic"),
     # A number of minutes, picked by its form value (_set_choices stores it as one).
     "screen_sleep_minutes": (SCREEN_SLEEP_MINUTES, "The screen sleep"),
+    "lyrics_size": (LYRICS_SIZES, "The lyrics size"),
+    "lyrics_align": (LYRICS_ALIGNS, "The lyrics alignment"),
 }
 
 
-# The page's fields that are one device type's own, each in its config's `style` or `display`: a save from a page of
-# the other type that posts one is refused, as that type's config has nowhere for it.
+# The page's fields that are one device type's own, each in its config's `style`, `display` or `lyrics`: a save from a
+# page of the other type that posts one is refused, as that type's config has nowhere for it.
 TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
     "epaper": frozenset({"orientation", "style", "weather_design", "layout"}),
-    "touchscreen": frozenset({"theme", "theme_colour", "theme_dynamic", "screen_sleep_minutes"}),
+    "touchscreen": frozenset(
+        {"theme", "theme_colour", "theme_dynamic", "screen_sleep_minutes", "lyrics_size", "lyrics_align"}
+    ),
 }
 # What an error calls each type of device.
 TYPE_NAMES: dict[DeviceType, str] = {"epaper": "an e-paper screen", "touchscreen": "a touchscreen"}
@@ -714,8 +720,17 @@ def _seen_ago(seen: datetime | None, now: datetime) -> str | None:
 PAGE_SECTIONS: dict[DeviceType, tuple[str | tuple[str, str], ...]] = {
     "epaper": ("general", "style_epaper", "layout", ("weather", "notice_board"), "arrivals", "integrations", "screen"),
     # What the tablet shows and nothing else: no language (it's English-only) and no integrations (its music is its
-    # own). The page's sections follow the config's: the flat fields (general), its panels, then its style and display.
-    "touchscreen": ("general", "arrivals", ("weather", "notice_board"), "style_touchscreen", "display", "screen"),
+    # own). The page's sections follow the config's: the flat fields (general), its panels, then its style, display and
+    # lyrics.
+    "touchscreen": (
+        "general",
+        "arrivals",
+        ("weather", "notice_board"),
+        "style_touchscreen",
+        "display",
+        "lyrics",
+        "screen",
+    ),
 }
 # The integrations' switches on a page with them, each its form field and DeviceConfig attribute <name>_enabled.
 INTEGRATIONS = ("spotify", "developer", "apple_music", "parcels", "energy")
@@ -769,6 +784,8 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         theme_colours=THEME_COLOURS,
         theme_dynamic=THEME_DYNAMIC,
         screen_sleep_minutes=SCREEN_SLEEP_MINUTES,
+        lyrics_sizes=LYRICS_SIZES,
+        lyrics_aligns=LYRICS_ALIGNS,
         display_seen=_seen_ago(device.display_last_seen_at, now),
         screen_label=screen_label(device),
         has_frame=drawn is not None,

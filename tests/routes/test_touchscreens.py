@@ -135,6 +135,7 @@ def test_a_touchscreen_gets_no_pairing_code(app, client):
     # Its own settings, at their defaults.
     assert response.get_json()["style"] == {"skin": "day", "colour": "forest", "dynamic": False}
     assert response.get_json()["display"] == {"sleep_minutes": 5}
+    assert response.get_json()["lyrics"] == {"size": "medium", "align": "left"}
 
 
 def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
@@ -143,6 +144,7 @@ def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
         config = db.session.get_one(DeviceConfig, device_id)
         config.theme, config.theme_colour, config.screen_sleep_minutes = "auto", "violet", 15
         config.theme_dynamic = True
+        config.lyrics_size, config.lyrics_align = "large", "center"
         db.session.commit()
 
     response = client.get(CONFIG_URL, headers=_auth())
@@ -154,6 +156,7 @@ def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
     assert set(body) == set(TOUCHSCREEN["config"]) == set(TouchscreenConfig.model_fields)
     assert body["style"] == TOUCHSCREEN["config"]["style"]
     assert body["display"] == TOUCHSCREEN["config"]["display"]
+    assert body["lyrics"] == TOUCHSCREEN["config"]["lyrics"]
     CONFIGS.validate_python(body)
 
 
@@ -180,6 +183,7 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
         clock_format="12h",
         style=TOUCHSCREEN["save"]["style"],
         display=TOUCHSCREEN["save"]["display"],
+        lyrics=TOUCHSCREEN["save"]["lyrics"],
     )
 
     response = client.put(CONFIG_URL, json=sent, headers=_auth())
@@ -191,7 +195,23 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
         assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("night", "violet", 30)
         assert config.theme_dynamic
         assert config.clock_format == "12h"
+        assert (config.lyrics_size, config.lyrics_align) == ("large", "center")
     assert client.get(CONFIG_URL, headers=_auth()).get_json() == sent
+
+
+def test_a_save_without_lyrics_keeps_how_they_show(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        config.lyrics_size, config.lyrics_align = "small", "right"
+        db.session.commit()
+    # An older touchscreen's save, from before the config had lyrics.
+    sent = {key: value for key, value in _saved_with(client, clock_format="12h").items() if key != "lyrics"}
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["lyrics"] == {"size": "small", "align": "right"}
 
 
 def test_a_save_with_the_old_dynamic_colour_is_forest_with_dynamic_on(app, client):
@@ -301,9 +321,12 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
 
     html = client.get("/device").get_data(as_text=True)
 
-    # What the tablet shows (the time format, departures, weather and notice board), then its own style and display.
+    # What the tablet shows (the time format, departures, weather and notice board), then its own style, display and
+    # lyrics.
     titles = re.findall(r'<h2 class="card-title">([^<]+)</h2>', html)
-    assert titles == ["General", "Departures", "Weather", "Notice board", "Style", "Display", "Screen"]
+    assert titles == ["General", "Departures", "Weather", "Notice board", "Style", "Display", "Synced Lyrics", "Screen"]
+    assert re.findall(r'id="lyrics_size_([\w-]+)"[^>]*checked', html) == ["medium"]
+    assert re.findall(r'id="lyrics_align_(\w+)"[^>]*checked', html) == ["left"]
     # English-only, and its music is its own: no language and no integrations.
     assert 'name="language"' not in html
     assert '_enabled"' not in html
@@ -348,6 +371,7 @@ def test_an_epaper_screens_page_has_no_touchscreen_settings(paired_client):
     assert 'name="theme"' not in html
     assert 'name="theme_colour"' not in html
     assert 'name="screen_sleep_minutes"' not in html
+    assert 'name="lyrics_size"' not in html
     assert 'id="preview"' in html
 
 
@@ -361,6 +385,8 @@ def test_a_touchscreens_settings_are_saved_with_the_rest(app, client):
             "theme_colour": "plum",
             "theme_dynamic": "on",
             "screen_sleep_minutes": "0",
+            "lyrics_size": "small",
+            "lyrics_align": "right",
             "clock_format": "12h",
         },
     )
@@ -376,6 +402,7 @@ def test_a_touchscreens_settings_are_saved_with_the_rest(app, client):
         {"sleep_minutes": 0},
     )
     assert body["clock_format"] == "12h"
+    assert body["lyrics"] == {"size": "small", "align": "right"}
 
 
 def test_a_touchscreens_save_keeps_its_integrations(app, client):
@@ -406,7 +433,13 @@ def test_a_save_without_the_touchscreen_settings_keeps_them(app, client):
 def test_settings_the_contract_doesnt_allow_are_refused(app, client):
     device_id = _paired(app, client)
 
-    for wrong in ({"theme": "dusk"}, {"theme_colour": "mauve"}, {"screen_sleep_minutes": "10"}):
+    for wrong in (
+        {"theme": "dusk"},
+        {"theme_colour": "mauve"},
+        {"screen_sleep_minutes": "10"},
+        {"lyrics_size": "huge"},
+        {"lyrics_align": "justify"},
+    ):
         response = client.post("/device", data=wrong)
         assert response.status_code == 400
         assert b"Nothing was saved." in response.data

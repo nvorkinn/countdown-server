@@ -76,6 +76,18 @@ def test_0036_turns_the_dynamic_colour_into_forest_with_dynamic_on(app, register
     assert tuple(row) == ("forest", 1)
 
 
+def test_0037_shows_every_touchscreens_lyrics_at_medium_on_the_left(app, register_device):
+    device_id, _ = register_device()
+    with app.app_context():
+        downgrade(revision="0036")
+        upgrade()
+        with db.engine.begin() as conn:
+            row = conn.exec_driver_sql(
+                "SELECT lyrics_size, lyrics_align FROM device_config WHERE device_id = ?", (device_id,)
+            ).one()
+    assert tuple(row) == ("medium", "left")
+
+
 def _downgrade(revision: str) -> None:
     """Downgrade to `revision` (needs an app context), giving every device a renderer secret on the way past 0023.
 
