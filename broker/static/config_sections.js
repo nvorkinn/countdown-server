@@ -25,7 +25,9 @@
         lyrics_size: lyrics,
         lyrics_align: lyrics,
         postcode: () => ["notice_board", { ...config.notice_board, postcode: form.elements.postcode.value.trim() }],
-        parcels_enabled: () => ["parcels", { ...config.parcels, enabled: form.elements.parcels_enabled.checked }],
+        parcels_enabled: parcels,
+        parcels_days_ahead: parcels,
+        parcels_kept_hours: parcels,
         stops_order: () => ["arrivals", { ...config.arrivals, stops: stops() }],
         weather_location: weather,
         weather_place_id: weather,
@@ -43,6 +45,19 @@
 
     function lyrics() {
         return ["lyrics", { size: checked("lyrics_size"), align: checked("lyrics_align") }];
+    }
+
+    function parcels() {
+        const daysAhead = checked("parcels_days_ahead");
+        return [
+            "parcels",
+            {
+                ...config.parcels,
+                enabled: form.elements.parcels_enabled.checked,
+                days_ahead: daysAhead ? Number(daysAhead) : null,
+                kept_hours: Number(checked("parcels_kept_hours")),
+            },
+        ];
     }
 
     function stops() {

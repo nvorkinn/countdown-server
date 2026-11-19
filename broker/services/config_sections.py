@@ -20,6 +20,7 @@ from countdown_api.models import (
     EpaperConfig,
     EpaperStyle,
     NoticeBoard,
+    Parcels,
     TouchscreenConfig,
     TouchscreenDisplay,
     TouchscreenLyrics,
@@ -117,6 +118,15 @@ def _lyrics(config: DeviceConfig, value: TouchscreenLyrics) -> None:
     config.lyrics_size, config.lyrics_align = value.size, value.align
 
 
+def _parcels(config: DeviceConfig, value: Parcels) -> None:
+    config.parcels_enabled = value.enabled
+    # Left out (a device older than them), each stays as saved; a sent null days_ahead is any day.
+    if "days_ahead" in value.model_fields_set:
+        config.parcels_days_ahead = value.days_ahead
+    if "kept_hours" in value.model_fields_set and value.kept_hours is not None:
+        config.parcels_kept_hours = value.kept_hours
+
+
 def _switch(column: str) -> Callable[[DeviceConfig, Any], None]:
     """Return the setter of a service's section, which is only its switch."""
 
@@ -146,7 +156,7 @@ SETTERS: dict[str, Callable[[DeviceConfig, Any], str | None]] = {
     "apple_music": _switch("apple_music_enabled"),
     "glowmarkt": _switch("energy_enabled"),
     "developer": _switch("developer_enabled"),
-    "parcels": _switch("parcels_enabled"),
+    "parcels": _parcels,
     "style": _style,
     "display": _display,
     "lyrics": _lyrics,

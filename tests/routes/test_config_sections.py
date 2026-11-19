@@ -129,6 +129,25 @@ def test_a_touchscreen_saves_how_it_shows_lyrics(app, client, touchscreen):
     assert refused.status_code == 400
 
 
+def test_a_touchscreen_saves_which_parcels_it_shows_and_a_switch_alone_keeps_them(app, client, touchscreen):
+    etag = _version(client, headers=_auth())
+
+    window = {"enabled": False, "days_ahead": 2, "kept_hours": 24}
+    response = _save(client, "parcels", window, etag, headers=_auth())
+
+    assert (response.status_code, response.get_json()["parcels"]) == (200, window)
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, touchscreen)
+        assert (config.parcels_days_ahead, config.parcels_kept_hours) == (2, 24)
+    # An older kiosk sends only the switch; null is any day.
+    response = _save(client, "parcels", {"enabled": False}, response.headers["ETag"], headers=_auth())
+    assert response.get_json()["parcels"] == window
+    response = _save(client, "parcels", {**window, "days_ahead": None}, response.headers["ETag"], headers=_auth())
+    assert response.get_json()["parcels"]["days_ahead"] is None
+    refused = _save(client, "parcels", {**window, "kept_hours": 3}, response.headers["ETag"], headers=_auth())
+    assert refused.status_code == 400
+
+
 def test_a_flat_field_is_a_section_of_its_own(client, touchscreen):
     etag = _version(client, headers=_auth())
 

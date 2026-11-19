@@ -52,9 +52,17 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
     # The key is what the weather is subscribed under, so it's what the renderer reads (v1:weather:<key>).
     weather = Weather(location=config.weather_location, key=weather_place.weather_key(config))
     notice_board = NoticeBoard(postcode=config.postcode or None, country=country)
-    # Only the switch, on while the screen shows parcels and its owner has a Parcel API key saved: the key stays here,
-    # and the parcel provider fills the store the screen reads (a touchscreen through getNotices).
-    parcels = Parcels(enabled=config.parcels_enabled and parcel_key is not None)
+    # The switch, on while the screen shows parcels and its owner has a Parcel API key saved, and which parcels it
+    # shows: the key stays here, and the parcel provider fills the store the screen reads (a touchscreen through
+    # getNotices).
+    # The columns are plain integers, saved only from the contract's choices: validated, as the contract's literals.
+    parcels = Parcels.model_validate(
+        {
+            "enabled": config.parcels_enabled and parcel_key is not None,
+            "days_ahead": config.parcels_days_ahead,
+            "kept_hours": config.parcels_kept_hours,
+        }
+    )
     if config.device.type == "touchscreen":
         # English only, paired by token, keeping its own time and playing its own music: nothing more than its look,
         # its screen's sleep and its parcel notices.
