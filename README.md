@@ -80,8 +80,8 @@ registers like an e-paper screen, with its size and `"type": "touchscreen"`, the
 It never gets a pairing code: it's paired by its pairing token. Its owner changes them on its settings page, which
 shows them instead of the pool's style, layout and orientation, and saves the config whole. The touchscreen's own
 settings panel saves with **`PUT /api/devices/config`**: the whole config as it got it, with only `clock_format`,
-`language`, `style` and `display` changed (anything else is a `400`, and a device not yet paired a `409`). A `401`
-means register again.
+`language`, `style` and `display` changed (anything else is a `400`, and a device not yet paired a `409`); a field it
+leaves out, as one from before its contract had it, is kept as saved. A `401` means register again.
 
 It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the Spotify link on its owner's Account page.
 **`GET /api/devices/spotify/token`** answers it a short-lived access token in Spotify's own shape (`SpotifyAccessToken`:
@@ -95,7 +95,8 @@ the broker reads for it (`broker/services/panels.py`), for the config it publish
 **`GET /api/devices/arrivals`** (`DeviceArrivals`: each stop's departures, `v1:departures:<stop id>`, in the owner's
 order) and **`GET /api/devices/notices`** (`DeviceNotices`: TfL's line statuses and station disruptions at its TfL
 stops and, for a UK postcode, TfL's roads, the Met Office's warnings and the bank holidays; with either, every Tube
-line's status, `v1:notices:tfl-network`). Each value is answered as
+line's status, `v1:notices:tfl-network`; and with parcels switched on in its config, the parcel provider's
+`v1:parcels:<device id>`, which its owner turns on in the tablet's Parcels section). Each value is answered as
 its provider stored it (the store contract's keys and schemas), not worded as notices; one that's missing, or that the
 contract's model won't read, is `null`. A device that isn't paired is a `409`, and Redis being down a `503` with
 `Retry-After`.

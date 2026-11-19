@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from countdown_api import keys as store_keys
 from countdown_api.models import (
     ConfigResponse,
+    ParcelList,
     StopDepartures,
     StoredBackground,
     StoredBankHolidays,
@@ -78,11 +79,14 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
     """Return the device's DeviceNotices: what the store has for its TfL stops and, for a UK postcode, its place.
 
     Its TfL stops' line statuses and station disruptions; then, only for a UK postcode (the sources are the UK's),
-    TfL's road disruptions near it, the Met Office's warnings for it and the UK's bank holidays; and for a device with
-    either, every Tube line's status (a London device's Tube status panel, shown when its notice board is empty).
+    TfL's road disruptions near it, the Met Office's warnings for it and the UK's bank holidays; for a device with
+    either, every Tube line's status (a London device's Tube status panel, shown when its notice board is empty); and
+    for one with parcels switched on, its parcels, as the parcel provider stored them (already narrowed to those its
+    settings show).
     """
     settings = config(store, device_id)
     board = settings.notice_board
+    parcels = settings.parcels is not None and settings.parcels.enabled
     tfl_stops = [stop.id for stop in settings.arrivals.stops if stop.source == "tfl"]
     wanted: list[tuple[str, type[BaseModel]]] = []
     for stop_id in tfl_stops:
@@ -100,6 +104,8 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
     london = bool(tfl_stops) or uk
     if london:
         wanted.append((store_keys.TFL_NETWORK, StoredNetworkStatus))
+    if parcels:
+        wanted.append((store_keys.parcels(device_id), ParcelList))
     names = [name for name, _ in wanted]
     values = iter(
         _read(name, value, model)
@@ -113,11 +119,14 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
         "met_office": None,
         "bank_holidays": None,
         "tfl_network": None,
+        "parcels": None,
     }
     if uk:
         answer |= {"tfl_roads": next(values), "met_office": next(values), "bank_holidays": next(values)}
     if london:
         answer["tfl_network"] = next(values)
+    if parcels:
+        answer["parcels"] = next(values)
     return answer
 
 

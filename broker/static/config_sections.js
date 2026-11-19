@@ -25,6 +25,7 @@
         lyrics_size: lyrics,
         lyrics_align: lyrics,
         postcode: () => ["notice_board", { ...config.notice_board, postcode: form.elements.postcode.value.trim() }],
+        parcels_enabled: () => ["parcels", { ...config.parcels, enabled: form.elements.parcels_enabled.checked }],
         stops_order: () => ["arrivals", { ...config.arrivals, stops: stops() }],
         weather_location: weather,
         weather_place_id: weather,

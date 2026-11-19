@@ -720,12 +720,13 @@ def _seen_ago(seen: datetime | None, now: datetime) -> str | None:
 PAGE_SECTIONS: dict[DeviceType, tuple[str | tuple[str, str], ...]] = {
     "epaper": ("general", "style_epaper", "layout", ("weather", "notice_board"), "arrivals", "integrations", "screen"),
     # What the tablet shows and nothing else: no language (it's English-only) and no integrations (its music is its
-    # own). The page's sections follow the config's: the flat fields (general), its panels, then its style, display and
-    # lyrics.
+    # own) but its parcel notices. The page's sections follow the config's: the flat fields (general), its panels and
+    # parcels, then its style, display and lyrics.
     "touchscreen": (
         "general",
         "arrivals",
         ("weather", "notice_board"),
+        "parcels",
         "style_touchscreen",
         "display",
         "lyrics",

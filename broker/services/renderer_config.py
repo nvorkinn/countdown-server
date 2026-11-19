@@ -52,9 +52,12 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
     # The key is what the weather is subscribed under, so it's what the renderer reads (v1:weather:<key>).
     weather = Weather(location=config.weather_location, key=weather_place.weather_key(config))
     notice_board = NoticeBoard(postcode=config.postcode or None, country=country)
+    # Only the switch, on while the screen shows parcels and its owner has a Parcel API key saved: the key stays here,
+    # and the parcel provider fills the store the screen reads (a touchscreen through getNotices).
+    parcels = Parcels(enabled=config.parcels_enabled and parcel_key is not None)
     if config.device.type == "touchscreen":
-        # English only, paired by token, keeping its own time and playing its own music: nothing more than its look and
-        # its screen's sleep.
+        # English only, paired by token, keeping its own time and playing its own music: nothing more than its look,
+        # its screen's sleep and its parcel notices.
         return TouchscreenConfig(
             device_id=device_id,
             type="touchscreen",
@@ -67,6 +70,7 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
             style=TouchscreenStyle(skin=config.theme, colour=config.theme_colour, dynamic=config.theme_dynamic),
             display=TouchscreenDisplay(sleep_minutes=config.screen_sleep_minutes),
             lyrics=TouchscreenLyrics(size=config.lyrics_size, align=config.lyrics_align),
+            parcels=parcels,
         )
     return EpaperConfig(
         device_id=device_id,
@@ -102,9 +106,7 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
         # Only the switch, like the developer panel's: the Apple token stays here, and the music provider fills the
         # store the screen reads.
         apple_music=AppleMusic(enabled=config.apple_music_enabled),
-        # Only the switch, on while the screen shows parcels and its owner has a Parcel API key saved: the key stays
-        # here, and the parcel provider fills the store the screen reads.
-        parcels=Parcels(enabled=config.parcels_enabled and parcel_key is not None),
+        parcels=parcels,
     )
 
 

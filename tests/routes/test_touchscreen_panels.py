@@ -23,6 +23,7 @@ TFL = fixtures.load("tfl_notices.json")
 MET_OFFICE = fixtures.load("met_office.json")
 BANK_HOLIDAYS = fixtures.load("bank_holidays.json")
 NETWORK = fixtures.load("tfl_network.json")
+PARCELS = fixtures.load("parcels.json")
 
 
 def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
@@ -38,6 +39,7 @@ def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
     store[MET_OFFICE["key"]] = json.dumps(MET_OFFICE["value"])
     store[BANK_HOLIDAYS["key"]] = json.dumps(BANK_HOLIDAYS["value"])
     store[NETWORK["key"]] = json.dumps(NETWORK["value"])
+    store[store_keys.parcels(device_id)] = json.dumps(PARCELS["value"])
     return store
 
 
@@ -134,7 +136,12 @@ def test_a_uk_postcode_without_tfl_stops_still_has_the_tubes_status(app, client,
 
 
 def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device):
-    bare = {**PANELS["config"], "arrivals": {"stops": []}, "notice_board": {"postcode": None, "country": None}}
+    bare = {
+        **PANELS["config"],
+        "arrivals": {"stops": []},
+        "notice_board": {"postcode": None, "country": None},
+        "parcels": {"enabled": False},
+    }
     _stored(app, device, bare)
 
     assert client.get("/api/devices/arrivals", headers=_auth()).get_json() == {"stops": []}
@@ -147,7 +154,35 @@ def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device
         "met_office": None,
         "bank_holidays": None,
         "tfl_network": None,
+        "parcels": None,
     }
+
+
+def test_parcels_are_the_devices_stored_ones_while_switched_on(app, client, device):
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["parcels"] == PARCELS["value"]
+
+
+@pytest.mark.parametrize("parcels", [{"enabled": False}, None, "left out"], ids=["off", "null", "left-out"])
+def test_parcels_switched_off_or_from_an_older_config_are_null(app, client, device, parcels):
+    config = {key: value for key, value in PANELS["config"].items() if key != "parcels"}
+    if parcels != "left out":
+        config["parcels"] = parcels
+    _stored(app, device, config)
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["parcels"] is None
+
+
+def test_parcels_not_stored_yet_are_null(app, client, device):
+    del app.extensions["redis"].strings[store_keys.parcels(device)]
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["parcels"] is None
+    assert notices["met_office"] == MET_OFFICE["value"]
 
 
 @pytest.mark.parametrize("route", ["weather", "arrivals", "notices", "feed"])
