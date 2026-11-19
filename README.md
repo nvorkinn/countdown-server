@@ -146,7 +146,9 @@ Each screen's settings are at `/device/<id>` (and `/device` for the most recentl
 Entur), the weather place (an Open-Meteo search), a postcode for the notice board, per-screen integration visibility,
 language, style, clock format and name, and on an HD screen (1872x1404) how the weather is drawn. Connections and
 credentials for music, GitHub, Parcel and Energy live at `/account`, shared across screens; blank replacement
-secret fields keep the saved credentials.
+secret fields keep the saved credentials. The Parcel API key also has a page of its own, `/account/parcel` (the
+contract's `connectParcelPage`): where to find the key, a box with a Paste button, and nothing else of the account. A
+touchscreen whose owner's account has no key shows a code that opens it on a phone.
 
 Style has a large selected preview and a browsable strip of alternatives; Layout separately chooses the panel
 arrangement. Both use native radio choices (arrow keys to select), with scroll buttons when previews do not fit.
