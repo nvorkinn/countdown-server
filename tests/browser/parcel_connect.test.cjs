@@ -15,24 +15,22 @@ function page(clipboard) {
         form: { querySelector: () => save },
     };
     const paste = { hidden: true, addEventListener: (type, callback) => (paste[type] = callback) };
-    const hint = { textContent: "" };
-    const elements = { parcel_api_key: input, parcelPaste: paste, parcelKeyHint: hint };
+    const elements = { parcel_api_key: input, parcelPaste: paste };
     vm.runInNewContext(source, {
         document: { getElementById: id => elements[id] },
         navigator: { clipboard },
     });
-    return { input, paste, hint, save };
+    return { input, paste, save };
 }
 
 test("the Paste button fills the box from the clipboard and moves on to Save", async () => {
-    const { input, paste, hint, save } = page({ readText: async () => "  parcel-key-abc\n" });
+    const { input, paste, save } = page({ readText: async () => "  parcel-key-abc\n" });
     assert.equal(paste.hidden, false);
 
     await paste.click();
 
     assert.equal(input.value, "parcel-key-abc");
     assert.equal(save.focused, true);
-    assert.match(hint.textContent, /^Pasted/);
 });
 
 test("a refused or empty clipboard leaves the box to a paste by hand", async () => {
@@ -43,14 +41,13 @@ test("a refused or empty clipboard leaves the box to a paste by hand", async () 
         async () => "   ",
     ];
     for (const readText of refusals) {
-        const { input, paste, hint, save } = page({ readText });
+        const { input, paste, save } = page({ readText });
 
         await paste.click();
 
         assert.equal(input.value, "");
         assert.equal(input.focused, true);
         assert.equal(save.focused, false);
-        assert.match(hint.textContent, /press and hold/);
     }
 });
 

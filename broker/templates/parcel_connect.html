@@ -24,14 +24,14 @@
     .parcel-step > * { grid-column: 2; }
     .parcel-step p { color: var(--text-muted); font-size: 14px; line-height: 1.5; }
     .parcel-open { display: inline-block; margin-top: 10px; padding: 9px 14px; font-size: 14px; text-decoration: none; }
-    .parcel-key { display: flex; gap: 8px; margin-top: 10px; }
-    .parcel-key input {
-        flex: 1; min-width: 0; padding: 12px;
+    .parcel-key {
+        width: 100%; margin-top: 10px; padding: 12px;
         border: 1.5px solid var(--field-border); border-radius: 6px; background: #fbfbfa;
         font-family: var(--mono); font-size: 16px;
     }
-    .parcel-key input:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(20,21,23,0.08); outline: none; }
-    .parcel-paste { padding: 0 18px; font-size: 15px; font-weight: 500; }
+    .parcel-key:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(20,21,23,0.08); outline: none; }
+    .parcel-actions { display: flex; gap: 10px; }
+    .parcel-actions button { flex: 1; margin-top: 12px; }
     .parcel-note {
         margin-bottom: 22px; padding: 14px 16px; border-radius: 8px;
         border: 1px solid var(--border); background: var(--bg-card); font-size: 15px; line-height: 1.45;
@@ -51,34 +51,33 @@
     <div>
         <p class="kicker">Parcel</p>
         <h1>Connect Parcel</h1>
-        <p class="hero-lede">Paste your Parcel API key and your deliveries show on your screens' notice boards.</p>
+        <p class="hero-lede">Your deliveries, on your screens.</p>
     </div>
 </section>
 {% endblock %}
 
 {% block content %}
 {% if saved %}
-<p class="parcel-note" role="status"><strong>Saved.</strong> Your screen catches up in a few seconds. You can close this page.</p>
-<p class="parcel-more">Pasted the wrong one? <a href="{{ url_for('account.connect_parcel') }}">Paste a different key</a>, or remove it on your <a href="{{ url_for('account.account') }}">account page</a>.</p>
+<p class="parcel-note" role="status"><strong>Saved.</strong> Your screen updates in a few seconds.</p>
+<p class="parcel-more"><a href="{{ url_for('account.connect_parcel') }}">Paste a different key</a></p>
 {% else %}
 {% if empty %}
-<p class="parcel-note problem" role="alert"><strong>Nothing to save.</strong> Paste your API key into the box first.</p>
+<p class="parcel-note problem" role="alert"><strong>Nothing to save.</strong> Paste your key first.</p>
 {% elif parcel_status == 'invalid_key' %}
-<p class="parcel-note problem" role="alert"><strong>Parcel refused the saved key.</strong> Copy it again and paste the new one below.</p>
+<p class="parcel-note problem" role="alert"><strong>Parcel refused the saved key.</strong> Paste a new one.</p>
 {% elif parcel_linked %}
-<p class="parcel-note" role="status"><strong>A key is already saved.</strong> Paste a new one below to replace it.</p>
+<p class="parcel-note" role="status"><strong>A key is already saved.</strong> Paste a new one to replace it.</p>
 {% endif %}
 
 <form method="POST" action="{{ url_for('account.connect_parcel') }}" autocomplete="off">
     <ol class="parcel-steps">
         <li class="parcel-step">
             <h2>Open Parcel on the web</h2>
-            <p>Sign in with the account you use in the Parcel app. An API key needs Parcel Premium.</p>
+            <p>Needs Parcel Premium.</p>
             <div><a class="btn-action parcel-open" href="https://web.parcelapp.net" target="_blank" rel="noopener">Open web.parcelapp.net</a></div>
         </li>
         <li class="parcel-step">
             <h2>Copy your API key</h2>
-            <p>It's two taps from the list of your deliveries.</p>
             {# Parcel's web app drawn, not photographed: its look and where to tap, with nobody's deliveries or key. #}
             <div class="parcel-shots">
                 <figure class="parcel-shot">
@@ -97,7 +96,17 @@
                         <rect x="14" y="106" width="292" height="40" rx="6" fill="none" stroke="#4a4847"/>
                         <rect x="26" y="118" width="120" height="7" rx="3.5" fill="#5a5856"/>
                     </svg>
-                    <figcaption>Tap <strong>API</strong>, at the end of the row under Parcel's name.</figcaption>
+                    <figcaption>Tap <strong>API</strong></figcaption>
+                </figure>
+                <figure class="parcel-shot">
+                    <svg viewBox="0 0 320 112" role="img" aria-label="Parcel's API page before there is a key, with Create a Key circled">
+                        <rect width="320" height="112" fill="#2b2a29"/>
+                        <text x="14" y="30" font-size="17" font-weight="700" fill="#ffffff">Parcel API</text>
+                        <text x="14" y="56" font-size="11" fill="#e6e3df">You don't have an API Key.</text>
+                        <text x="14" y="90" font-size="11" fill="#e0862f" text-decoration="underline">Create a Key</text>
+                        <ellipse cx="48" cy="86" rx="46" ry="15" fill="none" stroke="var(--red)" stroke-width="3"/>
+                    </svg>
+                    <figcaption>Tap <strong>Create a Key</strong></figcaption>
                 </figure>
                 <figure class="parcel-shot">
                     <svg viewBox="0 0 320 146" role="img" aria-label="Parcel's API page, with Copy the Key circled under the key">
@@ -110,34 +119,33 @@
                         <ellipse cx="50" cy="104" rx="48" ry="15" fill="none" stroke="var(--red)" stroke-width="3"/>
                         <text x="14" y="134" font-size="11" fill="#8a6a4c" text-decoration="underline">Revoke the Key</text>
                     </svg>
-                    <figcaption>Then tap <strong>Copy the Key</strong>.</figcaption>
+                    <figcaption>Tap <strong>Copy the Key</strong></figcaption>
                 </figure>
             </div>
         </li>
         <li class="parcel-step">
             <h2>Paste it here</h2>
-            <p id="parcelKeyHint">Come back to this page and paste the key.</p>
-            <div class="parcel-key">
-                <input
-                    type="text"
-                    id="parcel_api_key"
-                    name="parcel_api_key"
-                    aria-label="Parcel API key"
-                    aria-describedby="parcelKeyHint"
-                    autocomplete="off"
-                    autocapitalize="off"
-                    autocorrect="off"
-                    spellcheck="false"
-                    required
-                >
-                <button type="button" class="btn-action parcel-paste" id="parcelPaste" hidden>Paste</button>
+            <input
+                type="text"
+                id="parcel_api_key"
+                name="parcel_api_key"
+                class="parcel-key"
+                aria-label="Parcel API key"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                required
+            >
+            <div class="parcel-actions">
+                <button type="button" class="btn-primary btn-secondary" id="parcelPaste" hidden>Paste</button>
+                <button type="submit" class="btn-save">Save</button>
             </div>
-            <button type="submit" class="btn-save">Save</button>
         </li>
     </ol>
 </form>
 
-<p class="parcel-more">The key is kept encrypted and is used only to read your deliveries. Remove it any time on your <a href="{{ url_for('account.account') }}">account page</a>.</p>
+<p class="parcel-more">Remove the key any time on your <a href="{{ url_for('account.account') }}">account page</a>.</p>
 
 <script src="{{ url_for('static', filename='parcel_connect.js') }}"></script>
 {% endif %}
