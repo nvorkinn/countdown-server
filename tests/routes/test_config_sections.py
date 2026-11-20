@@ -245,7 +245,7 @@ def test_the_settings_site_saves_an_epaper_screens_sections(app, paired_client, 
     saved = _save(client, "arrivals", arrivals, saved.headers["ETag"], **site)
 
     assert saved.status_code == 200
-    assert (saved.get_json()["style"], saved.get_json()["arrivals"]) == (style, arrivals)
+    assert (saved.get_json()["style"], saved.get_json()["arrivals"]) == (style, {**arrivals, "group_by_route": False})
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
         assert (config.orientation, config.style, config.weather_design) == ("vertical", "card", "poster")
