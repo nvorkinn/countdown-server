@@ -11,6 +11,7 @@ from broker.services.backgrounds import Context, Occasion, Place, Weather
 
 FORECAST = StoredForecast.model_validate(fixtures.load("weather.json")["value"])
 LONDON = Place("london-gb-2643743", "London", "GB")
+OSLO = Place("oslo-no-3143244", "Oslo", "NO")
 # The example's first day, at noon: its sunrise is 07:58 and sunset 16:22.
 NOON = datetime(2026, 1, 15, 12, tzinfo=UTC)
 
@@ -173,6 +174,15 @@ def test_london_goes_through_its_scenes_a_day_at_a_time():
     assert backgrounds.scene_of(LONDON, later) == week[0]
 
 
+def test_oslo_goes_through_its_scenes_a_day_at_a_time():
+    days = range(len(backgrounds.OSLO_SCENES))
+    week = [backgrounds.scene_of(OSLO, date(2026, 11, 17) + timedelta(days=n)) for n in days]
+
+    assert set(week) == set(backgrounds.OSLO_SCENES)
+    landmarks = ("Holmenkollen", "Opera House", "Storting", "Vigeland", "City Hall")
+    assert all(any(name in view.subject for view in week) for name in landmarks)
+
+
 def test_every_part_of_a_day_has_the_same_scene_so_a_relight_keeps_it():
     context = Context(date(2026, 11, 17), Weather(3, 10, 10), [])
 
@@ -186,10 +196,10 @@ def test_every_part_of_a_day_has_the_same_scene_so_a_relight_keeps_it():
 
 def test_a_place_with_no_scene_of_its_own_is_its_everyday_view():
     prompt = backgrounds.prompt(
-        Place("oslo-no-3143244", "Oslo, Norway"), "day", Context(NOON.date(), Weather(0, 5, 5), [])
+        Place("bergen-no-3161732", "Bergen, Norway"), "day", Context(NOON.date(), Weather(0, 5, 5), [])
     )
 
-    assert "a recognisable everyday view of Oslo, Norway" in prompt
+    assert "a recognisable everyday view of Bergen, Norway" in prompt
     assert "in full daylight" in prompt
 
 
