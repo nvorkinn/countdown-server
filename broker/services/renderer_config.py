@@ -64,7 +64,7 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
         }
     )
     if config.device.type == "touchscreen":
-        # English only, paired by token, keeping its own time and playing its own music: nothing more than its look,
+        # Paired by token, keeping its own time and playing its own music: nothing more than its language, its look,
         # its screen's sleep and its parcel notices.
         return TouchscreenConfig(
             device_id=device_id,
@@ -72,6 +72,7 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
             width=config.width,
             height=config.height,
             clock_format=config.clock_format,
+            language=config.language,
             arrivals=arrivals,
             weather=weather,
             notice_board=notice_board,

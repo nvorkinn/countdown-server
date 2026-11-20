@@ -16,6 +16,7 @@
     // The section each field saves, and the section's whole value from the page.
     const SECTIONS = {
         clock_format: () => ["clock_format", checked("clock_format")],
+        language: () => ["language", checked("language")],
         theme: () => ["style", style()],
         theme_colour: () => ["style", style()],
         screen_sleep_minutes: () => [
