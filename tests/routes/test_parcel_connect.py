@@ -25,7 +25,7 @@ def test_the_page_is_only_the_parcel_key_with_where_to_find_it(paired_client):
     assert 'name="parcel_api_key"' in page
     # Where the key is in Parcel's web app, drawn: the two taps that reach it.
     assert "Tap <strong>API</strong>" in page
-    assert "Then tap <strong>Copy the Key</strong>" in page
+    assert "Tap <strong>Copy the Key</strong>" in page
     assert 'id="parcelPaste"' in page
     assert "parcel_connect.js" in page
     # Nothing else of the account, and no sidebar of the user's screens.

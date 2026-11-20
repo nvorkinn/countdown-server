@@ -5,7 +5,6 @@
 
     const input = document.getElementById("parcel_api_key");
     const paste = document.getElementById("parcelPaste");
-    const hint = document.getElementById("parcelKeyHint");
     if (!input || !paste || !navigator.clipboard?.readText) return;
 
     paste.hidden = false;
@@ -17,13 +16,10 @@
             // Refused (the browser's own Paste prompt dismissed, or no permission): the box still takes one by hand.
         }
         if (!text) {
-            hint.textContent =
-                "Nothing to paste yet. Copy the key in Parcel, or press and hold the box and choose Paste.";
             input.focus();
             return;
         }
         input.value = text;
-        hint.textContent = "Pasted. Check it looks right, then save.";
         input.form.querySelector("[type=submit]").focus();
     });
 })();
