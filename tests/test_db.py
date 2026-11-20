@@ -88,6 +88,18 @@ def test_0037_shows_every_touchscreens_lyrics_at_medium_on_the_left(app, registe
     assert tuple(row) == ("medium", "left")
 
 
+def test_0038_leaves_every_devices_arrivals_ungrouped(app, register_device):
+    device_id, _ = register_device()
+    with app.app_context():
+        downgrade(revision="0037")
+        upgrade()
+        with db.engine.begin() as conn:
+            row = conn.exec_driver_sql(
+                "SELECT arrivals_group_by_route FROM device_config WHERE device_id = ?", (device_id,)
+            ).one()
+    assert tuple(row) == (0,)
+
+
 def _downgrade(revision: str) -> None:
     """Downgrade to `revision` (needs an app context), giving every device a renderer secret on the way past 0023.
 

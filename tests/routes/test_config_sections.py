@@ -129,6 +129,21 @@ def test_a_touchscreen_saves_how_it_shows_lyrics(app, client, touchscreen):
     assert refused.status_code == 400
 
 
+def test_a_touchscreen_groups_its_arrivals_by_route_and_a_save_without_the_switch_keeps_it(app, client, touchscreen):
+    arrivals = client.get(CONFIG_URL, headers=_auth()).get_json()["arrivals"]
+    assert arrivals["group_by_route"] is False
+    etag = _version(client, headers=_auth())
+
+    response = _save(client, "arrivals", {**arrivals, "group_by_route": True}, etag, headers=_auth())
+
+    assert (response.status_code, response.get_json()["arrivals"]["group_by_route"]) == (200, True)
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, touchscreen).arrivals_group_by_route
+    # An older kiosk saves its stops without the switch.
+    response = _save(client, "arrivals", {"stops": arrivals["stops"]}, response.headers["ETag"], headers=_auth())
+    assert response.get_json()["arrivals"]["group_by_route"] is True
+
+
 def test_a_touchscreen_saves_which_parcels_it_shows_and_a_switch_alone_keeps_them(app, client, touchscreen):
     etag = _version(client, headers=_auth())
 

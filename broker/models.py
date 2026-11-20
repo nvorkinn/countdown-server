@@ -328,6 +328,9 @@ class DeviceConfig(Model):
     # Every departure stop, in the owner's order: despite the name, TfL NaPTAN ids and Entur ids (NSR:...) mixed; the
     # id says which (services/stops.py).
     tfl_stop_ids: Mapped[list[str]] = mapped_column(JSON, default=list, server_default=text("'[]'"))
+    # Whether a stop's departures are grouped by route, a row per route with its next few times (the config's
+    # arrivals.group_by_route).
+    arrivals_group_by_route: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # How the screen is mounted, one of ORIENTATIONS.
     orientation: Mapped[Orientation] = mapped_column(String, default="vertical", server_default=text("'vertical'"))
     # The screen's size in pixels as it reported at registration; 480x800 after `devices unpair --config`.

@@ -147,6 +147,19 @@ def get_config(device_id: str, *, by_device: bool) -> ResponseReturnValue:  # no
     return built.model_dump(mode="json"), 200, {"ETag": etag}
 
 
+def _keep_left_out(sent: EpaperConfig | TouchscreenConfig, current: EpaperConfig | TouchscreenConfig) -> None:
+    """Keep, in `sent`, what a device whose contract is older leaves out (parcels' window, the arrivals' grouping)."""
+    if isinstance(sent, TouchscreenConfig) and sent.parcels is not None and isinstance(current, TouchscreenConfig):
+        kept = {
+            name: getattr(current.parcels, name)
+            for name in type(sent.parcels).model_fields
+            if name not in sent.parcels.model_fields_set
+        }
+        sent.parcels = sent.parcels.model_copy(update=kept)
+    if "group_by_route" not in sent.arrivals.model_fields_set:
+        sent.arrivals = sent.arrivals.model_copy(update={"group_by_route": current.arrivals.group_by_route})
+
+
 @bp.put("/config")
 @require_device_auth
 def put_config(device_id: str) -> ResponseReturnValue:
@@ -175,15 +188,7 @@ def put_config(device_id: str) -> ResponseReturnValue:
         sent = model.model_validate(body)
     except ValueError:  # pydantic's ValidationError is one
         return jsonify(error="not a config the contract allows"), 400
-    # A field left out (one the device's contract is older than, as parcels or parcels' window) is kept as it is, not a
-    # change.
-    if isinstance(sent, TouchscreenConfig) and sent.parcels is not None and isinstance(current, TouchscreenConfig):
-        kept = {
-            name: getattr(current.parcels, name)
-            for name in type(sent.parcels).model_fields
-            if name not in sent.parcels.model_fields_set
-        }
-        sent.parcels = sent.parcels.model_copy(update=kept)
+    _keep_left_out(sent, current)
     changed = sorted(
         name
         for name in type(current).model_fields
