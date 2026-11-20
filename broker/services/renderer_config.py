@@ -48,7 +48,10 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
     country = postcode_country(config.postcode)
     stop_ids = config.tfl_stop_ids
     # What every type's config has besides its type: who the device is, its clock, and the panels both types show.
-    arrivals = Arrivals(stops=[DepartureStop(source=stops.source_of(s), id=s) for s in stop_ids])
+    arrivals = Arrivals(
+        stops=[DepartureStop(source=stops.source_of(s), id=s) for s in stop_ids],
+        group_by_route=config.arrivals_group_by_route,
+    )
     # The key is what the weather is subscribed under, so it's what the renderer reads (v1:weather:<key>).
     weather = Weather(location=config.weather_location, key=weather_place.weather_key(config))
     notice_board = NoticeBoard(postcode=config.postcode or None, country=country)

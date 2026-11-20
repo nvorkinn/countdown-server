@@ -199,6 +199,21 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
     assert client.get(CONFIG_URL, headers=_auth()).get_json() == sent
 
 
+def test_a_save_without_the_arrivals_grouping_keeps_it(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        db.session.get_one(DeviceConfig, device_id).arrivals_group_by_route = True
+        db.session.commit()
+    # An older touchscreen's save, from before the arrivals had the switch.
+    sent = _saved_with(client, clock_format="12h")
+    sent["arrivals"] = {"stops": sent["arrivals"]["stops"]}
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["arrivals"]["group_by_route"] is True
+
+
 def test_a_save_without_lyrics_keeps_how_they_show(app, client):
     device_id = _paired(app, client)
     with app.app_context():

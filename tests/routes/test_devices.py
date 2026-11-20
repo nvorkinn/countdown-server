@@ -96,7 +96,7 @@ def test_the_config_returns_defaults(app, register_device):
         "style": {"orientation": "vertical", "drawing": "airy", "weather": "columns", "layout": None},
         "weather": {"location": "", "key": None},
         "notice_board": {"postcode": None, "country": None},
-        "arrivals": {"stops": []},
+        "arrivals": {"stops": [], "group_by_route": False},
         "spotify": {"enabled": False},
         "glowmarkt": {"enabled": False},
         "developer": {"enabled": False},
@@ -113,7 +113,10 @@ def test_the_config_never_sends_the_tfl_key(app, client, register_device):
 
     response = _config(app, device_id)
 
-    assert response.get_json()["arrivals"] == {"stops": [{"source": "tfl", "id": "940GZZLUEUS"}]}
+    assert response.get_json()["arrivals"] == {
+        "stops": [{"source": "tfl", "id": "940GZZLUEUS"}],
+        "group_by_route": False,
+    }
     assert app.config["TFL_APP_KEY"] == "test-tfl-key"
     assert b"test-tfl-key" not in response.data
 
