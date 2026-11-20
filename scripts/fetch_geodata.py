@@ -3,6 +3,14 @@
 The files land in the given directory and are read by broker/services/geoip.py. Run when the image
 is built; standard library only, as it runs before the app's dependencies are installed.
 
+    fetch_geodata.py versions            each file's version, as `dbip=...` and `places=...` lines
+    fetch_geodata.py dbip DIR [VERSION]  the DB-IP database (VERSION, from `versions`, names its month)
+    fetch_geodata.py places DIR          the GeoNames places
+
+A version is the month and ETag of the file on the server, read with a HEAD request. The release and
+test builds pass them in as build args, so the image's build cache keeps each file until it changes on
+the server: DB-IP's about once a month, GeoNames' daily.
+
 - dbip-city-lite.mmdb: DB-IP's IP to City Lite database, published monthly (https://db-ip.com, CC BY 4.0).
 - places.tsv: GeoNames' towns and cities of over 15,000 people, as name, latitude, longitude and
   population (https://www.geonames.org, CC BY 4.0).
@@ -10,19 +18,20 @@ is built; standard library only, as it runs before the app's dependencies are in
 
 import gzip
 import io
+import re
 import shutil
 import sys
 import urllib.error
 import urllib.request
 import zipfile
+
+# Imported for real, not under TYPE_CHECKING: the release workflow runs `versions` on the runner's own Python (3.12),
+# which evaluates annotations when it defines a function.
+from collections.abc import Iterator  # noqa: TC003 -- see above
 from datetime import UTC, datetime
 from http import HTTPStatus
+from http.client import HTTPResponse  # noqa: TC003 -- see above
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from http.client import HTTPResponse
 
 DBIP_URL = "https://download.db-ip.com/free/dbip-city-lite-{month}.mmdb.gz"
 GEONAMES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
@@ -36,12 +45,24 @@ SKIPPED_FEATURE_CODES = {"PPLX", "PPLH", "PPLQ", "PPLW", "PPLCH"}
 USER_AGENT = "countdown-server-build (+https://github.com/nvorkinn/countdown-server)"
 
 
-def _open(url: str) -> HTTPResponse:
+def _open(url: str, method: str = "GET") -> HTTPResponse:
     if not url.startswith("https://"):
         msg = f"Refusing to fetch a non-HTTPS URL: {url}"
         raise ValueError(msg)
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310 -- scheme checked above
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT}, method=method)  # noqa: S310 -- scheme checked above
     return urllib.request.urlopen(request, timeout=120)  # noqa: S310 -- scheme checked above
+
+
+def _etag(url: str) -> str | None:
+    """Return the file's ETag (Last-Modified if it has none), cut down to a safe build arg; None if it isn't there."""
+    try:
+        with _open(url, method="HEAD") as response:
+            tag = response.headers.get("ETag") or response.headers.get("Last-Modified") or ""
+    except urllib.error.HTTPError as e:
+        if e.code != HTTPStatus.NOT_FOUND:
+            raise
+        return None
+    return re.sub(r"[^A-Za-z0-9.-]+", "-", tag).strip("-") or "unknown"
 
 
 def _months(now: datetime) -> list[str]:
@@ -50,9 +71,25 @@ def _months(now: datetime) -> list[str]:
     return [f"{now.year}-{now.month:02d}", f"{last[0]}-{last[1]:02d}"]
 
 
-def fetch_dbip(out: Path, now: datetime | None = None) -> None:
-    """Download the newest DB-IP City Lite database into `out`."""
+def dbip_version(now: datetime | None = None) -> str:
+    """Return the newest DB-IP City Lite file's month and ETag, as `month/etag`."""
     for month in _months(now or datetime.now(UTC)):
+        tag = _etag(DBIP_URL.format(month=month))
+        if tag is not None:
+            return f"{month}/{tag}"
+    msg = "No DB-IP City Lite file for this month or last"
+    raise SystemExit(msg)
+
+
+def places_version() -> str:
+    """Return the GeoNames cities file's ETag."""
+    return _etag(GEONAMES_URL) or "unknown"
+
+
+def fetch_dbip(out: Path, now: datetime | None = None, version: str = "") -> None:
+    """Download the DB-IP City Lite database into `out`: the month `version` names, else the newest."""
+    months = [version.split("/", maxsplit=1)[0]] if version else _months(now or datetime.now(UTC))
+    for month in months:
         try:
             with (
                 _open(DBIP_URL.format(month=month)) as response,
@@ -91,8 +128,23 @@ def fetch_places(out: Path) -> None:
     print(f"GeoNames: {count} places")
 
 
+def main(args: list[str]) -> None:
+    """Run the command `args` names (see the module's docstring)."""
+    match args:
+        case ["versions"]:
+            print(f"dbip={dbip_version()}")
+            print(f"places={places_version()}")
+        case ["dbip", directory, *version] if len(version) <= 1:
+            out = Path(directory)
+            out.mkdir(parents=True, exist_ok=True)
+            fetch_dbip(out, version="".join(version))
+        case ["places", directory]:
+            out = Path(directory)
+            out.mkdir(parents=True, exist_ok=True)
+            fetch_places(out)
+        case _:
+            raise SystemExit(__doc__)
+
+
 if __name__ == "__main__":
-    out = Path(sys.argv[1])
-    out.mkdir(parents=True, exist_ok=True)
-    fetch_dbip(out)
-    fetch_places(out)
+    main(sys.argv[1:])

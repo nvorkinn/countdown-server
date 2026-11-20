@@ -184,11 +184,13 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      # As the release's: a new day refetches the broker's IP location data (its Dockerfile's GEODATA_DATE), so the
-      # fetch script still runs here daily rather than coming from the cache for good.
-      - name: Today
-        id: date
-        run: echo "value=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      # As the release's: the broker's IP location data is fetched again when a file changes on the server (its
+      # Dockerfile's DBIP_VERSION and PLACES_VERSION), so the fetch script still runs here rather than coming from the
+      # cache for good.
+      - name: IP location data versions
+        id: geodata
+        if: matrix.image == 'broker'
+        run: python3 scripts/fetch_geodata.py versions | tee -a "$GITHUB_OUTPUT"
 
       # Into the runner's Docker, for the steps below. Each image's layers are kept in the Actions cache (its own
       # scope, every stage's: mode=max), so an image whose inputs haven't changed builds in seconds: without it every
@@ -203,7 +205,9 @@ jobs:
           sbom: false
           cache-from: type=gha,scope=image-${{ matrix.image }}
           cache-to: type=gha,scope=image-${{ matrix.image }},mode=max
-          build-args: GEODATA_DATE=${{ steps.date.outputs.value }}
+          build-args: |
+            DBIP_VERSION=${{ steps.geodata.outputs.dbip }}
+            PLACES_VERSION=${{ steps.geodata.outputs.places }}
 
       # Fixable HIGH/CRITICAL vulnerabilities in the image's OS packages, the broker's Python packages and the Go
       # binaries inside the infra images, plus Dockerfile misconfigurations. Accepted findings live in
