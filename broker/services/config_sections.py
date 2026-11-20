@@ -59,7 +59,7 @@ def _arrivals(config: DeviceConfig, value: Arrivals) -> str | None:
             return "each stop's source must be its id's: entur for an NSR: id, tfl for any other"
     config.tfl_stop_ids = [stop.id for stop in value.stops]
     # A device from before the switch sends none: it keeps what's saved.
-    if "group_by_route" in value.model_fields_set:
+    if value.group_by_route is not None:
         config.arrivals_group_by_route = value.group_by_route
     return None
 

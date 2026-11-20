@@ -156,7 +156,7 @@ def _keep_left_out(sent: EpaperConfig | TouchscreenConfig, current: EpaperConfig
             if name not in sent.parcels.model_fields_set
         }
         sent.parcels = sent.parcels.model_copy(update=kept)
-    if "group_by_route" not in sent.arrivals.model_fields_set:
+    if sent.arrivals.group_by_route is None:
         sent.arrivals = sent.arrivals.model_copy(update={"group_by_route": current.arrivals.group_by_route})
 
 
