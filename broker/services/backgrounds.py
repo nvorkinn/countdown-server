@@ -346,7 +346,44 @@ LONDON_SCENES = (
         "the wide, calm river",
     ),
 )
-SCENES: dict[str, tuple[Scene, ...]] = {"london-gb-2643743": LONDON_SCENES}
+# Oslo's, the same way: neighbours alternate water, park and hillside, so two days running look different.
+OSLO_SCENES = (
+    Scene(
+        "the Oslo Opera House, its white sloping roof rising out of the fjord, the Barcode towers behind it, seen "
+        "from across the water",
+        "the fjord's wide, calm water",
+    ),
+    Scene(
+        "the Monolith on its terrace at the top of Vigeland Park, with Gustav Vigeland's granite figures around it",
+        "the park's broad, open lawn, smooth and plain",
+    ),
+    Scene(
+        "Oslo City Hall's twin brick towers above the harbour, seen from out on the water of Pipervika",
+        "the harbour's wide, calm water",
+    ),
+    Scene(
+        "the Holmenkollen ski jump on its wooded ridge high above the city, seen from far below",
+        "the open, smooth slope of the hillside below it",
+    ),
+    Scene(
+        "the Storting, Norway's parliament, its yellow-brick front and rounded hall, seen across Eidsvolls plass",
+        "the square's open, plain paving",
+    ),
+    Scene(
+        "the view from Ekeberg hill over the city and the fjord: the Opera House, Bjørvika's towers and the hills "
+        "beyond",
+        "the hill's open grass sloping down, smooth and plain",
+    ),
+    Scene(
+        "Akershus Fortress's walls and towers on the headland, seen across the harbour",
+        "the harbour's wide, calm water",
+    ),
+    Scene(
+        "the Royal Palace at the top of its park, at the head of Karl Johans gate",
+        "the palace park's open, plain lawn",
+    ),
+)
+SCENES: dict[str, tuple[Scene, ...]] = {"london-gb-2643743": LONDON_SCENES, "oslo-no-3143244": OSLO_SCENES}
 
 
 def scene_of(place: Place, day: date) -> Scene:
