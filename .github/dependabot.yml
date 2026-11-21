@@ -41,8 +41,8 @@ updates:
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: "dependencies"
-  # .pre-commit-config.yaml's hook revs. Ruff and ty are pinned in both pyproject.toml and here; with both entries in
-  # the one group, their bumps land in the same PR and stay in step.
+  # .pre-commit-config.yaml's hook revs. Ruff and ty are local hooks that run the uv.lock versions, so the uv entry
+  # bumps those.
   - package-ecosystem: "pre-commit"
     directory: "/"
     patterns: ["*"]
