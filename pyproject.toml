@@ -45,7 +45,7 @@ dev = [
     # Keep in step with the ruff-pre-commit rev in .pre-commit-config.yaml.
     "ruff==0.17.5",
     # Keep in step with the ty-pre-commit rev in .pre-commit-config.yaml.
-    "ty==0.0.104",
+    "ty==0.0.106",
 ]
 
 [tool.uv]
