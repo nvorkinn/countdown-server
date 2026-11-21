@@ -336,6 +336,9 @@ class DeviceConfig(Model):
     # The screen's size in pixels as it reported at registration; 480x800 after `devices unpair --config`.
     width: Mapped[int] = mapped_column(Integer, server_default=text("480"))
     height: Mapped[int] = mapped_column(Integer, server_default=text("800"))
+    # Whether a touchscreen can set its screen's brightness, as it reported at registration (a Pi's DSI panel can, an
+    # HDMI one can't). False for an e-paper screen.
+    brightness_control: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # The format the screen takes its frame in, one of FRAME_FORMATS, as it reported at registration;
     # mono-1bpp-packed (the e-paper's 800x480 1-bit buffer) after `devices unpair --config`.
     format: Mapped[FrameFormat] = mapped_column(String, server_default=text("'mono-1bpp-packed'"))
