@@ -1,0 +1,8 @@
+{
+  "name": "countdown-server-tools",
+  "private": true,
+  "description": "The Node tools: Biome lints and formats the pages' JS and CSS (biome.jsonc).",
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.3"
+  }
+}

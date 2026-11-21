@@ -16,6 +16,11 @@ updates:
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: "dependencies"
+  # package.json and package-lock.json: Biome.
+  - package-ecosystem: "npm"
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
   # Every Dockerfile: the broker's and each infra image's base.
   - package-ecosystem: "docker"
     directories:

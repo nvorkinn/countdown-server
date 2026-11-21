@@ -237,9 +237,9 @@ fresh database with an in-memory Redis, signed in as a user with an e-paper scre
 
 ```bash
 uv run python -m pytest --cov=broker
-ruff check . && ruff format --check .
+uv run ruff check . && uv run ruff format --check .
 uv run ty check
-npx @biomejs/biome@2.6.3 check --write .   # the pages' JS and CSS; biome.jsonc has the version and scope
+npm ci && npx biome check --write .   # the pages' JS and CSS; package-lock.json has the version, biome.jsonc the scope
 ```
 
 External APIs are mocked and Redis is fakeredis. The render queue's script tests also run against a real
