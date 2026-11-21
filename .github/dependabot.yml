@@ -16,6 +16,11 @@ updates:
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: "dependencies"
+  # package.json and package-lock.json: Biome.
+  - package-ecosystem: "npm"
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
   # Every Dockerfile: the broker's and each infra image's base.
   - package-ecosystem: "docker"
     directories:
@@ -41,8 +46,8 @@ updates:
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: "dependencies"
-  # .pre-commit-config.yaml's hook revs. Ruff and ty are pinned in both pyproject.toml and here; with both entries in
-  # the one group, their bumps land in the same PR and stay in step.
+  # .pre-commit-config.yaml's hook revs. Ruff and ty are local hooks that run the uv.lock versions, so the uv entry
+  # bumps those.
   - package-ecosystem: "pre-commit"
     directory: "/"
     patterns: ["*"]

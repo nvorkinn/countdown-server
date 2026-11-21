@@ -15,17 +15,31 @@ repos:
         exclude: ^(vendor/|broker/static/vendor/)
       - id: trailing-whitespace
         exclude: ^(vendor/|broker/static/vendor/)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.5
+  # Ruff and ty from uv.lock, so commits are checked by the same versions as CI and Dependabot's uv updates bump them.
+  # `uv run` syncs the environment first (a no-op when it is up to date). ty checks the whole project at once, not just
+  # the files committed, against its installed dependencies.
+  - repo: local
     hooks:
       - id: ruff-check
-        args: [--fix]
+        name: ruff check
+        entry: uv run --frozen ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
       - id: ruff-format
-  # The whole project at once (not just the files committed), against the uv project's dependencies.
-  - repo: https://github.com/astral-sh/ty-pre-commit
-    rev: v0.0.106
-    hooks:
+        name: ruff format
+        entry: uv run --frozen ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
       - id: ty
+        name: ty
+        entry: uv run --frozen ty check
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        always_run: true
+        require_serial: true
   # These run only on commits that touch .tf files, and need terraform and tflint installed.
   - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: v1.109.5

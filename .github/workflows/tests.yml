@@ -89,15 +89,18 @@ jobs:
       - name: Check formatting
         run: uv run --locked --only-dev ruff format --check .
 
-  # Lint and formatting of the first-party front-end (JS and CSS; see biome.jsonc), with a pinned Biome. Keep the
-  # version in step with the $schema URL in biome.jsonc.
+  # Lint and formatting of the first-party front-end (JS and CSS; see biome.jsonc), with the Biome package-lock.json
+  # pins.
   biome:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Install Biome
+        run: npm ci
+
       - name: Check lint and formatting
-        run: npx --yes @biomejs/biome@2.6.3 ci .
+        run: npx --no-install biome ci .
 
   # Type checking, with the ty uv.lock pins. ty resolves imports from the installed dependencies, so this installs
   # what the test jobs do (and shares their cache).
@@ -136,7 +139,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Restore only: this job installs no project dependencies, so it must not save a cache the test jobs would use.
+      # Restore only: this job installs just the lint group, so it must not save a cache the test jobs would use.
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           save-cache: false
@@ -148,7 +151,7 @@ jobs:
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
 
       - name: Run pre-commit
-        run: uvx pre-commit run --all-files --show-diff-on-failure
+        run: uv run --frozen --only-group lint pre-commit run --all-files --show-diff-on-failure
 
   # Builds the images and checks the config baked into each. The infra images
   # have their program as the entrypoint, so `check` is just its args. Each is built on the architecture it ships
