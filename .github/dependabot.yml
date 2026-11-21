@@ -1,10 +1,21 @@
 version: 2
+
+# One daily PR for the whole project: every entry below feeds the `dependencies` multi-ecosystem group, which sets the
+# schedule and the commit message for all of them, and `patterns: ["*"]` puts each of an entry's dependencies in it,
+# major updates included. Security updates are opened separately by GitHub and are not affected by the schedule.
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: "daily"
+    commit-message:
+      prefix: "chore(deps)"
+
 updates:
   # pyproject.toml and uv.lock.
   - package-ecosystem: "uv"
     directory: "/"
-    schedule:
-      interval: "daily"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
   # Every Dockerfile: the broker's and each infra image's base.
   - package-ecosystem: "docker"
     directories:
@@ -14,8 +25,8 @@ updates:
       - "/victoria-logs"
       - "/victoria-metrics"
       - "/sqlite-web"
-    schedule:
-      interval: "daily"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
     ignore:
       # The broker's Python moves with .python-version, by hand: a newer one than the tests run on goes untested, and
       # can lack wheels (pyyaml has none for 3.15, so it built from source, slowly under QEMU).
@@ -24,24 +35,24 @@ updates:
   # sqlite-web/requirements.txt, the database viewer's packages (pinned with hashes).
   - package-ecosystem: "pip"
     directory: "/sqlite-web"
-    schedule:
-      interval: "weekly"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
   - package-ecosystem: "docker-compose"
     directory: "/"
-    schedule:
-      interval: "daily"
-  # .pre-commit-config.yaml's hook revs. Ruff and ty are pinned in both pyproject.toml and here, and Dependabot bumps
-  # each separately: merge the two PRs together to keep them in step.
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
+  # .pre-commit-config.yaml's hook revs. Ruff and ty are pinned in both pyproject.toml and here; with both entries in
+  # the one group, their bumps land in the same PR and stay in step.
   - package-ecosystem: "pre-commit"
     directory: "/"
-    schedule:
-      interval: "weekly"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
   # Terraform providers (infra/cloudflare has no local modules).
   - package-ecosystem: "terraform"
     directory: "/infra/cloudflare"
-    schedule:
-      interval: "weekly"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "weekly"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
