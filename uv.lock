@@ -237,7 +237,7 @@ requires-dist = [{ name = "pydantic" }]
 [package.metadata.requires-dev]
 dev = [
     { name = "jsonschema", specifier = ">=4.25" },
-    { name = "openapi-codegen", extras = ["yaml"], url = "https://github.com/nvorkinn/openapi-codegen/releases/download/v2.1.0/openapi_codegen-2.1.0-py3-none-any.whl" },
+    { name = "openapi-codegen", extras = ["yaml"], git = "https://github.com/nvorkinn/openapi-codegen?tag=v2.1.0" },
     { name = "pre-commit" },
     { name = "pyicumessageformat", specifier = ">=1.0.0" },
     { name = "pytest", specifier = ">=8.4" },
