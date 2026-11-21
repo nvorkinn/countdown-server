@@ -45,9 +45,3 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-  # vendor/countdown-api: a new commit of the store contract shows up as a PR, which tests/test_store_contract.py
-  # checks the broker against.
-  - package-ecosystem: "gitsubmodule"
-    directory: "/"
-    schedule:
-      interval: "weekly"
