@@ -199,6 +199,21 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
     assert client.get(CONFIG_URL, headers=_auth()).get_json() == sent
 
 
+def test_a_save_without_the_arrivals_grouping_keeps_it(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        db.session.get_one(DeviceConfig, device_id).arrivals_group_by_route = True
+        db.session.commit()
+    # An older touchscreen's save, from before the arrivals had the switch.
+    sent = _saved_with(client, clock_format="12h")
+    sent["arrivals"] = {"stops": sent["arrivals"]["stops"]}
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["arrivals"]["group_by_route"] is True
+
+
 def test_a_save_without_lyrics_keeps_how_they_show(app, client):
     device_id = _paired(app, client)
     with app.app_context():
@@ -292,19 +307,53 @@ def test_a_save_with_the_old_dynamic_colour_is_forest_with_dynamic_on(app, clien
 
 def test_a_touchscreens_save_ignores_an_epaper_screens_fields(app, client):
     device_id = _paired(app, client)
-    with app.app_context():
-        language = db.session.get_one(DeviceConfig, device_id).language
-    # A touchscreen's config has no language or integrations, so a save that sends them (an older client's) drops them.
-    sent = _saved_with(client, language="nb" if language == "en" else "en", spotify={"enabled": True})
+    # A touchscreen's config has no integrations, so a save that sends them (an older client's) drops them.
+    sent = _saved_with(client, spotify={"enabled": True})
 
     response = client.put(CONFIG_URL, json=sent, headers=_auth())
 
     assert response.status_code == 200
-    assert "language" not in response.get_json()
     assert "spotify" not in response.get_json()
     with app.app_context():
-        config = db.session.get_one(DeviceConfig, device_id)
-        assert (config.language, config.spotify_enabled) == (language, False)
+        assert not db.session.get_one(DeviceConfig, device_id).spotify_enabled
+
+
+def test_a_touchscreen_saves_its_language(app, client):
+    device_id = _paired(app, client)
+    assert client.get(CONFIG_URL, headers=_auth()).get_json()["language"] == "en"
+
+    response = client.put(CONFIG_URL, json=_saved_with(client, language="nb"), headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["language"] == "nb"
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).language == "nb"
+
+
+def test_a_save_without_its_language_keeps_it(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        db.session.get_one(DeviceConfig, device_id).language = "nb"
+        db.session.commit()
+    # An older touchscreen's save, from before the config had its language.
+    sent = {key: value for key, value in _saved_with(client, clock_format="12h").items() if key != "language"}
+
+    response = client.put(CONFIG_URL, json=sent, headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["language"] == "nb"
+
+
+def test_a_touchscreens_language_is_saved_as_a_section(app, client):
+    device_id = _paired(app, client)
+    etag = client.get(CONFIG_URL, headers=_auth()).headers["ETag"]
+
+    response = client.put(f"{CONFIG_URL}/language", json="nb", headers={**_auth(), "If-Match": etag})
+
+    assert response.status_code == 200
+    assert response.get_json()["language"] == "nb"
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).language == "nb"
 
 
 def test_a_save_that_changes_what_only_the_settings_site_does_is_refused(app, client):
@@ -400,8 +449,8 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
     ]
     assert re.findall(r'id="lyrics_size_([\w-]+)"[^>]*checked', html) == ["medium"]
     assert re.findall(r'id="lyrics_align_(\w+)"[^>]*checked', html) == ["left"]
-    # English-only, and its music is its own: no language and no integrations but its parcel notices.
-    assert 'name="language"' not in html
+    # Its language, and as its music is its own, no integrations but its parcel notices.
+    assert re.findall(r'id="language_(\w+)"[^>]*checked', html) == ["en"]
     assert re.findall(r'name="(\w+_enabled)"', html) == ["parcels_enabled"]
     # Nor an e-paper screen's pages of stops.
     assert "Two stops to a page" not in html

@@ -1,6 +1,7 @@
 import gzip
 import importlib.util
 import io
+import urllib.error
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -148,3 +149,63 @@ def test_fetch_dbip_sends_a_user_agent_and_writes_the_database(monkeypatch, tmp_
     fetch.fetch_dbip(tmp_path, datetime(2026, 10, 1, tzinfo=UTC))
 
     assert (tmp_path / "dbip-city-lite.mmdb").read_bytes() == b"database"
+
+
+class _Head(io.BytesIO):
+    """A HEAD response: headers and no body."""
+
+    def __init__(self, headers):
+        super().__init__()
+        self.headers = headers
+
+
+def test_the_dbip_version_is_the_newest_months_etag(monkeypatch):
+    fetch = _fetch_geodata()
+    asked = []
+
+    def urlopen(request, timeout):
+        assert request.get_method() == "HEAD"
+        asked.append(request.full_url)
+        if "2026-11" in request.full_url:
+            raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)  # ty: ignore[invalid-argument-type] -- no headers needed
+        return _Head({"ETag": '"6ae6ed32-395709f"'})
+
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", urlopen)
+    assert fetch.dbip_version(datetime(2026, 11, 1, tzinfo=UTC)) == "2026-10/6ae6ed32-395709f"
+    assert asked == [fetch.DBIP_URL.format(month="2026-11"), fetch.DBIP_URL.format(month="2026-10")]
+
+
+def test_a_version_without_an_etag_is_the_last_modified_time_made_safe_for_a_build_arg(monkeypatch):
+    fetch = _fetch_geodata()
+    monkeypatch.setattr(
+        fetch.urllib.request,
+        "urlopen",
+        lambda _request, timeout: _Head({"Last-Modified": "Thu, 19 Nov 2026 02:52:31 GMT"}),  # noqa: ARG005 -- urlopen's
+    )
+    assert fetch.places_version() == "Thu-19-Nov-2026-02-52-31-GMT"
+
+
+def test_fetch_dbip_downloads_the_month_its_version_names(monkeypatch, tmp_path):
+    fetch = _fetch_geodata()
+
+    def urlopen(request, timeout):
+        assert request.full_url == fetch.DBIP_URL.format(month="2026-10")
+        return io.BytesIO(gzip.compress(b"october"))
+
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", urlopen)
+    fetch.fetch_dbip(tmp_path, datetime(2026, 11, 20, tzinfo=UTC), version="2026-10/6ae6ed32-395709f")
+
+    assert (tmp_path / "dbip-city-lite.mmdb").read_bytes() == b"october"
+
+
+def test_versions_prints_one_line_per_file_for_github_output(monkeypatch, capsys):
+    fetch = _fetch_geodata()
+    monkeypatch.setattr(fetch, "dbip_version", lambda: "2026-11/abc")
+    monkeypatch.setattr(fetch, "places_version", lambda: "def")
+    fetch.main(["versions"])
+    assert capsys.readouterr().out == "dbip=2026-11/abc\nplaces=def\n"
+
+
+def test_an_unknown_command_prints_the_usage():
+    with pytest.raises(SystemExit, match=r"fetch_geodata\.py versions"):
+        _fetch_geodata().main(["everything"])
