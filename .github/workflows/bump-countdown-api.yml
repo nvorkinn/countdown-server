@@ -1,0 +1,108 @@
+name: Bump countdown-api
+
+# Points vendor/countdown-api at countdown-api's main, on one fixed branch, chore/bump-countdown-api, and opens a PR for
+# it, or updates the one already open: every push to countdown-api's main lands on the same branch and PR. countdown-api
+# starts it with a `countdown-api-main` repository_dispatch (its dispatch-submodule-bumps.yml); it can also be run by
+# hand (Actions > Bump countdown-api > Run workflow).
+#
+# Commits added to the branch by hand (say, to follow a change in the contract) are kept: main is merged into the
+# branch, never rebased onto. Once main points at countdown-api's main by other means, the PR is closed.
+#
+# It needs the COUNTDOWN_API_BUMP_TOKEN secret, a fine-grained PAT with Contents and Pull requests read and write on
+# this repository: a push or PR made with the default GITHUB_TOKEN starts no workflows, so the PR's checks would never
+# run.
+on:
+  repository_dispatch:
+    types: [countdown-api-main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One at a time, never cancelled midway. A run moves to countdown-api's main as it is when the run starts, not to the
+# commit that was dispatched, so a run that GitHub drops while another waits loses nothing.
+concurrency:
+  group: bump-countdown-api
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every branch, to find chore/bump-countdown-api and merge main into it.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Move the submodule to countdown-api's main and open or update the PR
+        env:
+          GH_TOKEN: ${{ secrets.COUNTDOWN_API_BUMP_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DISPATCHED_SHA: ${{ github.event.client_payload.sha }}
+          SUBMODULE: vendor/countdown-api
+          BRANCH: chore/bump-countdown-api
+          UPSTREAM: nvorkinn/countdown-api
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Set the COUNTDOWN_API_BUMP_TOKEN secret (see the top of this workflow)."
+            exit 1
+          fi
+          gh auth setup-git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # The pins are set in the index alone (a gitlink): the submodule itself is never checked out.
+          pin() { git update-index --cacheinfo "160000,$1,$SUBMODULE"; }
+          new="$(git ls-remote "https://github.com/$UPSTREAM.git" refs/heads/main | cut -f1)"
+          base="$(git rev-parse "origin/main:$SUBMODULE")"
+          echo "countdown-api's main is $new (dispatched for ${DISPATCHED_SHA:-none}); main points at $base."
+
+          if git rev-parse --verify --quiet "refs/remotes/origin/$BRANCH" >/dev/null; then
+            git switch -C "$BRANCH" "origin/$BRANCH"
+            # Keep the PR mergeable. A conflict on the pin alone is settled with main's pin, as it is set anew below.
+            if ! git merge --no-edit origin/main; then
+              if [ "$(git diff --name-only --diff-filter=U)" != "$SUBMODULE" ]; then
+                git merge --abort
+                echo "::error::Merging main into $BRANCH conflicts beyond $SUBMODULE: merge it by hand."
+                exit 1
+              fi
+              pin "$base"
+              git commit --no-edit
+            fi
+          else
+            git switch -C "$BRANCH" origin/main
+          fi
+
+          if [ "$(git rev-parse "HEAD:$SUBMODULE")" != "$new" ]; then
+            pin "$new"
+            git commit -m "Point $SUBMODULE at countdown-api's main, ${new:0:7}"
+          fi
+
+          pr="$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          if git diff --quiet origin/main HEAD; then
+            echo "main already has everything on $BRANCH."
+            if [ -n "$pr" ]; then
+              gh pr close "$pr" --delete-branch --comment "main already points $SUBMODULE at countdown-api's main ($UPSTREAM@${new:0:7})."
+            fi
+            exit 0
+          fi
+          git push origin "HEAD:refs/heads/$BRANCH"
+
+          body="$RUNNER_TEMP/body.md"
+          {
+            echo "Points \`$SUBMODULE\` at countdown-api's main, $UPSTREAM@${new:0:7}. Since $UPSTREAM@${base:0:7}, the commit main points at:"
+            echo
+            # Each commit's title, with its "#123"s pointing at countdown-api rather than at this repository.
+            gh api "repos/$UPSTREAM/compare/$base...$new" \
+              --jq '.commits[] | "- \(env.UPSTREAM)@\(.sha[0:7]) \(.commit.message | split("\n")[0] | gsub("#(?<n>[0-9]+)"; "\(env.UPSTREAM)#\(.n)"))"'
+            echo
+            echo "Opened by the Bump countdown-api workflow, which keeps it up to date: every push to countdown-api's main lands on \`$BRANCH\` and this PR. Commits added to the branch by hand are kept."
+          } > "$body"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --body-file "$body"
+          else
+            gh pr create --base main --head "$BRANCH" --title "Point $SUBMODULE at countdown-api's main" --body-file "$body"
+          fi
