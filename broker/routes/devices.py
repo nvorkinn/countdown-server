@@ -200,7 +200,8 @@ def put_config(device_id: str) -> ResponseReturnValue:
     config.clock_format = sent.clock_format
     config.theme = sent.style.skin
     config.theme_colour, config.theme_dynamic = config_sections.touchscreen_colour(sent.style)
-    config.screen_sleep_minutes = sent.display.sleep_minutes
+    # Its brightness and quiet hours too, each kept as saved if a device that doesn't know it yet sends none.
+    config_sections.set_section(config, "display", sent.display)
     # A device that doesn't know its language yet sends none: it keeps what's saved.
     if "language" in sent.model_fields_set:
         config.language = sent.language

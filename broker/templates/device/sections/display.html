@@ -1,5 +1,16 @@
 {# A touchscreen's screen itself (the config's TouchscreenDisplay). #}
 {% from "device/_controls.html" import segmented %}
+{# A time of day picked from a list (the quiet hours' start and end), by its minutes after midnight. #}
+{% macro time_select(field, label, times, chosen) %}
+            <div class="time-field">
+                <label for="{{ field }}">{{ label }}</label>
+                <select id="{{ field }}" name="{{ field }}">
+                    {% for value, time in times.items() %}
+                        <option value="{{ value }}"{% if chosen == value %} selected{% endif %}>{{ time }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+{% endmacro %}
 <section class="section" data-section="display">
     <header class="card-header">
         <h2 class="card-title">Display</h2>
@@ -8,5 +19,25 @@
         <legend class="form-legend">Screen sleep</legend>
         {{ segmented("screen_sleep_minutes", screen_sleep_minutes, config.screen_sleep_minutes | string) }}
         <p class="form-hint">Idle, with no music playing. Only a Raspberry Pi kiosk sleeps its screen.</p>
+    </fieldset>
+    {# Only a touchscreen that said at registration it can set its screen's brightness has the setting. #}
+    {% if config.brightness_control %}
+    <fieldset class="form-group">
+        <legend class="form-legend">Brightness</legend>
+        <div class="range-field">
+            <input type="range" id="screen_brightness" name="screen_brightness" min="{{ screen_brightness[0] }}" max="{{ screen_brightness[1] }}" step="1" value="{{ config.screen_brightness }}" aria-label="Brightness">
+            <output id="screen_brightness_value" for="screen_brightness">{{ config.screen_brightness }}%</output>
+        </div>
+        <p class="form-hint">How bright the screen is while someone uses it.</p>
+    </fieldset>
+    {% endif %}
+    <fieldset class="form-group">
+        <legend class="form-legend">Quiet hours</legend>
+        {{ segmented("quiet_hours_on", quiet_hours_on, "on" if config.quiet_hours_on else "off") }}
+        <div class="time-fields">
+            {{ time_select("quiet_hours_start", "From", quiet_hours_times, config.quiet_hours_start | string) }}
+            {{ time_select("quiet_hours_end", "Until", quiet_hours_times, config.quiet_hours_end | string) }}
+        </div>
+        <p class="form-hint">In quiet hours the screen sleeps soon after the last touch, whatever the screen sleep says. The times are the touchscreen's own local time, and an end before the start runs past midnight.</p>
     </fieldset>
 </section>

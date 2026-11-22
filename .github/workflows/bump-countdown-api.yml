@@ -2,8 +2,9 @@ name: Bump countdown-api
 
 # Points vendor/countdown-api at countdown-api's main, on one fixed branch, chore/bump-countdown-api, and opens a PR for
 # it, or updates the one already open: every push to countdown-api's main lands on the same branch and PR. countdown-api
-# starts it with a `countdown-api-main` repository_dispatch (its dispatch-submodule-bumps.yml); it can also be run by
-# hand (Actions > Bump countdown-api > Run workflow).
+# starts it with a `countdown-api-main` repository_dispatch (its dispatch-submodule-bumps.yml). It also runs when a
+# push to main moves the submodule, so a feature PR that brings its own bump closes the bot's PR once merged. It can
+# also be run by hand (Actions > Bump countdown-api > Run workflow).
 #
 # Commits added to the branch by hand (say, to follow a change in the contract) are kept: main is merged into the
 # branch, never rebased onto. Once main points at countdown-api's main by other means, the PR is closed.
@@ -14,6 +15,9 @@ name: Bump countdown-api
 on:
   repository_dispatch:
     types: [countdown-api-main]
+  push:
+    branches: [main]
+    paths: [vendor/countdown-api]
   workflow_dispatch:
 
 permissions:

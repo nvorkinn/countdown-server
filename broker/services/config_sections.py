@@ -115,6 +115,12 @@ def _style(config: DeviceConfig, value: EpaperStyle | TouchscreenStyle) -> None:
 
 def _display(config: DeviceConfig, value: TouchscreenDisplay) -> None:
     config.screen_sleep_minutes = value.sleep_minutes
+    # Left out (a device older than them), the brightness and the quiet hours stay as saved.
+    if "brightness" in value.model_fields_set:
+        config.screen_brightness = value.brightness
+    if value.quiet_hours is not None:
+        config.quiet_hours_on = value.quiet_hours.on
+        config.quiet_hours_start, config.quiet_hours_end = value.quiet_hours.start, value.quiet_hours.end
 
 
 def _lyrics(config: DeviceConfig, value: TouchscreenLyrics) -> None:
