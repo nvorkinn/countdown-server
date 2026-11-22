@@ -60,10 +60,11 @@ SAVED_HERE = frozenset({"clock_format", "language", "style", "display", "lyrics"
 def register() -> ResponseReturnValue:
     """Give a device its identity.
 
-    {"secret": ..., "type": ..., "width": ..., "height": ..., "format": ...} (the store contract's DeviceRegistration):
-    the secret the device generated and keeps, what it is (one of DEVICE_TYPES; an e-paper screen if it doesn't say),
-    its size in pixels and, for an e-paper screen only, the format it takes its frame in (one of FRAME_FORMATS). A
-    touchscreen draws itself, so says no format. It becomes a device at once (201 {device_id}); only the secret's hash
+    {"secret": ..., "type": ..., "width": ..., "height": ..., "format": ..., "brightness_control": ...} (the store
+    contract's DeviceRegistration): the secret the device generated and keeps, what it is (one of DEVICE_TYPES; an
+    e-paper screen if it doesn't say), its size in pixels and, for an e-paper screen only, the format it takes its frame
+    in (one of FRAME_FORMATS). A touchscreen draws itself, so says no format, and may say whether it can set its
+    screen's brightness (false if it doesn't). It becomes a device at once (201 {device_id}); only the secret's hash
     is stored, and identifies the device. A repeat, e.g. on every boot, is a 200, and changes nothing. A new device's
     weather location is guessed from its IP.
 
@@ -109,12 +110,22 @@ def _screen(body: dict) -> registration.Screen | str:
     if not (_is_size(width) and _is_size(height)):
         return "width and height must be positive integers"
     if device_type == "touchscreen":
-        if "format" in body:
-            return "a touchscreen draws itself, so takes no format"
-        return registration.Screen(device_type, width, height)
+        return _touchscreen(body, width, height)
+    if "brightness_control" in body:
+        return "only a touchscreen says whether it can set its brightness"
     if not _is_frame_format(frame_format):
         return f"format must be one of {', '.join(FRAME_FORMATS)}"
     return registration.Screen(device_type, width, height, frame_format)
+
+
+def _touchscreen(body: dict, width: int, height: int) -> registration.Screen | str:
+    """Return a touchscreen as it says it is (no format, and whether it can set its brightness), or what's wrong."""
+    if "format" in body:
+        return "a touchscreen draws itself, so takes no format"
+    brightness_control = body.get("brightness_control", False)
+    if type(brightness_control) is not bool:
+        return "brightness_control must be true or false"
+    return registration.Screen("touchscreen", width, height, brightness_control=brightness_control)
 
 
 def _is_size(value: object) -> TypeGuard[int]:

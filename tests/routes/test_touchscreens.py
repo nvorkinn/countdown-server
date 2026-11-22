@@ -64,6 +64,37 @@ def test_a_touchscreen_registers_with_its_size_and_no_format(app, client):
         assert (config.width, config.height) == (1280, 800)
 
 
+def test_a_touchscreen_says_whether_it_can_set_its_brightness(app, client):
+    response = _register(client, {**TOUCHSCREEN["registration"], "brightness_control": True})
+
+    assert response.status_code == 201
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, response.get_json()["device_id"]).brightness_control is True
+
+
+def test_a_touchscreen_that_doesnt_say_cannot_set_its_brightness(app, client):
+    body = {key: value for key, value in TOUCHSCREEN["registration"].items() if key != "brightness_control"}
+    response = _register(client, body)
+
+    assert response.status_code == 201
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, response.get_json()["device_id"]).brightness_control is False
+
+
+def test_a_brightness_control_that_isnt_a_yes_or_no_is_refused(client):
+    response = _register(client, {**TOUCHSCREEN["registration"], "brightness_control": "true"})
+
+    assert response.status_code == 400
+    assert "brightness_control" in response.get_json()["error"]
+
+
+def test_an_epaper_screen_that_sends_brightness_control_is_refused(client):
+    response = _register(client, {**TOUCHSCREEN["epaper_registration"], "brightness_control": False})
+
+    assert response.status_code == 400
+    assert "brightness" in response.get_json()["error"]
+
+
 def test_an_epaper_screen_registers_as_one_without_saying_so(app, client):
     response = _register(client, TOUCHSCREEN["epaper_registration"])
 
