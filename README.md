@@ -106,7 +106,8 @@ order) and **`GET /api/devices/notices`** (`DeviceNotices`: TfL's line statuses 
 stops, Entur's situations at its Entur stops (`v1:notices:entur:<stop id>`); for a UK postcode, TfL's roads, the
 Environment Agency's flood warnings (`v1:notices:floods:<place>`), the Met Office's warnings and the bank holidays; for
 a Norwegian one, MET Norway's weather warnings whose area covers where it is (`v1:notices:metalerts`, for all of Norway,
-narrowed to its `v1:location:<place>` in both languages, as countdown's notice board narrows them); with TfL stops or
+narrowed to its `v1:location:<place>` in both languages, as countdown's notice board narrows them) and, with its
+household's address set, its bin collection days (`v1:bins:<SHA1 of its v1:sub:address member>`); with TfL stops or
 a UK postcode, every Tube line's status, `v1:notices:tfl-network`; and with parcels switched on in its config, the
 parcel provider's `v1:parcels:<device id>`, which its owner turns on in the tablet's Parcels section). Each value is
 answered as its provider stored it (the store contract's keys and schemas), not worded as notices; one that's missing,
