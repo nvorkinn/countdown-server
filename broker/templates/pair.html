@@ -176,7 +176,13 @@
                 body: JSON.stringify({token: token}),
             }).then(function (response) {
                 if (response.status === 200) {
-                    location.replace("{{ url_for('pages.device_config') }}");
+                    // A touchscreen sets itself up once paired, so its owner is done here; an e-paper screen goes on
+                    // to its settings.
+                    return response.json().then(function (body) {
+                        location.replace(body.type === "touchscreen"
+                            ? "{{ url_for('pages.pair_done') }}"
+                            : "{{ url_for('pages.device_config') }}");
+                    });
                 } else if (response.status === 409) {
                     fail("This device already belongs to another account.");
                 } else if (response.status === 202 && Date.now() - started < GIVE_UP_AFTER_MS) {

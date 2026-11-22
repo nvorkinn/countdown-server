@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Screen added{% endblock %}
+{% block heading %}All set{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Your screen is ready.</h2>
+        <p class="card-subtitle">You can close this page.</p>
+    </div>
+    <button type="button" class="btn-save" id="closePage">Close</button>
+</div>
+
+<script>
+    // Browsers close only a tab a script opened, so for one a camera's QR scan opened both of these may do nothing, and
+    // the page stays as the end of the visit. Close is a tap of its own, which some browsers count.
+    const closePage = () => window.close("", "_parent", "");
+    closePage();
+    document.getElementById("closePage").addEventListener("click", () => {
+        closePage();
+        // Still here: the browser won't close it, so the button can't either.
+        setTimeout(() => { document.getElementById("closePage").hidden = true; }, 300);
+    });
+</script>
+{% endblock %}
