@@ -8,19 +8,22 @@ the same config (GET /api/devices/config), and gets no pairing code.
 Secrets arrive already hashed (auth.hash_secret); the hash is what identifies the caller here.
 
 A new screen's weather location starts as the town or city its IP places it in (services/geoip.py), so its dashboard
-has weather before its owner ever opens the settings page; it's left blank when the IP can't be placed.
+has weather before its owner ever opens the settings page; it's left blank when the IP can't be placed. The name is
+looked up as Open-Meteo's place, as one picked on the settings page would be, so the screen's weather key (and with it
+its weather and its backgrounds) is the same as another screen's that picked that place.
 """
 
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 
 from broker.db import db
 from broker.models import Device, DeviceConfig, DeviceType, FrameFormat
 
-from . import config_store, device_keys, frame_record, geoip, pairing
+from . import config_store, device_keys, frame_record, geoip, pairing, weather_place
 
 
 class TakenError(Exception):
@@ -70,8 +73,10 @@ def register_screen(secret_hash: str, screen: Screen, ip: str | None = None) -> 
     if device is not None:
         return Registered(device_id=device.device_id)
 
+    # Asked before anything is written, so Open-Meteo is never waited on while the database is being written to.
+    weather = _suggested_weather(ip)
     dropped = _drop_stale_screens(datetime.now(UTC))
-    device_id = None if _unpaired_screens() >= MAX_UNPAIRED_SCREENS else _new_device(secret_hash, screen, ip)
+    device_id = None if _unpaired_screens() >= MAX_UNPAIRED_SCREENS else _new_device(secret_hash, screen, weather)
     db.session.commit()
     _forget_in_store(dropped)
     if device_id is None:
@@ -94,7 +99,7 @@ def register_and_claim(secret_hash: str, screen: Screen, user: str, ip: str | No
     device = _device_with(secret_hash)
     created = device is None
     if device is None:
-        device = db.session.get_one(Device, _new_device(secret_hash, screen, ip))
+        device = db.session.get_one(Device, _new_device(secret_hash, screen, _suggested_weather(ip)))
     elif device.owner not in (None, user):
         raise TakenError
     previous = pairing.claim(device, user)
@@ -139,17 +144,30 @@ def _forget_in_store(device_ids: list[str]) -> None:
         config_store.publish(device_id)
 
 
-def _new_device(display_secret_hash: str, screen: Screen, ip: str | None) -> str:
+@dataclass(frozen=True)
+class _Weather:
+    """A new screen's weather: the name its IP suggests ("" for none), and Open-Meteo's place for it, if found."""
+
+    location: str
+    place: dict[str, Any] | None
+
+
+def _suggested_weather(ip: str | None) -> _Weather:
+    location = geoip.suggest_weather_location(ip) or ""
+    return _Weather(location, weather_place.suggested(location))
+
+
+def _new_device(display_secret_hash: str, screen: Screen, weather: _Weather) -> str:
     device_id = secrets.token_hex(6)
-    # Only a name, with no picked place: the weather provider geocodes it by name until a save (or `flask weather
-    # backfill`) picks one.
-    weather_location = geoip.suggest_weather_location(ip) or ""
     config = DeviceConfig(
         width=screen.width,
         height=screen.height,
         brightness_control=screen.brightness_control,
-        weather_location=weather_location,
+        weather_location=weather.location,
     )
+    # With no place found it has only the name, which the weather provider geocodes by name until a save (or
+    # `flask weather backfill`) picks one. The name is kept as the IP gave it, as the backfill keeps it.
+    weather_place.store(config, weather.place, keep_location=True)
     if screen.format is not None:
         # A touchscreen's is left at the column's default: the contract's config has a screen format either way.
         config.format = screen.format
