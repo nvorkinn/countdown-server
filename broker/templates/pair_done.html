@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Screen added{% endblock %}
+{% block heading %}All set{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Your screen is ready.</h2>
+        <p class="card-subtitle">You can close this page.</p>
+    </div>
+</div>
+
+<script>
+    // A browser closes only a tab a script opened, so for one a camera's QR scan opened this does nothing, and the
+    // page stays as the end of the visit.
+    window.close();
+</script>
+{% endblock %}

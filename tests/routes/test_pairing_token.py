@@ -42,7 +42,7 @@ def test_the_token_pairs_the_user_with_a_registered_device(app, client, register
     response = _pair(client)
 
     assert response.status_code == 200
-    assert response.get_json() == {"status": "paired"}
+    assert response.get_json() == {"status": "paired", "type": "epaper"}
     assert _owner(app, device_id) == "user-1"
     assert client.get("/device").status_code == 200
 
@@ -120,3 +120,37 @@ def test_devices_registered_without_a_token_column_value_cannot_be_paired_by_tok
         db.session.commit()
         assert db.session.scalar(select(Device).where(Device.pairing_token == token_for_secret())) is None
     assert _pair(client).status_code == 202
+
+
+def test_a_touchscreen_paired_by_its_qr_code_is_said_to_be_one(client):
+    registered = client.post(
+        "/api/devices/register", json={"secret": SECRET, "type": "touchscreen", "width": 1280, "height": 800}
+    )
+    assert registered.status_code == 201
+
+    response = _pair(client)
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "paired", "type": "touchscreen"}
+
+
+def test_the_done_page_ends_the_visit_with_no_way_on_to_the_settings(client, register_device):
+    register_device(SECRET)
+    _pair(client)
+
+    page = client.get("/pair/done")
+
+    assert page.status_code == 200
+    html = page.get_data(as_text=True)
+    assert "Your screen is ready." in html
+    assert "window.close()" in html
+    # No sidebar, so no link to the screen's settings or the account.
+    assert 'class="sidebar"' not in html
+    assert "/device" not in html
+    assert "/account" not in html
+
+
+def test_the_pairing_page_sends_a_touchscreen_to_the_done_page(client):
+    html = client.get(f"/pair/add?t={token_for_secret()}").get_data(as_text=True)
+
+    assert "/pair/done" in html

@@ -356,12 +356,28 @@ def pair_by_token(user_id: str) -> ResponseReturnValue:
     if not isinstance(token, str) or not PAIRING_TOKEN_RE.match(token):
         return jsonify(status="invalid"), 400
     status = pairing.pair_by_token(user_id, token)
-    if status == "paired":
-        # A paired screen's config goes in the store (all of them: this one is known here only by its token), and
-        # what it shows is subscribed to.
-        config_store.publish_all()
-        _write_subscriptions_to_redis()
-    return jsonify(status=status), {"paired": 200, "waiting": 202, "taken": 409}[status]
+    if status != "paired":
+        return jsonify(status=status), {"waiting": 202, "taken": 409}[status]
+    # A paired screen's config goes in the store (all of them: this one is known here only by its token), and
+    # what it shows is subscribed to.
+    config_store.publish_all()
+    _write_subscriptions_to_redis()
+    # Its type, for where the page goes next: an e-paper screen to its settings page, a touchscreen nowhere (it sets
+    # itself up).
+    device_type = db.session.scalar(db.select(Device.type).where(Device.pairing_token == token))
+    return jsonify(status=status, type=device_type), 200
+
+
+@bp.get("/pair/done")
+@require_user_id
+def pair_done(user_id: str) -> ResponseReturnValue:  # noqa: ARG001 -- only signed-in people get here
+    """Say a touchscreen paired by its QR code is ready, and nothing more.
+
+    The person scanned the code on their phone, and the touchscreen sets itself up from there, so the page ends the
+    visit rather than send them on to the settings: it tries to close its tab (a browser lets it only for a tab a script
+    opened) and has no sidebar or link onward.
+    """
+    return render_template("pair_done.html", screens=[])
 
 
 # Every page about a screen is at /device/<id>/..., and at /device/... for the user's most recently paired one.
