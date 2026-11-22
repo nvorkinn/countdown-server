@@ -95,7 +95,7 @@ def test_the_config_returns_defaults(app, register_device):
         "timezone": "Europe/London",
         "style": {"orientation": "vertical", "drawing": "airy", "weather": "columns", "layout": None},
         "weather": {"location": "", "key": None},
-        "notice_board": {"postcode": None, "country": None},
+        "notice_board": {"postcode": None, "country": None, "address": None},
         "arrivals": {"stops": [], "group_by_route": False},
         "spotify": {"enabled": False},
         "glowmarkt": {"enabled": False},
@@ -243,7 +243,7 @@ def test_the_config_time_zone_follows_postcode_then_first_stop(
     _set_config(app, device_id, postcode=postcode, tfl_stop_ids=stop_ids)
     body = _config(app, device_id).get_json()
 
-    assert body["notice_board"] == {"postcode": postcode or None, "country": country}
+    assert body["notice_board"] == {"postcode": postcode or None, "country": country, "address": None}
     assert body["timezone"] == timezone
 
 
@@ -364,7 +364,7 @@ def test_the_config_is_valid_with_no_location_postcode_or_stops(app, client, reg
     TypeAdapter(ConfigResponse).validate_python(body)
     assert "setup_missing" not in body
     assert body["weather"] == {"location": "", "key": None}
-    assert body["notice_board"] == {"postcode": None, "country": None}
+    assert body["notice_board"] == {"postcode": None, "country": None, "address": None}
     assert body["arrivals"]["stops"] == []
 
 
@@ -375,7 +375,7 @@ def test_the_config_returns_the_saved_postcode(app, client, register_device):
         db.session.commit()
 
     response = _config(app, device_id)
-    assert response.get_json()["notice_board"] == {"postcode": "SW1A 1AA", "country": "GB"}
+    assert response.get_json()["notice_board"] == {"postcode": "SW1A 1AA", "country": "GB", "address": None}
 
 
 @pytest.mark.parametrize("design", ["columns", "timeline", "overview", "poster"])

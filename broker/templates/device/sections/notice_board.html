@@ -20,4 +20,37 @@
         >
         <p id="postcode_hint" class="form-hint">Picks the local notices, in the UK or Norway.</p>
     </div>
+    {# A Norwegian notice board's household address (NoticeBoardAddress), for its bin collection days: shown only for a
+       Norwegian postcode, and emptied when the postcode changes, as saving a new postcode clears it. #}
+    <div class="form-group" id="address_group" {%- if config.postcode | length != 4 %} hidden{% endif %}>
+        <label for="address">Address (for bin collection)</label>
+        <input
+            type="text"
+            id="address"
+            name="address"
+            value="{{ notice_address.street ~ ' ' ~ notice_address.house_number if notice_address else '' }}"
+            placeholder="e.g. Thorvald Meyers gate 10"
+            autocomplete="address-line1"
+            maxlength="120"
+            aria-describedby="address_hint"
+        >
+        <p id="address_hint" class="form-hint">
+            {%- if notice_address %}Saved as {{ notice_address.street }} {{ notice_address.house_number }}, {{ config.postcode }} {{ notice_address.city }}. {% endif -%}
+            The street and house number, checked with Kartverket, for the next bin collection day.
+        </p>
+    </div>
+    <script>
+    (() => {
+        // The address is only for a Norwegian postcode (four digits), and a new postcode's address is typed afresh.
+        const postcode = document.getElementById("postcode");
+        const group = document.getElementById("address_group");
+        const address = document.getElementById("address");
+        const saved = postcode.value.trim();
+        postcode.addEventListener("input", () => {
+            const typed = postcode.value.trim();
+            group.hidden = !/^[0-9]{4}$/.test(typed);
+            if (typed !== saved) address.value = "";
+        });
+    })();
+    </script>
 </section>

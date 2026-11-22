@@ -108,7 +108,7 @@ def test_unpair_with_config_resets_settings_but_leaves_the_owners_logins(app, cl
     assert (config["weather"]["location"], config["arrivals"]["stops"]) == ("", [])
     assert config["clock_format"] == "24h"
     assert config["glowmarkt"] == {"enabled": False}
-    assert config["notice_board"] == {"postcode": None, "country": None}
+    assert config["notice_board"] == {"postcode": None, "country": None, "address": None}
     # The logins are the last owner's account's, not the screen's: they stay for their other screens.
     with app.app_context():
         for model in (SpotifyToken, GlowmarktCredentials, GitHubToken, ParcelKey):
@@ -328,6 +328,7 @@ def test_redis_subs_counts_each_source(app):
         "parcel: 0",
         "postcode: 0",
         "background: 0",
+        "address: 0",
     ]
 
 
@@ -420,3 +421,12 @@ def test_seed_touchscreen_is_refused_in_prod(app, cli):
     assert "only for dev" in result.output
     with app.app_context():
         assert db.session.scalar(select(func.count()).select_from(Device)) == 0
+
+
+def test_redis_subs_never_shows_the_addresses(app):
+    _redis(app).sadd("v1:sub:address", "Thorvald Meyers gate|10|0555|Oslo")
+
+    result = _run(app, "subs", "address")
+
+    assert result.output.strip() == "address: 1 (not shown)"
+    assert "Thorvald" not in result.output

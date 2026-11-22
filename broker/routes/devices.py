@@ -225,7 +225,7 @@ def put_config_section(device_id: str, section: str, *, by_device: bool) -> Resp
     validated with the device type's model (400 if it refuses it, or the value can't be saved); one the type doesn't
     have is a 404. A device saves its own config only as a paired touchscreen whose owner approves (403 otherwise);
     on the settings site, any device of the person's (auth.require_device_or_owner). 503 when a weather place can't
-    be checked with Open-Meteo right now.
+    be checked with Open-Meteo right now, or an address with Kartverket.
     """
     device = db.session.get_one(Device, device_id)
     if by_device and (refused := _refused_own_save(device)):
@@ -269,8 +269,8 @@ def _set_section(config: DeviceConfig, section: str, value: object) -> ResponseR
     """Write a section to the device's settings; return the answer if it can't be saved, or None if it was."""
     try:
         reason = config_sections.set_section(config, section, value)
-    except config_sections.SectionUnavailableError:
-        return with_retry_after(jsonify(error="the weather place can't be checked just now"), 60), 503
+    except config_sections.SectionUnavailableError as error:
+        return with_retry_after(jsonify(error=error.reason), 60), 503
     if reason is not None:
         return jsonify(error=reason), 400
     # Every save is checked as the settings page's are: the config it makes, as built, against the type's model.

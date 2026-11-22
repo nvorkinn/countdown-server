@@ -29,7 +29,7 @@ from countdown_api.models import (
 )
 
 from broker.clients import weather
-from broker.services import renderer_config, stops, weather_place
+from broker.services import household_address, renderer_config, stops, weather_place
 from broker.services.postcodes import normalize_postcode
 
 if TYPE_CHECKING:
@@ -39,7 +39,21 @@ if TYPE_CHECKING:
 
 
 class SectionUnavailableError(Exception):
-    """A section that can't be checked right now: Open-Meteo, for a weather place."""
+    """A section that can't be checked right now; `reason` says which, as the answer's error (a fixed clause)."""
+
+    reason = "the section can't be checked just now"
+
+
+class PlaceUnavailableError(SectionUnavailableError):
+    """A weather place that Open-Meteo can't be asked about right now."""
+
+    reason = "the weather place can't be checked just now"
+
+
+class AddressUnavailableError(SectionUnavailableError):
+    """A household address that Kartverket can't be asked about right now."""
+
+    reason = "the address can't be checked just now"
 
 
 def version(config: DeviceConfig) -> str:
@@ -77,7 +91,7 @@ def _weather(config: DeviceConfig, value: Weather) -> str | None:
     try:
         place = weather.get_place(place_id) if place_id is not None else None
     except weather.GeocodingUnavailableError as error:
-        raise SectionUnavailableError from error
+        raise PlaceUnavailableError from error
     if place is None or weather_place.place_key(place) != value.key:
         return "not the key of a place: use one the place search answered"
     weather_place.store(config, place)
@@ -85,9 +99,28 @@ def _weather(config: DeviceConfig, value: Weather) -> str | None:
 
 
 def _notice_board(config: DeviceConfig, value: NoticeBoard) -> str | None:
+    """Save the postcode and, for a Norwegian one, the household address, as Kartverket has it.
+
+    An address that isn't the one saved is looked up by its street and house number in the postcode (its city is
+    Kartverket's, whatever was sent), and saved only when exactly one matches. A new postcode clears the saved one; a
+    device that doesn't know the address yet sends none, and keeps it.
+    """
     postcode = normalize_postcode(value.postcode or "")
     if postcode is None:
         return "the postcode must be a UK or a Norwegian one"
+    if "address" not in value.model_fields_set:
+        text = None
+    else:
+        text = household_address.text_of(value.address) if value.address else ""
+    try:
+        address = household_address.posted(config, postcode, text)
+    except household_address.AddressNotFoundError as error:
+        if error.several:
+            return "more than one address in the postcode matches: give the house number, and its letter if it has one"
+        return "no address in the postcode matches: give the street and house number as on the letterbox"
+    except household_address.AddressUnavailableError as error:
+        raise AddressUnavailableError from error
+    household_address.store(config, address)
     config.postcode = postcode
     return None
 

@@ -265,14 +265,15 @@ def publish() -> None:
 def subs(source: str | None) -> None:
     """Show how many ids each subscription set holds, or, given a source, the ids in its set.
 
-    A source's set is what its provider fetches for. The postcodes are only counted, never shown: they are never logged.
+    A source's set is what its provider fetches for. The postcodes and addresses are only counted, never shown: they are
+    never logged.
     """
     redis = current_app.extensions["redis"]
     try:
         if source is None:
             for name in store_keys.SOURCES:
                 click.echo(f"{name}: {redis.scard(store_keys.subscription(name))}")
-        elif source == store_keys.POSTCODE:
+        elif source in {store_keys.POSTCODE, store_keys.ADDRESS}:
             click.echo(f"{source}: {redis.scard(store_keys.subscription(source))} (not shown)")
         else:
             members = sorted(redis.smembers(store_keys.subscription(source)))

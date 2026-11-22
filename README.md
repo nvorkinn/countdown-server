@@ -147,7 +147,9 @@ Pairing gives the screen its internal name (its slug, which is its device id), p
 queues its first render. Its owner can give it a friendly name on its settings page.
 
 Each screen's settings are at `/device/<id>` (and `/device` for the most recently paired one): departure stops (TfL and
-Entur), the weather place (an Open-Meteo search), a postcode for the notice board, per-screen integration visibility,
+Entur), the weather place (an Open-Meteo search), a postcode for the notice board (and, for a Norwegian one, the
+household's address for its bin collection days, saved only when Kartverket's address register has exactly one match in
+the postcode, and cleared when the postcode changes), per-screen integration visibility,
 language, style, clock format and name, and on an HD screen (1872x1404) how the weather is drawn. Connections and
 credentials for music, GitHub, Parcel and Energy live at `/account`, shared across screens; blank replacement
 secret fields keep the saved credentials. The Parcel API key also has a page of its own, `/account/parcel` (the
@@ -171,7 +173,8 @@ the providers' data for it is deleted from Redis too (`broker/services/device_ke
 
 SQLite is the source of truth; Redis holds what countdown reads. The broker writes:
 
-- `v1:sub:<source>`: what the providers should fetch (stops, weather places, postcodes, devices), then publishes
+- `v1:sub:<source>`: what the providers should fetch (stops, weather places, postcodes, household addresses, devices),
+  then publishes
   `v1:sub:changed`;
 - `v1:background-place:<weather key>`: for each member of `v1:sub:background` (the places the paired touchscreens
   show), its name, country and the postcodes of their notice boards, written in the subscriptions' transaction and
