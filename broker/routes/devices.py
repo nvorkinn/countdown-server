@@ -110,17 +110,22 @@ def _screen(body: dict) -> registration.Screen | str:
     if not (_is_size(width) and _is_size(height)):
         return "width and height must be positive integers"
     if device_type == "touchscreen":
-        if "format" in body:
-            return "a touchscreen draws itself, so takes no format"
-        brightness_control = body.get("brightness_control", False)
-        if type(brightness_control) is not bool:
-            return "brightness_control must be true or false"
-        return registration.Screen(device_type, width, height, brightness_control=brightness_control)
+        return _touchscreen(body, width, height)
     if "brightness_control" in body:
         return "only a touchscreen says whether it can set its brightness"
     if not _is_frame_format(frame_format):
         return f"format must be one of {', '.join(FRAME_FORMATS)}"
     return registration.Screen(device_type, width, height, frame_format)
+
+
+def _touchscreen(body: dict, width: int, height: int) -> registration.Screen | str:
+    """Return a touchscreen as it says it is (no format, and whether it can set its brightness), or what's wrong."""
+    if "format" in body:
+        return "a touchscreen draws itself, so takes no format"
+    brightness_control = body.get("brightness_control", False)
+    if type(brightness_control) is not bool:
+        return "brightness_control must be true or false"
+    return registration.Screen("touchscreen", width, height, brightness_control=brightness_control)
 
 
 def _is_size(value: object) -> TypeGuard[int]:
