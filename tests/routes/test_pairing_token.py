@@ -143,7 +143,8 @@ def test_the_done_page_ends_the_visit_with_no_way_on_to_the_settings(client, reg
     assert page.status_code == 200
     html = page.get_data(as_text=True)
     assert "Your screen is ready." in html
-    assert "window.close()" in html
+    assert "window.close(" in html
+    assert 'id="closePage"' in html
     # No sidebar, so no link to the screen's settings or the account.
     assert 'class="sidebar"' not in html
     assert "/device" not in html
