@@ -21,6 +21,7 @@ from countdown_api.models import (
     StopDepartures,
     StoredBackground,
     StoredBankHolidays,
+    StoredBinCollections,
     StoredEnturSituations,
     StoredFloods,
     StoredForecast,
@@ -34,6 +35,8 @@ from countdown_api.models import (
 )
 from flask import current_app
 from pydantic import BaseModel, TypeAdapter, ValidationError
+
+from broker.services.household_address import member_of
 
 if TYPE_CHECKING:
     from redis import Redis
@@ -87,40 +90,26 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
     Its TfL stops' line statuses and station disruptions; then, only for a UK postcode (the sources are the UK's),
     TfL's road disruptions near it, the Environment Agency's flood warnings near it, the Met Office's warnings for it
     and the UK's bank holidays; only for a Norwegian postcode, MET Norway's weather warnings whose area covers where it
-    is (its `v1:location:` place, as provider-locations looked it up; null until then); for a device with
-    either, every Tube line's status (a London device's Tube status panel, shown when its notice board is empty); and
+    is (its `v1:location:` place, as provider-locations looked it up; null until then) and, with an address set, its
+    household's bin collection days (as the bins provider stored them; null until then); for a device with either,
+    every Tube line's status (a London device's Tube status panel, shown when its notice board is empty); and
     for one with parcels switched on, its parcels, as the parcel provider stored them (already narrowed to those its
     settings show). Its Entur stops' situations (Entur's disruption messages on each stop and the lines serving it)
     come whatever its postcode, as its TfL stops' do.
     """
     settings = config(store, device_id)
     board = settings.notice_board
-    parcels = settings.parcels is not None and settings.parcels.enabled
     tfl_stops = [stop.id for stop in settings.arrivals.stops if stop.source == "tfl"]
     entur_stops = [stop.id for stop in settings.arrivals.stops if stop.source == "entur"]
-    wanted: list[tuple[str, type[BaseModel]]] = []
+    stop_keys: list[tuple[str, type[BaseModel]]] = []
     for stop_id in tfl_stops:
-        wanted += [
+        stop_keys += [
             (store_keys.tfl_line_status(stop_id), StoredLineStatus),
             (store_keys.tfl_stations(stop_id), StoredStationDisruptions),
         ]
-    wanted += [(store_keys.entur_situations(stop_id), StoredEnturSituations) for stop_id in entur_stops]
-    uk = board.country == "GB" and board.postcode is not None
-    if uk:
-        wanted += [
-            (store_keys.tfl_roads(board.postcode), StoredRoadDisruptions),
-            (store_keys.floods(board.postcode), StoredFloods),
-            (store_keys.met_office(board.postcode), StoredMetOfficeWarnings),
-            (store_keys.BANK_HOLIDAYS, StoredBankHolidays),
-        ]
-    norway = board.country == "NO" and board.postcode is not None
-    if norway:
-        wanted += [(store_keys.location(board.postcode), StoredLocation), (store_keys.METALERTS, StoredMetAlerts)]
-    london = bool(tfl_stops) or uk
-    if london:
-        wanted.append((store_keys.TFL_NETWORK, StoredNetworkStatus))
-    if parcels:
-        wanted.append((store_keys.parcels(device_id), ParcelList))
+    stop_keys += [(store_keys.entur_situations(stop_id), StoredEnturSituations) for stop_id in entur_stops]
+    area = _area_keys(settings, device_id, has_tfl_stops=bool(tfl_stops))
+    wanted = stop_keys + [(name, model) for _, name, model in area]
     names = [name for name, _ in wanted]
     values = iter(
         _read(name, value, model)
@@ -138,22 +127,46 @@ def notices(store: Redis, device_id: str) -> dict[str, Any]:
         "entur_stops": [{"stop_id": stop_id, "situations": next(values)} for stop_id in entur_stops],
         "metalerts": None,
         "parcels": None,
+        "bins": None,
     }
+    found = {field: next(values) for field, _, _ in area}
+    location = found.pop("location", None)
+    if "metalerts" in found:
+        found["metalerts"] = _covering(found["metalerts"], location)
+    return answer | found
+
+
+def _area_keys(
+    settings: ConfigResponse, device_id: str, *, has_tfl_stops: bool
+) -> list[tuple[str, str, type[BaseModel]]]:
+    """Return the keys for the device's place and parcels, each with the notices' field it fills (`location` none).
+
+    Only for a UK postcode, its UK sources; only for a Norwegian one, its location and MET Norway's warnings and, with
+    an address, the household's bins (the key is the SHA1 of its v1:sub:address member, so it names no home in a log);
+    the Tube's status with TfL stops or a UK postcode; and the device's parcels while they're switched on.
+    """
+    board = settings.notice_board
+    keys: list[tuple[str, str, type[BaseModel]]] = []
+    uk = board.country == "GB" and board.postcode is not None
     if uk:
-        answer |= {
-            "tfl_roads": next(values),
-            "floods": next(values),
-            "met_office": next(values),
-            "bank_holidays": next(values),
-        }
-    if norway:
-        location, metalerts = next(values), next(values)
-        answer["metalerts"] = _covering(metalerts, location)
-    if london:
-        answer["tfl_network"] = next(values)
-    if parcels:
-        answer["parcels"] = next(values)
-    return answer
+        keys += [
+            ("tfl_roads", store_keys.tfl_roads(board.postcode), StoredRoadDisruptions),
+            ("floods", store_keys.floods(board.postcode), StoredFloods),
+            ("met_office", store_keys.met_office(board.postcode), StoredMetOfficeWarnings),
+            ("bank_holidays", store_keys.BANK_HOLIDAYS, StoredBankHolidays),
+        ]
+    if board.country == "NO" and board.postcode is not None:
+        keys += [
+            ("location", store_keys.location(board.postcode), StoredLocation),
+            ("metalerts", store_keys.METALERTS, StoredMetAlerts),
+        ]
+        if board.address is not None:
+            keys.append(("bins", store_keys.bins(member_of(board.address, board.postcode)), StoredBinCollections))
+    if has_tfl_stops or uk:
+        keys.append(("tfl_network", store_keys.TFL_NETWORK, StoredNetworkStatus))
+    if settings.parcels is not None and settings.parcels.enabled:
+        keys.append(("parcels", store_keys.parcels(device_id), ParcelList))
+    return keys
 
 
 def _covering(metalerts: dict[str, Any] | None, location: dict[str, Any] | None) -> dict[str, Any] | None:

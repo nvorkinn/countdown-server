@@ -17,6 +17,8 @@ from countdown_api.models import DeviceArrivals, DeviceNotices, DeviceWeather
 from tests.routes.test_touchscreens import _auth, _paired, _registered
 
 PANELS = fixtures.load("device_panels.json")
+# Its London device has no address, so no bins: the broker answers null, which the example leaves to the default.
+PANELS["notices"] = {"bins": None, **PANELS["notices"]}
 DEPARTURES = fixtures.load("departures.json")
 WEATHER = fixtures.load("weather.json")
 BACKGROUND = fixtures.load("background.json")
@@ -30,6 +32,9 @@ FLOODS = fixtures.load("floods.json")
 LOCATIONS = {place["postcode"]: place for place in fixtures.load("location.json")["locations"]}
 METALERTS = fixtures.load("metalerts.json")
 NORWAY = fixtures.load("device_notices_norway.json")
+BINS = fixtures.load("bins.json")
+# touchscreen.json's Oslo board's household, whose stored bins device_notices_norway.json answers.
+OSLO_ADDRESS = fixtures.load("touchscreen.json")["config"]["notice_board"]["address"]
 
 
 def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
@@ -49,16 +54,18 @@ def _stored(app, device_id: str, config: dict | None = None) -> dict[str, str]:
     for place in [*FLOODS["places"], *LOCATIONS.values()]:
         store[place["key"]] = json.dumps(place["value"])
     store[METALERTS["key"]] = json.dumps(METALERTS["value"])
+    for household in BINS["addresses"]:
+        store[household["key"]] = json.dumps(household["value"])
     return store
 
 
 def _oslo(**changes) -> dict:
-    """Return device_notices_norway.json's Oslo touchscreen's config: postcode 0150, its one Entur stop, no parcels."""
+    """Return device_notices_norway.json's Oslo touchscreen's config: 0150 and its address, one stop, no parcels."""
     stops = [{"source": "entur", "id": stop["stop_id"]} for stop in NORWAY["notices"]["entur_stops"]]
     return {
         **PANELS["config"],
         "arrivals": {"stops": stops},
-        "notice_board": {"postcode": NORWAY["postcode"], "country": "NO"},
+        "notice_board": {"postcode": NORWAY["postcode"], "country": "NO", "address": OSLO_ADDRESS},
         "parcels": {"enabled": False},
         **changes,
     }
@@ -225,6 +232,38 @@ def test_norwegian_warnings_are_null_without_a_place_to_narrow_them_to(app, clie
     assert notices["floods"] is None
 
 
+def test_a_norwegian_address_has_its_households_stored_bin_collection_days(app, client, device):
+    thorvald_meyers_gate = BINS["addresses"][0]
+    street, house_number, postcode, city = thorvald_meyers_gate["address"].split("|")
+    address = {"street": street, "house_number": house_number, "city": city}
+    _stored(app, device, _oslo(notice_board={"postcode": postcode, "country": "NO", "address": address}))
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["bins"] == thorvald_meyers_gate["value"]
+    bins = DeviceNotices.model_validate(notices).bins
+    assert bins is not None
+    assert bins.found
+
+
+@pytest.mark.parametrize("missing", ["an address", "a norwegian postcode", "stored days"])
+def test_bins_are_null_without_a_norwegian_address_or_its_stored_days(app, client, device, missing):
+    store = _stored(app, device, _oslo())
+    match missing:
+        case "an address":
+            _stored(app, device, _oslo(notice_board={"postcode": NORWAY["postcode"], "country": "NO", "address": None}))
+        case "a norwegian postcode":
+            # An address only counts with a Norwegian postcode, whatever the config says.
+            board = {"postcode": "SW1A 1AA", "country": "GB", "address": OSLO_ADDRESS}
+            _stored(app, device, _oslo(notice_board=board))
+        case "stored days":
+            del store[BINS["addresses"][1]["key"]]  # the bins provider hasn't got to it yet
+
+    notices = client.get("/api/devices/notices", headers=_auth()).get_json()
+
+    assert notices["bins"] is None
+
+
 def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device):
     bare = {
         **PANELS["config"],
@@ -248,6 +287,7 @@ def test_a_device_with_no_stops_or_postcode_has_empty_panels(app, client, device
         "entur_stops": [],
         "metalerts": None,
         "parcels": None,
+        "bins": None,
     }
 
 

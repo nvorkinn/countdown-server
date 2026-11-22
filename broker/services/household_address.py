@@ -60,9 +60,14 @@ def text_of(address: NoticeBoardAddress) -> str:
 def member(config: DeviceConfig) -> str | None:
     """Return the notice board's v1:sub:address member, "<street>|<house_number>|<postcode>|<city>", or None."""
     address = stored(config)
-    if address is None:
+    if address is None or config.postcode is None:
         return None
-    return f"{address.street}|{address.house_number}|{config.postcode}|{address.city}"
+    return member_of(address, config.postcode)
+
+
+def member_of(address: NoticeBoardAddress, postcode: str) -> str:
+    """Return an address's v1:sub:address member in its notice board's postcode, what its bins key is the SHA1 of."""
+    return f"{address.street}|{address.house_number}|{postcode}|{address.city}"
 
 
 def posted(config: DeviceConfig, postcode: str, text: str | None) -> NoticeBoardAddress | None:
