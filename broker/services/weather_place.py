@@ -133,6 +133,22 @@ def resolve(place_id: str, text: str, current: DeviceConfig) -> dict[str, Any] |
     return results[0]
 
 
+def suggested(text: str | None) -> dict[str, Any] | None:
+    """Return Open-Meteo's best match for a suggested name (a new screen's, from its IP), or None.
+
+    None when there's no name, nothing matches it, or Open-Meteo couldn't be asked: the screen then keeps the name
+    alone, and `flask weather backfill` can pick its place later. The first match is the one the weather provider
+    geocodes the name to too, so the place changes nothing but the key, which is then the same as a picked place's.
+    """
+    if not text:
+        return None
+    try:
+        results = weather.search_places(text, count=1)
+    except weather.GeocodingUnavailableError:
+        return None
+    return results[0] if results else None
+
+
 def _names(text: str, *names: str | None) -> bool:
     return text.casefold() in {name.casefold() for name in names if name}
 
