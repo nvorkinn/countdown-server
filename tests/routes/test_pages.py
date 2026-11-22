@@ -9,7 +9,7 @@ import redis
 from broker.clients import weather
 from broker.db import db
 from broker.models import Device, DeviceConfig, GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
-from broker.services import pairing, weather_place
+from broker.services import household_address, pairing, weather_place
 from broker.services.postcodes import normalize_postcode, postcode_country
 from tests.conftest import account_of
 
@@ -1647,3 +1647,115 @@ def test_an_unknown_parcel_window_is_refused(app, paired_client, field):
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
         assert (config.parcels_days_ahead, config.parcels_kept_hours) == (None, 4)
+
+
+# --- the household address, for a Norwegian notice board's bin collection days ---------------------------------------
+
+EUFEMIAS = {"adressenavn": "Dronning Eufemias gate", "nummer": 1, "bokstav": "", "poststed": "OSLO"}
+
+
+def _kartverket(*found):
+    """Stand in for Kartverket's address search, finding `found`."""
+    return patch("broker.clients.kartverket.search", return_value=list(found))
+
+
+def _address_of(app, device_id):
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        return (config.address_street, config.address_house_number, config.address_city)
+
+
+def test_the_address_is_saved_as_kartverket_has_it(app, paired_client, fake_redis):
+    client, device_id, _ = paired_client
+    with _kartverket(EUFEMIAS) as search:
+        response = client.post("/device", data={"postcode": "0150", "address": " dronning eufemias gate 1 "})
+
+    assert response.status_code == 302
+    search.assert_called_once_with("dronning eufemias gate 1", "0150")
+    assert _address_of(app, device_id) == ("Dronning Eufemias gate", "1", "Oslo")
+    assert _subscriptions(fake_redis)["address"] == {"Dronning Eufemias gate|1|0150|Oslo"}
+    page = client.get("/device").get_data(as_text=True)
+    assert 'value="Dronning Eufemias gate 1"' in page
+    assert "Saved as Dronning Eufemias gate 1, 0150 Oslo." in page
+
+
+@pytest.mark.parametrize(
+    ("found", "error"),
+    [
+        ((), "We couldn&#39;t find &#34;Dronning Eufemias gate 99&#34; in 0150"),
+        ((EUFEMIAS, {**EUFEMIAS, "nummer": 11}), "matches more than one address in 0150"),
+    ],
+)
+def test_an_address_that_isnt_exactly_one_of_kartverkets_saves_nothing(app, paired_client, found, error):
+    client, device_id, _ = paired_client
+    with _kartverket(*found):
+        response = client.post("/device", data={"postcode": "0150", "address": "Dronning Eufemias gate 99"})
+
+    assert response.status_code == 400
+    page = response.get_data(as_text=True)
+    assert error in page
+    assert "Nothing was saved." in page
+    assert _address_of(app, device_id) == (None, None, None)
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, device_id).postcode == ""
+
+
+def test_an_address_that_cant_be_checked_saves_nothing(app, paired_client):
+    client, device_id, _ = paired_client
+    with patch("broker.clients.kartverket.search", side_effect=household_address.AddressUnavailableError):
+        response = client.post("/device", data={"postcode": "0150", "address": "Dronning Eufemias gate 1"})
+
+    assert response.status_code == 400
+    assert "We couldn&#39;t check the address just now." in response.get_data(as_text=True)
+    assert _address_of(app, device_id) == (None, None, None)
+
+
+def test_a_new_postcode_clears_the_address(app, paired_client, fake_redis):
+    client, device_id, _ = paired_client
+    with _kartverket(EUFEMIAS):
+        client.post("/device", data={"postcode": "0150", "address": "Dronning Eufemias gate 1"})
+
+    with _kartverket(EUFEMIAS) as search:
+        # The page posts the address shown with the new postcode, as it was before its script emptied it.
+        client.post("/device", data={"postcode": "0151", "address": "Dronning Eufemias gate 1"})
+
+    search.assert_not_called()
+    assert _address_of(app, device_id) == (None, None, None)
+    assert "address" not in _subscriptions(fake_redis)
+
+
+def test_a_postcode_outside_norway_clears_the_address_and_hides_it(app, paired_client):
+    client, device_id, _ = paired_client
+    with _kartverket(EUFEMIAS):
+        client.post("/device", data={"postcode": "0150", "address": "Dronning Eufemias gate 1"})
+
+    client.post("/device", data={"postcode": "SW1A 1AA", "address": "Dronning Eufemias gate 1"})
+
+    assert _address_of(app, device_id) == (None, None, None)
+    assert 'id="address_group" hidden' in client.get("/device").get_data(as_text=True)
+
+
+def test_the_saved_address_isnt_looked_up_again(app, paired_client):
+    client, device_id, _ = paired_client
+    with _kartverket(EUFEMIAS):
+        client.post("/device", data={"postcode": "0150", "address": "Dronning Eufemias gate 1"})
+
+    with _kartverket() as search:
+        kept = client.post("/device", data={"postcode": "0150", "address": "Dronning Eufemias gate 1"})
+        cleared = client.post("/device", data={"postcode": "0150", "address": ""})
+
+    search.assert_not_called()
+    assert (kept.status_code, cleared.status_code) == (302, 302)
+    assert _address_of(app, device_id) == (None, None, None)
+
+
+def test_the_config_has_the_notice_boards_address(app, paired_client, config_of):
+    client, device_id, _ = paired_client
+    with _kartverket(EUFEMIAS):
+        client.post("/device", data={"postcode": "0150", "address": "Dronning Eufemias gate 1"})
+
+    assert config_of(device_id)["notice_board"] == {
+        "postcode": "0150",
+        "country": "NO",
+        "address": {"street": "Dronning Eufemias gate", "house_number": "1", "city": "Oslo"},
+    }

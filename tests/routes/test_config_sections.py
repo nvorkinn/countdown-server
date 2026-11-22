@@ -15,7 +15,7 @@ from pydantic import TypeAdapter
 from broker.clients import weather
 from broker.db import db
 from broker.models import DeviceConfig
-from broker.services import config_sections, pairing
+from broker.services import config_sections, household_address, pairing
 from tests.conftest import name_screen
 
 TOUCHSCREEN = fixtures.load("touchscreen.json")
@@ -300,8 +300,79 @@ def test_the_notice_boards_country_is_the_postcodes(paired_client):
     saved = _save(client, "notice_board", {"postcode": "sw1a1aa", "country": "NO"}, etag, **site)
     refused = _save(client, "notice_board", {"postcode": "NOPE", "country": None}, saved.headers["ETag"], **site)
 
-    assert saved.get_json()["notice_board"] == {"postcode": "SW1A 1AA", "country": "GB"}
+    assert saved.get_json()["notice_board"] == {"postcode": "SW1A 1AA", "country": "GB", "address": None}
     assert refused.status_code == 400
+
+
+EUFEMIAS = {"adressenavn": "Dronning Eufemias gate", "nummer": 1, "bokstav": "", "poststed": "OSLO"}
+SAVED_ADDRESS = {"street": "Dronning Eufemias gate", "house_number": "1", "city": "Oslo"}
+
+
+def test_the_address_is_looked_up_by_street_and_number_and_saved_as_kartverket_has_it(client, touchscreen):
+    etag = _version(client, headers=_auth())
+    sent = {
+        "postcode": "0150",
+        "country": "NO",
+        "address": {"street": "dronning eufemias gate", "house_number": "1", "city": ""},
+    }
+    with patch("broker.clients.kartverket.search", return_value=[EUFEMIAS]) as search:
+        saved = _save(client, "notice_board", sent, etag, headers=_auth())
+
+    search.assert_called_once_with("dronning eufemias gate 1", "0150")
+    assert saved.get_json()["notice_board"] == {"postcode": "0150", "country": "NO", "address": SAVED_ADDRESS}
+
+    # Sent back as it came, it isn't looked up again; with a new postcode, it's cleared.
+    with patch("broker.clients.kartverket.search") as search:
+        again = _save(client, "notice_board", saved.get_json()["notice_board"], saved.headers["ETag"], headers=_auth())
+        moved = _save(
+            client,
+            "notice_board",
+            {**again.get_json()["notice_board"], "postcode": "0151"},
+            again.headers["ETag"],
+            headers=_auth(),
+        )
+    search.assert_not_called()
+    assert again.get_json()["notice_board"]["address"] == SAVED_ADDRESS
+    assert moved.get_json()["notice_board"] == {"postcode": "0151", "country": "NO", "address": None}
+
+
+def test_a_device_that_sends_no_address_keeps_it(client, touchscreen):
+    etag = _version(client, headers=_auth())
+    sent = {"postcode": "0150", "country": "NO", "address": SAVED_ADDRESS}
+    with patch("broker.clients.kartverket.search", return_value=[EUFEMIAS]):
+        saved = _save(client, "notice_board", sent, etag, headers=_auth())
+
+    kept = _save(client, "notice_board", {"postcode": "0150", "country": "NO"}, saved.headers["ETag"], headers=_auth())
+
+    assert kept.get_json()["notice_board"]["address"] == SAVED_ADDRESS
+
+
+@pytest.mark.parametrize(("found", "error"), [([], "no address"), ([EUFEMIAS, EUFEMIAS], "more than one address")])
+def test_an_address_that_isnt_exactly_one_of_kartverkets_is_refused(client, touchscreen, found, error):
+    etag = _version(client, headers=_auth())
+    sent = {
+        "postcode": "0150",
+        "country": "NO",
+        "address": {"street": "Dronning Eufemias gate", "house_number": "", "city": ""},
+    }
+    with patch("broker.clients.kartverket.search", return_value=found):
+        response = _save(client, "notice_board", sent, etag, headers=_auth())
+
+    assert response.status_code == 400
+    assert response.get_json()["error"].startswith(error)
+    assert "Eufemias" not in response.get_json()["error"]
+    assert _version(client, headers=_auth()) == etag
+
+
+def test_an_address_that_cant_be_checked_is_a_503(client, touchscreen):
+    etag = _version(client, headers=_auth())
+    sent = {"postcode": "0150", "country": "NO", "address": SAVED_ADDRESS}
+    with patch("broker.clients.kartverket.search", side_effect=household_address.AddressUnavailableError):
+        response = _save(client, "notice_board", sent, etag, headers=_auth())
+
+    assert response.status_code == 503
+    assert response.get_json()["error"] == "the address can't be checked just now"
+    assert "Retry-After" in response.headers
 
 
 def test_a_services_switch_is_saved_but_on_only_with_its_login(app, paired_client):

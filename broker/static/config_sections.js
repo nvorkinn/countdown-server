@@ -26,7 +26,8 @@
         quiet_hours_end: display,
         lyrics_size: lyrics,
         lyrics_align: lyrics,
-        postcode: () => ["notice_board", { ...config.notice_board, postcode: form.elements.postcode.value.trim() }],
+        postcode: noticeBoard,
+        address: noticeBoard,
         parcels_enabled: parcels,
         parcels_days_ahead: parcels,
         parcels_kept_hours: parcels,
@@ -56,6 +57,22 @@
             end: Number(form.elements.quiet_hours_end.value),
         };
         return ["display", value];
+    }
+
+    // The postcode and the household address typed, which the server looks up with Kartverket: split into its street
+    // and house number as best it can ("Thorvald Meyers gate 12B"), as it's looked up by both together. The address as
+    // saved is sent as it is, and none while the box is empty (or hidden, as it is for a postcode that isn't Norway's).
+    function noticeBoard() {
+        const saved = config.notice_board.address;
+        const typed = form.elements.address.value.trim().replace(/\s+/g, " ");
+        let address = null;
+        if (typed && saved && typed === `${saved.street} ${saved.house_number}`) {
+            address = saved;
+        } else if (typed) {
+            const [, street, number] = typed.match(/^(.*\S)\s+([0-9]+\s*[A-Za-z]?)$/) || [null, typed, ""];
+            address = { street, house_number: number.replace(/\s+/g, ""), city: "" };
+        }
+        return ["notice_board", { ...config.notice_board, postcode: form.elements.postcode.value.trim(), address }];
     }
 
     function lyrics() {

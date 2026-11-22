@@ -6,7 +6,7 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 from countdown_api import keys as store_keys
-from countdown_api.models import EpaperConfig, TouchscreenConfig
+from countdown_api.models import EpaperConfig, NoticeBoardAddress, TouchscreenConfig
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
 from redis import Redis, RedisError
 
@@ -59,6 +59,7 @@ from broker.services import (
     frame_image,
     frame_record,
     geoip,
+    household_address,
     pace,
     pairing,
     parcel_key,
@@ -97,6 +98,9 @@ def _subscriptions() -> dict[str, set[str]]:
         "parcel": set(),
         # The notice board's place, for the notice providers: each postcode in canonical form ("SW1A 1AA", "0150").
         "postcode": set(),
+        # A Norwegian notice board's household address, for the bins provider:
+        # "<street>|<house_number>|<postcode>|<city>".
+        "address": set(),
     }
 
     # The users with a Parcel API key: a screen showing parcels is polled only if its owner has one.
@@ -119,6 +123,8 @@ def _subscriptions() -> dict[str, set[str]]:
                 subs[source].add(config.device_id)
         if config.postcode:
             subs["postcode"].add(config.postcode)
+        if address := household_address.member(config):
+            subs["address"].add(address)
     # The screens showing energy whose owner's account has a Glowmarkt password saved.
     subs["glow"] = set(
         db.session.scalars(
@@ -160,7 +166,7 @@ def _write_subscriptions_to_redis() -> None:
             pipe.execute()
     except RedisError as e:
         # The error's type only: a failed pipeline's text quotes its commands, and SADD v1:sub:postcode's has postcodes
-        # (as has SET v1:background-place's).
+        # (as has SET v1:background-place's), and SADD v1:sub:address's addresses.
         current_app.logger.warning("Couldn't publish subscriptions to Redis (%s)", type(e).__name__)
 
 
@@ -478,8 +484,12 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     kept_hours = request.form.get("parcels_kept_hours", _form_value(config.parcels_kept_hours))
 
     place, errors = _weather_place(config)
+    address = None
     if postcode is None:
         errors.append(f'"{raw_postcode.strip()}" isn\'t a valid UK or Norwegian postcode.')
+    else:
+        address, address_errors = _address(config, postcode)
+        errors += address_errors
     errors += _foreign_fields(device_type)
     errors += [
         f"{label} must be one of {', '.join(allowed)}."
@@ -502,6 +512,7 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
         return _render_device_config(device_id, errors=[*errors, "Nothing was saved."]), 400
 
     weather_place.store(config, place)
+    household_address.store(config, address)
     config.postcode = postcode
     _set_integrations(config, device_type)
     config.parcels_days_ahead = int(days_ahead) if days_ahead else None
@@ -624,6 +635,35 @@ def _weather_place(config: DeviceConfig) -> tuple[dict[str, Any] | None, list[st
         ]
     except weather.GeocodingUnavailableError:
         return None, ["We couldn't check the weather location just now. Please try again in a minute."]
+
+
+def _address(config: DeviceConfig, postcode: str) -> tuple[NoticeBoardAddress | None, list[str]]:
+    """Return the household address to save with the notice board's `postcode`, and what's wrong with the one posted.
+
+    Only a Norwegian postcode has one, and only one Kartverket has, exactly one match in the postcode
+    (household_address.posted); a new postcode clears it. If Kartverket can't be asked right now, that's refused rather
+    than saved unchecked.
+    """
+    text = request.form.get("address")
+    try:
+        return household_address.posted(config, postcode, text), []
+    except household_address.AddressNotFoundError as error:
+        typed = " ".join((text or "").split())
+        if error.several:
+            return None, [
+                (
+                    f'"{typed}" matches more than one address in {postcode}: give the house number, and its letter '
+                    'if it has one (e.g. "Thorvald Meyers gate 12B").'
+                )
+            ]
+        return None, [
+            (
+                f'We couldn\'t find "{typed}" in {postcode}: type the street and house number as on the letterbox '
+                '(e.g. "Thorvald Meyers gate 10"), and check the postcode.'
+            )
+        ]
+    except household_address.AddressUnavailableError:
+        return None, ["We couldn't check the address just now. Please try again in a minute."]
 
 
 @bp.route("/device/name", methods=["GET", "POST"], defaults={"device_id": None})
@@ -832,6 +872,8 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         sections_config=built.model_dump(mode="json") if built else None,
         config_version=config_sections.version_of(built) if built else None,
         sections=PAGE_SECTIONS[device.type],
+        # A Norwegian notice board's household address, as saved (NoticeBoardAddress), or None.
+        notice_address=household_address.stored(config),
         device_type=device.type,
         device_types=DEVICE_TYPE_LABELS,
         themes=THEMES,

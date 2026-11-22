@@ -29,7 +29,7 @@ from flask import current_app
 
 from broker.db import db
 from broker.models import Device, DeviceConfig, GlowmarktCredentials, ParcelKey
-from broker.services import accounts, pace, pairing, stops, weather_place
+from broker.services import accounts, household_address, pace, pairing, stops, weather_place
 from broker.services.postcodes import postcode_country
 
 
@@ -55,7 +55,10 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
     )
     # The key is what the weather is subscribed under, so it's what the renderer reads (v1:weather:<key>).
     weather = Weather(location=config.weather_location, key=weather_place.weather_key(config))
-    notice_board = NoticeBoard(postcode=config.postcode or None, country=country)
+    # The household's address only for a Norwegian postcode, for its bin collection days.
+    notice_board = NoticeBoard(
+        postcode=config.postcode or None, country=country, address=household_address.stored(config)
+    )
     # The switch, on while the screen shows parcels and its owner has a Parcel API key saved, and which parcels it
     # shows: the key stays here, and the parcel provider fills the store the screen reads (a touchscreen through
     # getNotices).

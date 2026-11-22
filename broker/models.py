@@ -317,6 +317,12 @@ class DeviceConfig(Model):
     layout: Mapped[Layout | None] = mapped_column(String)
     # A UK postcode ("SW1A 1AA") or a Norwegian one ("0150"); see pages.normalize_postcode.
     postcode: Mapped[str] = mapped_column(String, default="", server_default=text("''"))
+    # The household's address, for a Norwegian postcode's bin collection days (the contract's NoticeBoardAddress), as
+    # Kartverket's address register spells it: its street (adressenavn), house number with any letter ("12B") and
+    # postal town in title case ("Oslo"). All None for none; see services/household_address.py. Never logged.
+    address_street: Mapped[str | None] = mapped_column(String)
+    address_house_number: Mapped[str | None] = mapped_column(String)
+    address_city: Mapped[str | None] = mapped_column(String)
     # Whether the screen shows each service; the service itself is linked to the owner's account (SpotifyToken etc.),
     # so one link serves all their screens and each screen picks which it shows.
     spotify_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
