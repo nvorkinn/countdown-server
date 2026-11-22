@@ -45,13 +45,15 @@ class Registered:
 class Screen:
     """What a device says of itself when it registers: its type, its size in pixels and its frame format.
 
-    The format is None for a touchscreen, which draws itself.
+    The format is None for a touchscreen, which draws itself. Only a touchscreen says whether it can set its screen's
+    brightness.
     """
 
     type: DeviceType
     width: int
     height: int
     format: FrameFormat | None = None
+    brightness_control: bool = False
 
 
 def _device_with(secret_hash: str) -> Device | None:
@@ -142,7 +144,12 @@ def _new_device(display_secret_hash: str, screen: Screen, ip: str | None) -> str
     # Only a name, with no picked place: the weather provider geocodes it by name until a save (or `flask weather
     # backfill`) picks one.
     weather_location = geoip.suggest_weather_location(ip) or ""
-    config = DeviceConfig(width=screen.width, height=screen.height, weather_location=weather_location)
+    config = DeviceConfig(
+        width=screen.width,
+        height=screen.height,
+        brightness_control=screen.brightness_control,
+        weather_location=weather_location,
+    )
     if screen.format is not None:
         # A touchscreen's is left at the column's default: the contract's config has a screen format either way.
         config.format = screen.format

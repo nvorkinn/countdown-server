@@ -74,6 +74,7 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
             type="touchscreen",
             width=config.width,
             height=config.height,
+            brightness_control=config.brightness_control,
             clock_format=config.clock_format,
             language=config.language,
             arrivals=arrivals,

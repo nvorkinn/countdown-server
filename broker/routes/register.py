@@ -1,9 +1,10 @@
 """A touchscreen registering through the login: one visit registers it and makes the person signed in on it its owner.
 
-The tablet opens APP_HOST/register?secret_hash=...&width=...&height=... . The settings site is behind the login
-(Tinyauth and Pocket ID, in Caddy), so by the time the request gets here the person has signed in, or signed up and
-added a passkey, and the login proxy's headers name them (auth.current_user). The same request then registers the
-device and claims it for them, in one transaction (registration.register_and_claim): no code, no second step.
+The tablet opens APP_HOST/register?secret_hash=...&width=...&height=...&brightness_control=... . The settings site is
+behind the login (Tinyauth and Pocket ID, in Caddy), so by the time the request gets here the person has signed in, or
+signed up and added a passkey, and the login proxy's headers name them (auth.current_user). The same request then
+registers the device and claims it for them, in one transaction (registration.register_and_claim): no code, no second
+step.
 
 The tablet can pass `return_to`, a URL of its own app to come back to: once registered, the page redirects there,
 adding `device_id` (or `error=taken` when someone else owns the touchscreen). It must be on one of the origins the
@@ -45,6 +46,8 @@ MAX_SIZE = 10_000
 # Where the browser says a navigation came from, for the ones that may register with no button: typed or opened by the
 # tablet's app, this site, or a sibling host (the login's redirects back from Tinyauth and Pocket ID).
 OWN_SITES = frozenset({"none", "same-origin", "same-site"})
+# A yes or no in the query or the form, as the tablet's URL builder writes it.
+BOOLEANS = {"true": True, "false": False}
 
 
 @bp.route("/register", methods=["GET", "POST"])
@@ -53,15 +56,22 @@ def register(user_id: str) -> ResponseReturnValue:
     """Register the touchscreen in the query (or the confirming form) and make the signed-in user its owner.
 
     200 with a page saying it's theirs, also for a repeat (a reload, or the tablet asking again), or a 303 to the
-    `return_to` the tablet passed, with the device id; 400 for a hash, size or return URL that isn't one; 409 if
-    someone else already owns it; 429 when this IP registers too often. A GET from another site, or one that doesn't
-    say where it's from, changes nothing and asks to confirm (a POST, only from this site).
+    `return_to` the tablet passed, with the device id; 400 for a hash, size, brightness_control or return URL that
+    isn't one; 409 if someone else already owns it; 429 when this IP registers too often. A GET from another site, or
+    one that doesn't say where it's from, changes nothing and asks to confirm (a POST, only from this site).
     """
     values = request.form if request.method == "POST" else request.args
     secret_hash = values.get("secret_hash", "").strip().lower()
     width, height = _size(values.get("width")), _size(values.get("height"))
+    brightness_control = BOOLEANS.get(values.get("brightness_control", ""))
     return_to = values.get("return_to", "").strip()
-    if not SECRET_HASH_RE.match(secret_hash) or width is None or height is None or not _may_return_to(return_to):
+    if (
+        not SECRET_HASH_RE.match(secret_hash)
+        or width is None
+        or height is None
+        or brightness_control is None
+        or not _may_return_to(return_to)
+    ):
         error = "This link isn't a touchscreen's: open it from the touchscreen again."
         return render_template("register.html", error=error), 400
 
@@ -70,7 +80,13 @@ def register(user_id: str) -> ResponseReturnValue:
             return render_template("register.html", error="Confirm on this site to add the touchscreen."), 403
     elif request.headers.get("Sec-Fetch-Site") not in OWN_SITES:
         return render_template(
-            "register.html", confirm=True, secret_hash=secret_hash, width=width, height=height, return_to=return_to
+            "register.html",
+            confirm=True,
+            secret_hash=secret_hash,
+            width=width,
+            height=height,
+            brightness_control=brightness_control,
+            return_to=return_to,
         )
 
     throttle = current_app.extensions["register_throttle"]
@@ -80,7 +96,8 @@ def register(user_id: str) -> ResponseReturnValue:
         page = render_template("register.html", error="Too many touchscreens added. Please wait and try again.")
         return with_retry_after(current_app.make_response(page), retry_after), 429
     throttle.record(ip)
-    return _register_and_claim(user_id, secret_hash, registration.Screen("touchscreen", width, height), return_to)
+    screen = registration.Screen("touchscreen", width, height, brightness_control=brightness_control)
+    return _register_and_claim(user_id, secret_hash, screen, return_to)
 
 
 def _register_and_claim(

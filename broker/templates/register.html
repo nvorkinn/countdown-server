@@ -19,6 +19,7 @@
         <input type="hidden" name="secret_hash" value="{{ secret_hash }}">
         <input type="hidden" name="width" value="{{ width }}">
         <input type="hidden" name="height" value="{{ height }}">
+        <input type="hidden" name="brightness_control" value="{{ 'true' if brightness_control else 'false' }}">
         {% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
         <button type="submit" class="btn-save">Add touchscreen</button>
     </form>

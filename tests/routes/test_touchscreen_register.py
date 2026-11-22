@@ -18,8 +18,11 @@ SECRET_HASH = hash_secret(SECRET)
 OTHER_USER = "someone-else"
 
 
-def _url(secret_hash=SECRET_HASH, width="1280", height="800"):
-    return f"/register?secret_hash={secret_hash}&width={width}&height={height}"
+def _url(secret_hash=SECRET_HASH, width="1280", height="800", brightness_control="false"):
+    query = f"secret_hash={secret_hash}&width={width}&height={height}"
+    if brightness_control is not None:
+        query += f"&brightness_control={brightness_control}"
+    return f"/register?{query}"
 
 
 def _open(client, url=None, site="none"):
@@ -48,7 +51,16 @@ def test_one_visit_registers_the_touchscreen_and_makes_the_signed_in_user_its_ow
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device.device_id)
         assert (config.width, config.height) == (1280, 800)
+        assert config.brightness_control is False
         assert db.session.query(PairingCode).count() == 0
+
+
+def test_a_screen_that_can_set_its_brightness_says_so_in_its_config(app, client, anonymous_client):
+    _open(client, _url(brightness_control="true"))
+
+    response = anonymous_client.get("/api/devices/config", headers={"Authorization": f"Bearer {SECRET}"})
+
+    assert response.get_json()["brightness_control"] is True
 
 
 def test_the_device_then_reads_its_config_with_its_secret(app, client, anonymous_client):
@@ -89,6 +101,12 @@ def test_the_logins_redirects_back_count_as_this_site(app, client):
     assert _device(app).owner == USER
 
 
+def test_the_confirm_button_keeps_brightness_control(app, client):
+    page = _open(client, _url(brightness_control="true"), site="cross-site")
+
+    assert b'name="brightness_control" value="true"' in page.data
+
+
 def test_a_link_from_another_site_only_asks_to_confirm(app, client):
     response = _open(client, site="cross-site")
 
@@ -105,7 +123,7 @@ def test_a_browser_that_doesnt_say_where_it_came_from_asks_to_confirm(app, clien
 
 
 def test_confirming_from_this_site_registers_it(app, client):
-    form = {"secret_hash": SECRET_HASH, "width": "1280", "height": "800"}
+    form = {"secret_hash": SECRET_HASH, "width": "1280", "height": "800", "brightness_control": "false"}
 
     response = client.post("/register", data=form, headers={"Sec-Fetch-Site": "same-origin"})
 
@@ -114,7 +132,7 @@ def test_confirming_from_this_site_registers_it(app, client):
 
 
 def test_confirming_without_fetch_metadata_checks_the_origin(app, client):
-    form = {"secret_hash": SECRET_HASH, "width": "1280", "height": "800"}
+    form = {"secret_hash": SECRET_HASH, "width": "1280", "height": "800", "brightness_control": "false"}
 
     assert client.post("/register", data=form, headers={"Origin": "https://evil.example"}).status_code == 403
     assert _device(app) is None
@@ -123,7 +141,7 @@ def test_confirming_without_fetch_metadata_checks_the_origin(app, client):
 
 
 def test_a_post_from_another_site_is_refused(app, client):
-    form = {"secret_hash": SECRET_HASH, "width": "1280", "height": "800"}
+    form = {"secret_hash": SECRET_HASH, "width": "1280", "height": "800", "brightness_control": "false"}
 
     response = client.post("/register", data=form, headers={"Sec-Fetch-Site": "cross-site"})
 
@@ -131,7 +149,7 @@ def test_a_post_from_another_site_is_refused(app, client):
     assert _device(app) is None
 
 
-def test_a_hash_or_size_that_isnt_one_is_refused(app, client):
+def test_a_hash_size_or_brightness_control_that_isnt_one_is_refused(app, client):
     for url in (
         _url(secret_hash="not-a-hash"),
         _url(secret_hash=hashlib.sha256(b"x").hexdigest()[:63]),
@@ -139,6 +157,8 @@ def test_a_hash_or_size_that_isnt_one_is_refused(app, client):
         _url(height="-5"),
         _url(width="12.5"),
         _url(width="100000"),
+        _url(brightness_control=None),
+        _url(brightness_control="yes"),
         "/register",
     ):
         assert _open(client, url).status_code == 400, url
@@ -236,7 +256,13 @@ def test_the_confirm_button_keeps_the_return_url(app, client):
     page = _open(client, _url() + f"&return_to={return_to}", site="cross-site")
     assert f'name="return_to" value="{return_to}"'.encode() in page.data
 
-    form = {"secret_hash": SECRET_HASH, "width": "1280", "height": "800", "return_to": return_to}
+    form = {
+        "secret_hash": SECRET_HASH,
+        "width": "1280",
+        "height": "800",
+        "brightness_control": "false",
+        "return_to": return_to,
+    }
     response = client.post("/register", data=form, headers={"Sec-Fetch-Site": "same-origin"})
     assert response.status_code == 303
     assert response.headers["Location"].startswith(f"{return_to}?device_id=")
