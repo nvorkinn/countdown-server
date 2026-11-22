@@ -195,6 +195,13 @@ THEME_DYNAMIC = {"off": "Off", "on": "On"}
 LYRICS_SIZES = {"small": "Small", "medium": "Medium", "large": "Large", "x-large": "Extra large"}
 LYRICS_ALIGNS = {"left": "Left", "center": "Centre", "right": "Right"}
 SCREEN_SLEEP_MINUTES = {"0": "Never", "2": "2 minutes", "5": "5 minutes", "15": "15 minutes", "30": "30 minutes"}
+# How bright a touchscreen's screen may be set, as a percentage: the least and the most (the contract's brightness).
+SCREEN_BRIGHTNESS = (10, 100)
+# Quiet hours, off or on (DeviceConfig.quiet_hours_on), and the last minute of a day they may start or end at.
+QUIET_HOURS_ON = {"off": "Off", "on": "On"}
+LAST_MINUTE_OF_DAY = 24 * 60 - 1
+# The times the config page offers for them, each half-hour, by the form's value: its minutes after midnight.
+QUIET_HOURS_TIMES = {str(minute): f"{minute // 60:02d}:{minute % 60:02d}" for minute in range(0, 24 * 60, 30)}
 CLOCK_FORMATS = {"24h": "24-hour (13:00)", "12h": "12-hour (1:00 PM)"}
 # The store contract's languages, each with its name in itself for the config page.
 LANGUAGES = {"en": "English", "nb": "Norsk"}
@@ -349,6 +356,15 @@ class DeviceConfig(Model):
     theme_dynamic: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     # How long the touchscreen waits untouched before it sleeps; 0 for never.
     screen_sleep_minutes: Mapped[ScreenSleepMinutes] = mapped_column(Integer, default=5, server_default=text("5"))
+    # How bright the touchscreen's screen is while someone uses it, a percentage (SCREEN_BRIGHTNESS). Only one that
+    # can set its brightness (brightness_control) uses it.
+    screen_brightness: Mapped[int] = mapped_column(Integer, default=100, server_default=text("100"))
+    # The touchscreen's quiet hours, when its screen sleeps soon after the last touch: whether they apply, and when
+    # they start and end, as minutes after midnight in its own local time (an end before the start runs past
+    # midnight). Off keeps the times.
+    quiet_hours_on: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    quiet_hours_start: Mapped[int] = mapped_column(Integer, default=22 * 60, server_default=text("1320"))
+    quiet_hours_end: Mapped[int] = mapped_column(Integer, default=7 * 60, server_default=text("420"))
     # How the touchscreen shows synced lyrics: their size and which side they line up on (the config's `lyrics`).
     lyrics_size: Mapped[LyricsSize] = mapped_column(String, default="medium", server_default=text("'medium'"))
     lyrics_align: Mapped[LyricsAlign] = mapped_column(String, default="left", server_default=text("'left'"))

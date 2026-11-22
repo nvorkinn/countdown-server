@@ -610,6 +610,47 @@
             gap: 8px;
         }
 
+        /* A slider with what it's at beside it (a touchscreen's brightness). */
+        .range-field {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            max-width: 360px;
+        }
+
+        .range-field input[type="range"] {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .range-field output {
+            min-width: 4ch;
+            font-family: var(--mono);
+            font-size: 14px;
+            text-align: right;
+        }
+
+        /* Times of day picked from lists, side by side (a touchscreen's quiet hours). */
+        .time-fields {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px 24px;
+            margin-top: 12px;
+        }
+
+        .form-group select {
+            padding: 10px 12px;
+            border: 1.5px solid var(--field-border);
+            border-radius: 6px;
+            background: #fbfbfa;
+            font-size: 14px;
+        }
+
+        .form-group select:focus {
+            outline: 2px solid var(--red);
+            outline-offset: 1px;
+        }
+
         .btn-save, .btn-primary {
             background-color: var(--ink);
             color: white;

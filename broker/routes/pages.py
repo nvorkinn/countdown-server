@@ -25,12 +25,16 @@ from broker.db import db
 from broker.models import (
     CLOCK_FORMATS,
     LANGUAGES,
+    LAST_MINUTE_OF_DAY,
     LAYOUTS,
     LYRICS_ALIGNS,
     LYRICS_SIZES,
     ORIENTATIONS,
     PARCEL_DAYS_AHEAD,
     PARCEL_KEPT_HOURS,
+    QUIET_HOURS_ON,
+    QUIET_HOURS_TIMES,
+    SCREEN_BRIGHTNESS,
     SCREEN_SLEEP_MINUTES,
     STYLES,
     THEME_COLOURS,
@@ -387,8 +391,20 @@ CHOICES = {
     "theme_dynamic": (THEME_DYNAMIC, "Dynamic"),
     # A number of minutes, picked by its form value (_set_choices stores it as one).
     "screen_sleep_minutes": (SCREEN_SLEEP_MINUTES, "The screen sleep"),
+    # Stored as a bool, like Dynamic.
+    "quiet_hours_on": (QUIET_HOURS_ON, "Quiet hours"),
     "lyrics_size": (LYRICS_SIZES, "The lyrics size"),
     "lyrics_align": (LYRICS_ALIGNS, "The lyrics alignment"),
+}
+
+
+# The settings that are a whole number in a range, each by its form field (also its DeviceConfig attribute): the least
+# and the most allowed, and what an error message calls it. All are a touchscreen's, in its config's `display`. The
+# quiet hours' times are any minute of the day, as the contract has them, though the page offers the half-hours.
+NUMBERS = {
+    "screen_brightness": (*SCREEN_BRIGHTNESS, "The brightness"),
+    "quiet_hours_start": (0, LAST_MINUTE_OF_DAY, "The quiet hours' start"),
+    "quiet_hours_end": (0, LAST_MINUTE_OF_DAY, "The quiet hours' end"),
 }
 
 
@@ -397,7 +413,18 @@ CHOICES = {
 TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
     "epaper": frozenset({"orientation", "style", "weather_design", "layout"}),
     "touchscreen": frozenset(
-        {"theme", "theme_colour", "theme_dynamic", "screen_sleep_minutes", "lyrics_size", "lyrics_align"}
+        {
+            "theme",
+            "theme_colour",
+            "theme_dynamic",
+            "screen_sleep_minutes",
+            "screen_brightness",
+            "quiet_hours_on",
+            "quiet_hours_start",
+            "quiet_hours_end",
+            "lyrics_size",
+            "lyrics_align",
+        }
     ),
 }
 # What an error calls each type of device.
@@ -411,7 +438,11 @@ CONFIG_MODELS: dict[DeviceType, type[EpaperConfig | TouchscreenConfig]] = {
 
 def _foreign_fields(device_type: DeviceType) -> list[str]:
     """Return the errors for the fields posted that belong to another type of device than `device_type`."""
-    labels = {**{field: label for field, (_, label) in CHOICES.items()}, "layout": "The layout"}
+    labels = {
+        **{field: label for field, (_, label) in CHOICES.items()},
+        **{field: label for field, (_, _, label) in NUMBERS.items()},
+        "layout": "The layout",
+    }
     return [
         f"{labels[field]} isn't a setting of {TYPE_NAMES[device_type]}."
         for other, fields in TYPE_FIELDS.items()
@@ -441,6 +472,7 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     # as its default. Empty is the screen's default (None).
     raw_layout = request.form.get("layout", config.layout or "")
     layout = next((known for known in LAYOUTS if known == raw_layout), None)
+    numbers = {field: request.form.get(field, str(getattr(config, field))) for field in NUMBERS}
     # Each kept as stored when it isn't posted, like the choices.
     days_ahead = request.form.get("parcels_days_ahead", _form_value(config.parcels_days_ahead))
     kept_hours = request.form.get("parcels_kept_hours", _form_value(config.parcels_kept_hours))
@@ -453,6 +485,11 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
         f"{label} must be one of {', '.join(allowed)}."
         for field, (allowed, label) in CHOICES.items()
         if choices[field] not in allowed
+    ]
+    errors += [
+        f"{label} must be a whole number from {least} to {most}."
+        for field, (least, most, label) in NUMBERS.items()
+        if not _in_range(numbers[field], least, most)
     ]
     if raw_layout and layout is None:
         errors.append(f"The layout must be one of {', '.join(LAYOUTS)}.")
@@ -471,6 +508,8 @@ def _save_device_config(device_id: str) -> ResponseReturnValue:
     config.parcels_kept_hours = int(kept_hours)
     config.tfl_stop_ids = stop_ids
     turned = _set_choices(config, choices)
+    for field, value in numbers.items():
+        setattr(config, field, int(value))
     config.layout = layout
     if errors := _contract_errors(config):
         db.session.rollback()
@@ -526,7 +565,7 @@ def _publish_saved(device_id: str, *, turned: bool) -> None:
 
 
 def _choice_value(config: DeviceConfig, field: str) -> str:
-    """Return a stored CHOICES setting as its form value: Dynamic's bool is off or on."""
+    """Return a stored CHOICES setting as its form value: a bool (Dynamic, quiet hours) is off or on."""
     value = getattr(config, field)
     if isinstance(value, bool):
         return "on" if value else "off"
@@ -539,11 +578,25 @@ def _set_choices(config: DeviceConfig, choices: Mapping[str, str]) -> bool:
     for field, value in choices.items():
         if field == "screen_sleep_minutes":
             setattr(config, field, int(value))
-        elif field == "theme_dynamic":
+        elif field in {"theme_dynamic", "quiet_hours_on"}:
             setattr(config, field, value == "on")
         else:
             setattr(config, field, value)
     return turned
+
+
+def _in_range(value: str, least: int, most: int) -> bool:
+    """Whether a NUMBERS setting's form value is a whole number from `least` to `most`, in plain digits."""
+    return value.isascii() and value.isdigit() and least <= int(value) <= most
+
+
+def _quiet_hours_times(config: DeviceConfig) -> dict[str, str]:
+    """Return the times the page offers for the quiet hours, by form value: each half-hour, and the saved ones.
+
+    A touchscreen may save any minute of the day, so a saved time that isn't a half-hour is offered too, in its place.
+    """
+    minutes = {*map(int, QUIET_HOURS_TIMES), config.quiet_hours_start, config.quiet_hours_end}
+    return {str(minute): f"{minute // 60:02d}:{minute % 60:02d}" for minute in sorted(minutes)}
 
 
 def _form_value(number: int | None) -> str:
@@ -785,6 +838,9 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         theme_colours=THEME_COLOURS,
         theme_dynamic=THEME_DYNAMIC,
         screen_sleep_minutes=SCREEN_SLEEP_MINUTES,
+        screen_brightness=SCREEN_BRIGHTNESS,
+        quiet_hours_on=QUIET_HOURS_ON,
+        quiet_hours_times=_quiet_hours_times(config),
         lyrics_sizes=LYRICS_SIZES,
         lyrics_aligns=LYRICS_ALIGNS,
         display_seen=_seen_ago(device.display_last_seen_at, now),
