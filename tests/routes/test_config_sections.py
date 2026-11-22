@@ -163,6 +163,27 @@ def test_a_touchscreen_saves_which_parcels_it_shows_and_a_switch_alone_keeps_the
     assert refused.status_code == 400
 
 
+def test_a_touchscreen_saves_its_brightness_and_quiet_hours(app, client, touchscreen):
+    etag = _version(client, headers=_auth())
+    # Quiet from 23:30 to 06:15: an end before the start runs past midnight.
+    display = {"sleep_minutes": 15, "brightness": 30, "quiet_hours": {"on": True, "start": 1410, "end": 375}}
+
+    response = _save(client, "display", display, etag, headers=_auth())
+
+    assert (response.status_code, response.get_json()["display"]) == (200, display)
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, touchscreen)
+        assert (config.screen_sleep_minutes, config.screen_brightness) == (15, 30)
+        assert (config.quiet_hours_on, config.quiet_hours_start, config.quiet_hours_end) == (True, 1410, 375)
+    # An older kiosk sends only the screen sleep: the rest stays as saved.
+    response = _save(client, "display", {"sleep_minutes": 2}, response.headers["ETag"], headers=_auth())
+    assert response.get_json()["display"] == {**display, "sleep_minutes": 2}
+    # Off keeps the times.
+    off = {**display, "quiet_hours": {**display["quiet_hours"], "on": False}}
+    response = _save(client, "display", off, response.headers["ETag"], headers=_auth())
+    assert response.get_json()["display"] == off
+
+
 def test_a_flat_field_is_a_section_of_its_own(client, touchscreen):
     etag = _version(client, headers=_auth())
 
@@ -190,6 +211,12 @@ def test_a_save_needs_the_version_it_was_made_to(app, client, touchscreen):
         ("style", {"skin": "dusk", "colour": "plum"}),
         ("style", {"orientation": "vertical", "drawing": "airy", "weather": "columns", "layout": None}),
         ("display", {"sleep_minutes": 10}),
+        ("display", {"sleep_minutes": 5, "brightness": 9}),
+        ("display", {"sleep_minutes": 5, "brightness": 101}),
+        ("display", {"sleep_minutes": 5, "brightness": 50.5}),
+        ("display", {"sleep_minutes": 5, "quiet_hours": {"on": True, "start": 1320}}),
+        ("display", {"sleep_minutes": 5, "quiet_hours": {"on": True, "start": -1, "end": 420}}),
+        ("display", {"sleep_minutes": 5, "quiet_hours": {"on": True, "start": 1320, "end": 1440}}),
         ("display", None),
         ("clock_format", "25h"),
         ("arrivals", {"stops": [{"source": "tfl"}]}),

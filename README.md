@@ -76,12 +76,16 @@ failure never fails the poll.
 A touchscreen draws itself, so the render pool never draws it and it has no frames (`POST /api/frame` is a `409`). It
 registers like an e-paper screen, with its size and `"type": "touchscreen"`, then polls
 **`GET /api/devices/config`** with `Authorization: Bearer <secret>`: its config (the store contract's
-`ConfigResponse`, a `TouchscreenConfig`), with its own settings in `style` (skin, colour) and `display` (screen sleep).
+`ConfigResponse`, a `TouchscreenConfig`), with its own settings in `style` (skin, colour) and `display` (screen sleep,
+brightness and quiet hours). `display` always has its `brightness` (a percentage, 10 to 100; 100 until it's set, and
+only a touchscreen whose `brightness_control` is true uses it) and its `quiet_hours` (`on`, and `start` and `end` as
+minutes after midnight in the touchscreen's own time; off, from 22:00 to 07:00, until they're set).
 It never gets a pairing code: it's paired by its pairing token. Its owner changes them on its settings page, which
 shows them instead of the pool's style, layout and orientation, and saves the config whole. The touchscreen's own
 settings panel saves with **`PUT /api/devices/config`**: the whole config as it got it, with only `clock_format`,
 `language`, `style` and `display` changed (anything else is a `400`, and a device not yet paired a `409`); a field it
-leaves out, as one from before its contract had it, is kept as saved. A `401` means register again.
+leaves out, as one from before its contract had it (the brightness and quiet hours in `display` too), is kept as saved.
+A `401` means register again.
 
 It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the Spotify link on its owner's Account page.
 **`GET /api/devices/spotify/token`** answers it a short-lived access token in Spotify's own shape (`SpotifyAccessToken`:

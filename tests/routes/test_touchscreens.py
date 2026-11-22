@@ -134,7 +134,12 @@ def test_a_touchscreen_gets_no_pairing_code(app, client):
         assert pairing.live_code(device_id) is None
     # Its own settings, at their defaults.
     assert response.get_json()["style"] == {"skin": "day", "colour": "forest", "dynamic": False}
-    assert response.get_json()["display"] == {"sleep_minutes": 5}
+    # Always with its brightness and quiet hours: full, and off.
+    assert response.get_json()["display"] == {
+        "sleep_minutes": 5,
+        "brightness": 100,
+        "quiet_hours": {"on": False, "start": 1320, "end": 420},
+    }
     assert response.get_json()["lyrics"] == {"size": "medium", "align": "left"}
 
 
@@ -144,6 +149,7 @@ def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
         config = db.session.get_one(DeviceConfig, device_id)
         config.theme, config.theme_colour, config.screen_sleep_minutes = "auto", "violet", 15
         config.theme_dynamic = True
+        config.screen_brightness, config.quiet_hours_on = 80, True
         config.lyrics_size, config.lyrics_align = "large", "center"
         db.session.commit()
 
@@ -196,7 +202,28 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
         assert config.theme_dynamic
         assert config.clock_format == "12h"
         assert (config.lyrics_size, config.lyrics_align) == ("large", "center")
+        assert config.screen_brightness == 80
+        assert (config.quiet_hours_on, config.quiet_hours_start, config.quiet_hours_end) == (True, 1320, 420)
     assert client.get(CONFIG_URL, headers=_auth()).get_json() == sent
+
+
+def test_a_save_from_before_brightness_and_quiet_hours_keeps_them(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        config.screen_brightness = 40
+        config.quiet_hours_on, config.quiet_hours_start, config.quiet_hours_end = True, 60, 90
+        db.session.commit()
+
+    # A touchscreen whose contract is older knows only the screen sleep.
+    response = client.put(CONFIG_URL, json=_saved_with(client, display={"sleep_minutes": 30}), headers=_auth())
+
+    assert response.status_code == 200
+    assert response.get_json()["display"] == {
+        "sleep_minutes": 30,
+        "brightness": 40,
+        "quiet_hours": {"on": True, "start": 60, "end": 90},
+    }
 
 
 def test_a_save_without_the_arrivals_grouping_keeps_it(app, client):
@@ -383,6 +410,10 @@ def test_a_save_the_contract_doesnt_allow_is_refused(app, client):
     for wrong in (
         {**current, "style": {**current["style"], "skin": "dusk"}},
         {**current, "display": {"sleep_minutes": 10}},
+        {**current, "display": {**current["display"], "brightness": 5}},
+        {**current, "display": {**current["display"], "brightness": 101}},
+        {**current, "display": {**current["display"], "quiet_hours": {"on": True, "start": 1320}}},
+        {**current, "display": {**current["display"], "quiet_hours": {"on": True, "start": 1320, "end": 1440}}},
         {key: value for key, value in current.items() if key != "display"},
         b"not json",
     ):
@@ -458,6 +489,14 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
     assert re.findall(r'id="theme_([a-z]+)"[^>]*checked', html) == ["day"]
     assert re.findall(r'id="theme_colour_(\w+)"[^>]*checked', html) == ["forest"]
     assert re.findall(r'id="screen_sleep_minutes_(\w+)"[^>]*checked', html) == ["5"]
+    # Its quiet hours, off, with a time for each half-hour; and no brightness, as it didn't say it can set it.
+    assert re.findall(r'id="quiet_hours_on_(\w+)"[^>]*checked', html) == ["off"]
+    assert re.findall(r'<option value="(\d+)" selected>([\d:]+)</option>', html) == [
+        ("1320", "22:00"),
+        ("420", "07:00"),
+    ]
+    assert html.count("<option") == 2 * 48
+    assert 'name="screen_brightness"' not in html
     # It draws itself: no picture, style, layout or orientation.
     assert 'id="preview"' not in html
     assert 'name="style"' not in html
@@ -466,6 +505,28 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
     # Nor the tour, whose pictures are an e-paper screen's.
     assert "tourStart" not in html
     assert "config_tour.js" not in html
+
+
+def test_a_touchscreen_that_can_set_its_brightness_has_the_setting_on_its_page(app, client):
+    device_id = _paired(app, client)
+    with app.app_context():
+        config = db.session.get_one(DeviceConfig, device_id)
+        config.brightness_control, config.screen_brightness = True, 60
+        # Saved by the touchscreen at a time that isn't a half-hour: the page offers it too.
+        config.quiet_hours_on, config.quiet_hours_start = True, 1335
+        db.session.commit()
+
+    html = client.get("/device").get_data(as_text=True)
+
+    assert re.findall(r'name="screen_brightness" min="(\d+)" max="(\d+)" step="1" value="(\d+)"', html) == [
+        ("10", "100", "60")
+    ]
+    assert ">60%</output>" in html
+    assert re.findall(r'id="quiet_hours_on_(\w+)"[^>]*checked', html) == ["on"]
+    assert re.findall(r'<option value="(\d+)" selected>([\d:]+)</option>', html) == [
+        ("1335", "22:15"),
+        ("420", "07:00"),
+    ]
 
 
 def test_a_devices_page_shows_what_it_said_at_registration_but_cant_change_it(app, client, paired_client):
@@ -493,6 +554,8 @@ def test_an_epaper_screens_page_has_no_touchscreen_settings(paired_client):
     assert 'name="theme"' not in html
     assert 'name="theme_colour"' not in html
     assert 'name="screen_sleep_minutes"' not in html
+    assert 'name="screen_brightness"' not in html
+    assert 'name="quiet_hours_on"' not in html
     assert 'name="lyrics_size"' not in html
     assert 'id="preview"' in html
 
@@ -507,6 +570,10 @@ def test_a_touchscreens_settings_are_saved_with_the_rest(app, client):
             "theme_colour": "plum",
             "theme_dynamic": "on",
             "screen_sleep_minutes": "0",
+            "screen_brightness": "35",
+            "quiet_hours_on": "on",
+            "quiet_hours_start": "1380",
+            "quiet_hours_end": "390",
             "lyrics_size": "small",
             "lyrics_align": "right",
             "clock_format": "12h",
@@ -521,7 +588,7 @@ def test_a_touchscreens_settings_are_saved_with_the_rest(app, client):
     body = client.get(CONFIG_URL, headers=_auth()).get_json()
     assert (body["style"], body["display"]) == (
         {"skin": "night", "colour": "plum", "dynamic": True},
-        {"sleep_minutes": 0},
+        {"sleep_minutes": 0, "brightness": 35, "quiet_hours": {"on": True, "start": 1380, "end": 390}},
     )
     assert body["clock_format"] == "12h"
     assert body["lyrics"] == {"size": "small", "align": "right"}
@@ -543,13 +610,17 @@ def test_a_touchscreens_save_keeps_its_integrations(app, client):
 def test_a_save_without_the_touchscreen_settings_keeps_them(app, client):
     device_id = _paired(app, client)
     with app.app_context():
-        db.session.get_one(DeviceConfig, device_id).theme = "night"
+        config = db.session.get_one(DeviceConfig, device_id)
+        config.theme, config.screen_brightness = "night", 45
+        config.quiet_hours_on, config.quiet_hours_start, config.quiet_hours_end = True, 1335, 15
         db.session.commit()
 
     assert client.post("/device", data={"clock_format": "12h"}).status_code == 302
 
     with app.app_context():
-        assert db.session.get_one(DeviceConfig, device_id).theme == "night"
+        config = db.session.get_one(DeviceConfig, device_id)
+        assert (config.theme, config.screen_brightness) == ("night", 45)
+        assert (config.quiet_hours_on, config.quiet_hours_start, config.quiet_hours_end) == (True, 1335, 15)
 
 
 def test_settings_the_contract_doesnt_allow_are_refused(app, client):
@@ -559,6 +630,12 @@ def test_settings_the_contract_doesnt_allow_are_refused(app, client):
         {"theme": "dusk"},
         {"theme_colour": "mauve"},
         {"screen_sleep_minutes": "10"},
+        {"screen_brightness": "5"},
+        {"screen_brightness": "101"},
+        {"screen_brightness": "bright"},
+        {"quiet_hours_on": "yes"},
+        {"quiet_hours_start": "1440"},
+        {"quiet_hours_end": "-30"},
         {"lyrics_size": "huge"},
         {"lyrics_align": "justify"},
     ):
@@ -569,6 +646,8 @@ def test_settings_the_contract_doesnt_allow_are_refused(app, client):
     with app.app_context():
         config = db.session.get_one(DeviceConfig, device_id)
         assert (config.theme, config.theme_colour, config.screen_sleep_minutes) == ("day", "forest", 5)
+        assert (config.screen_brightness, config.quiet_hours_on) == (100, False)
+        assert (config.quiet_hours_start, config.quiet_hours_end) == (1320, 420)
 
 
 def test_a_save_the_owner_doesnt_approve_is_refused(app, client, monkeypatch):
@@ -604,7 +683,14 @@ def test_a_touchscreens_save_with_an_epaper_screens_settings_is_refused(app, cli
 def test_an_epaper_screens_save_with_a_touchscreens_settings_is_refused(app, paired_client):
     client, device_id, _ = paired_client
 
-    for field, value in (("theme", "night"), ("theme_colour", "plum"), ("screen_sleep_minutes", "0")):
+    for field, value in (
+        ("theme", "night"),
+        ("theme_colour", "plum"),
+        ("screen_sleep_minutes", "0"),
+        ("screen_brightness", "50"),
+        ("quiet_hours_on", "on"),
+        ("quiet_hours_start", "0"),
+    ):
         response = client.post("/device", data={field: value, "clock_format": "12h", "orientation": "vertical"})
         assert response.status_code == 400, field
         assert b"isn&#39;t a setting of an e-paper screen." in response.data

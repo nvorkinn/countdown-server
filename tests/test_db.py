@@ -100,6 +100,20 @@ def test_0038_leaves_every_devices_arrivals_ungrouped(app, register_device):
     assert tuple(row) == (0,)
 
 
+def test_0040_leaves_every_device_at_full_brightness_with_quiet_hours_off(app, register_device):
+    device_id, _ = register_device()
+    with app.app_context():
+        downgrade(revision="0039")
+        upgrade()
+        with db.engine.begin() as conn:
+            row = conn.exec_driver_sql(
+                "SELECT screen_brightness, quiet_hours_on, quiet_hours_start, quiet_hours_end FROM device_config "
+                "WHERE device_id = ?",
+                (device_id,),
+            ).one()
+    assert tuple(row) == (100, 0, 1320, 420)
+
+
 def _downgrade(revision: str) -> None:
     """Downgrade to `revision` (needs an app context), giving every device a renderer secret on the way past 0023.
 

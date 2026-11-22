@@ -20,6 +20,7 @@ from countdown_api.models import (
     TouchscreenConfig,
     TouchscreenDisplay,
     TouchscreenLyrics,
+    TouchscreenQuietHours,
     TouchscreenStyle,
     Weather,
 )
@@ -81,7 +82,15 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
             weather=weather,
             notice_board=notice_board,
             style=TouchscreenStyle(skin=config.theme, colour=config.theme_colour, dynamic=config.theme_dynamic),
-            display=TouchscreenDisplay(sleep_minutes=config.screen_sleep_minutes),
+            # Always with its brightness and quiet hours: a device from before them was at full brightness with
+            # none, which is what the columns' defaults say (100, and off).
+            display=TouchscreenDisplay(
+                sleep_minutes=config.screen_sleep_minutes,
+                brightness=config.screen_brightness,
+                quiet_hours=TouchscreenQuietHours(
+                    on=config.quiet_hours_on, start=config.quiet_hours_start, end=config.quiet_hours_end
+                ),
+            ),
             lyrics=TouchscreenLyrics(size=config.lyrics_size, align=config.lyrics_align),
             parcels=parcels,
         )
