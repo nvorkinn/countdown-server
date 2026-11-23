@@ -24,7 +24,7 @@ def _openai_answer():
 
 
 @responses.activate
-def test_openai_makes_a_landscape_jpeg_with_the_key():
+def test_openai_makes_a_landscape_webp_with_the_key():
     call = responses.post(f"{OPENAI_URL}/generations", json=_openai_answer())
 
     picture = OpenAIImages("sk-test", "gpt-image-2", "high").make("a prompt")
@@ -34,9 +34,9 @@ def test_openai_makes_a_landscape_jpeg_with_the_key():
     assert sent | {"prompt": "a prompt"} == sent
     assert (sent["model"], sent["size"], sent["quality"], sent["output_format"]) == (
         "gpt-image-2",
-        "1280x800",
+        "1920x1200",
         "high",
-        "jpeg",
+        "webp",
     )
     assert call.calls[0].request.headers["Authorization"] == "Bearer sk-test"
 
@@ -50,6 +50,7 @@ def test_openai_relights_a_reference_with_an_edit():
     assert picture == JPEG
     body = _body(call.calls[0])
     assert b'name="image[]"' in body
+    assert b"Content-Type: image/jpeg" in body
     assert JPEG in body
 
 

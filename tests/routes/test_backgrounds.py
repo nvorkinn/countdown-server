@@ -11,15 +11,26 @@ IMAGE = fixtures.read_bytes(BACKGROUND["image"]["file"])
 DIGEST = hashlib.sha256(IMAGE).hexdigest()
 
 
-def test_a_stored_background_is_its_jpeg_cached_forever_with_no_secret(app, client):
+def test_a_stored_background_is_its_webp_cached_forever_with_no_secret(app, client):
     app.extensions["redis_bytes"].set(BACKGROUND["image"]["key"], IMAGE)
 
     response = client.get(BACKGROUND["image"]["url"])
 
     assert response.status_code == 200
-    assert response.mimetype == "image/jpeg"
+    assert response.mimetype == "image/webp"
     assert response.data == IMAGE
     assert response.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+
+
+def test_one_made_before_webp_is_still_answered_as_a_jpeg(app, client):
+    jpeg = b"\xff\xd8\xff\xe0 an older picture"
+    digest = hashlib.sha256(jpeg).hexdigest()
+    app.extensions["redis_bytes"].set(f"v1:background-image:{digest}", jpeg)
+
+    response = client.get(f"/api/backgrounds/{digest}")
+
+    assert response.mimetype == "image/jpeg"
+    assert response.data == jpeg
 
 
 def test_an_unknown_or_expired_digest_is_a_404(client):

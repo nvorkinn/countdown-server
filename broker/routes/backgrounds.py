@@ -15,6 +15,7 @@ from flask import Blueprint, Response, current_app, jsonify
 from redis import RedisError
 
 from broker.auth import with_retry_after
+from broker.clients.image_models import media_type
 
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
@@ -29,7 +30,7 @@ IMMUTABLE = "public, max-age=31536000, immutable"
 
 @bp.get("/api/backgrounds/<digest>")
 def background_image(digest: str) -> ResponseReturnValue:
-    """Answer the background's JPEG; 404 for no such picture (or not a digest), 503 while Redis is down."""
+    """Answer the background (WebP, or JPEG if older); 404 for no such picture or not a digest, 503 if Redis is down."""
     if not DIGEST.fullmatch(digest):
         return jsonify(error="no such background"), 404
     try:
@@ -39,6 +40,6 @@ def background_image(digest: str) -> ResponseReturnValue:
         return with_retry_after(jsonify(error="the store couldn't be reached"), 5), 503
     if image is None:
         return jsonify(error="no such background"), 404
-    response = Response(image, mimetype="image/jpeg")
+    response = Response(image, mimetype=media_type(image))
     response.headers["Cache-Control"] = IMMUTABLE
     return response

@@ -12,12 +12,20 @@ from typing import Protocol
 import requests
 
 OPENAI_URL = "https://api.openai.com/v1/images"
-# The bigger touchscreen's own size (16:10), which gpt-image-2 makes as asked; the 1024x600 one crops it to cover.
-OPENAI_SIZE = "1280x800"
-# A JPEG this compressed is a few hundred KB at that size, which the screens load over Wi-Fi.
+# The 10.1" touchscreen's real pixels (16:10): it lays the page out at 1280x800 and draws it 1.5x, so a 1280x800 photo
+# came out soft there. gpt-image-2 makes this size as asked, for about 40% more than 1280x800; smaller screens scale
+# it down (the 1024x600 one crops it to cover).
+OPENAI_SIZE = "1920x1200"
+# WebP is about half a JPEG's bytes for the same look: this compressed, about 125 KB at that size.
+OPENAI_FORMAT = "webp"
 OPENAI_COMPRESSION = 85
 # gpt-image-2 took 65 s for one at high quality, 2.6-sunburst about 35 s at medium: well inside this.
 OPENAI_TIMEOUT_S = 300
+
+
+def media_type(image: bytes) -> str:
+    """Return the picture's media type by its own bytes: WebP, or JPEG for one made before backgrounds were WebP."""
+    return "image/webp" if image[:4] == b"RIFF" and image[8:12] == b"WEBP" else "image/jpeg"
 
 
 class ImageModelError(Exception):
@@ -25,12 +33,12 @@ class ImageModelError(Exception):
 
 
 class ImageModel(Protocol):
-    """Makes a background: from a prompt, or by relighting `reference` (a JPEG) as the prompt says."""
+    """Makes a background: from a prompt, or by relighting `reference` (an earlier one) as the prompt says."""
 
     name: str
 
     def make(self, prompt: str, reference: bytes | None = None) -> bytes:
-        """Return the picture's JPEG. Raises ImageModelError."""
+        """Return the picture's WebP. Raises ImageModelError."""
         ...
 
 
@@ -45,13 +53,13 @@ class OpenAIImages:
         self._session.headers["Authorization"] = f"Bearer {api_key}"
 
     def make(self, prompt: str, reference: bytes | None = None) -> bytes:
-        """Return the picture's JPEG. Raises ImageModelError."""
+        """Return the picture's WebP. Raises ImageModelError."""
         fields = {
             "model": self.name,
             "prompt": prompt,
             "size": OPENAI_SIZE,
             "quality": self._quality,
-            "output_format": "jpeg",
+            "output_format": OPENAI_FORMAT,
             "output_compression": OPENAI_COMPRESSION,
             "n": 1,
         }
@@ -62,7 +70,7 @@ class OpenAIImages:
                 response = self._session.post(
                     f"{OPENAI_URL}/edits",
                     data={name: str(value) for name, value in fields.items()},
-                    files={"image[]": ("reference.jpg", reference, "image/jpeg")},
+                    files={"image[]": ("reference", reference, media_type(reference))},
                     timeout=OPENAI_TIMEOUT_S,
                 )
         except requests.RequestException as error:

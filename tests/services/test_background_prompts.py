@@ -241,5 +241,7 @@ def test_a_new_image_replaces_its_parts_and_keeps_them_in_order():
 
 
 @pytest.mark.parametrize("phase", backgrounds.PHASES)
-def test_every_part_has_a_curated_jpeg(phase):
-    assert backgrounds.fallback(phase).startswith(b"\xff\xd8\xff")
+def test_every_part_has_a_curated_webp(phase):
+    picture = backgrounds.fallback(phase)
+    assert picture[:4] == b"RIFF"
+    assert picture[8:12] == b"WEBP"

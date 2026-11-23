@@ -54,7 +54,7 @@ class Day:
 
 def fallback(phase: BackgroundPhase) -> bytes:
     """Return the curated picture for the part of the day."""
-    return (FALLBACKS / f"{phase}.jpg").read_bytes()
+    return (FALLBACKS / f"{phase}.webp").read_bytes()
 
 
 # ------------------------------------------------------------------------------------------------------- the day
