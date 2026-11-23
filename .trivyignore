@@ -88,3 +88,21 @@ CVE-2026-14661 exp:2026-11-29
 CVE-2026-18447 exp:2026-11-29
 CVE-2026-6460 exp:2026-11-29
 CVE-2026-6467 exp:2026-11-29
+
+# fluent-bit (libkrb5-3, libk5crypto3, libgssapi-krb5-2, libkrb5support0): MIT krb5, fixed in Debian 1.21.3-5+deb13u2
+# but upstream has not rebuilt the image on it. Almost all are KDC or kadmind DoS, daemons not in the image, and Fluent
+# Bit here never does Kerberos.
+CVE-2026-107364 exp:2026-11-24
+CVE-2026-112315 exp:2026-11-24
+CVE-2026-112316 exp:2026-11-24
+CVE-2026-112317 exp:2026-11-24
+CVE-2026-112318 exp:2026-11-24
+CVE-2026-112319 exp:2026-11-24
+CVE-2026-112320 exp:2026-11-24
+CVE-2026-112321 exp:2026-11-24
+CVE-2026-112322 exp:2026-11-24
+CVE-2026-112323 exp:2026-11-24
+CVE-2026-118380 exp:2026-11-24
+CVE-2026-119079 exp:2026-11-24
+CVE-2026-71199 exp:2026-11-24
+CVE-2026-71200 exp:2026-11-24
