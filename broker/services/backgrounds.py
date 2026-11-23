@@ -190,6 +190,13 @@ LIGHT: dict[BackgroundPhase, tuple[str, str]] = {
     ),
 }
 OVERCAST = 3
+# Fog and mist (WMO 45 and 48), the one cloudy band with no clouds to see.
+FOG = (45, 48)
+
+
+def cloudy(code: int) -> bool:
+    """Return whether a WMO weather code's sky has clouds in it: all but a clear sky and fog."""
+    return code > 0 and code not in FOG
 
 
 # ------------------------------------------------------------------------------------------------- the occasions
@@ -433,6 +440,8 @@ def prompt(place: Place, phase: BackgroundPhase, context: Context) -> str:
     light = overcast if context.weather.code >= OVERCAST else clear
     when = f"{SEASONS[context.local_date.month]} ({context.local_date.strftime('%B')})"
     view = scene_of(place, context.local_date)
+    # Named only when the forecast has clouds: a model draws what a prompt names, so a clear sky would grow some.
+    clouds = ", its clouds catching the light" if cloudy(context.weather.code) else ""
     lines = [
         f"A wide, photographic, landscape-format image of {view.subject}, in {when}, {light}.",
         f"Weather: {describe_weather(context.weather)}.",
@@ -468,9 +477,10 @@ def prompt(place: Place, phase: BackgroundPhase, context: Context) -> str:
             "nothing close up in it (no boats, people, railings, benches or objects)."
         ),
         (
-            "Moody and atmospheric, with rich natural light, colour and contrast in the subject, while the calm areas "
-            "stay darker and even so white text over them stays readable. Realistic, natural colours, high detail "
-            "in the subject only."
+            "Moody and atmospheric, a touch more dramatic than an everyday snapshot: some colour in the sky, true to "
+            f"the weather above{clouds}, the lit subject standing out from its darker surroundings. It must still "
+            "look like a real, unedited photograph. The calm areas stay darker and even "
+            "so white text over them stays readable. Realistic, natural colours, high detail in the subject only."
         ),
         "Absolutely no text, letters, numbers, signs, logos, watermarks, borders or user interface.",
     ]
