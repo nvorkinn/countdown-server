@@ -478,8 +478,8 @@ def prompt(place: Place, phase: BackgroundPhase, context: Context) -> str:
         ),
         (
             "Moody and atmospheric, a touch more dramatic than an everyday snapshot: some colour in the sky, true to "
-            f"the weather above{clouds}, and a little more contrast, the lit subject standing out from its darker "
-            "surroundings. It must still look like a real, unedited photograph. The calm areas stay darker and even "
+            f"the weather above{clouds}, the lit subject standing out from its darker surroundings. It must still "
+            "look like a real, unedited photograph. The calm areas stay darker and even "
             "so white text over them stays readable. Realistic, natural colours, high detail in the subject only."
         ),
         "Absolutely no text, letters, numbers, signs, logos, watermarks, borders or user interface.",
