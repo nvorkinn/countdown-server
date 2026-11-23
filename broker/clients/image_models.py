@@ -12,9 +12,11 @@ from typing import Protocol
 import requests
 
 OPENAI_URL = "https://api.openai.com/v1/images"
-# The bigger touchscreen's own size (16:10), which gpt-image-2 makes as asked; the 1024x600 one crops it to cover.
-OPENAI_SIZE = "1280x800"
-# A JPEG this compressed is a few hundred KB at that size, which the screens load over Wi-Fi.
+# The 10.1" touchscreen's real pixels (16:10): it lays the page out at 1280x800 and draws it 1.5x, so a 1280x800 photo
+# came out soft there. gpt-image-2 makes this size as asked, for about 40% more than 1280x800; smaller screens scale
+# it down (the 1024x600 one crops it to cover).
+OPENAI_SIZE = "1920x1200"
+# A JPEG this compressed is about 250 KB at that size, which the screens load over Wi-Fi.
 OPENAI_COMPRESSION = 85
 # gpt-image-2 took 65 s for one at high quality, 2.6-sunburst about 35 s at medium: well inside this.
 OPENAI_TIMEOUT_S = 300
