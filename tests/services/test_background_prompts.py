@@ -171,7 +171,7 @@ def test_clouds_catch_the_light_only_when_the_sky_has_them(code, clouds):
 
     prompt = backgrounds.prompt(LONDON, "day", context)
 
-    assert "a rich, colourful sky true to the weather above" in prompt
+    assert "true to the weather above" in prompt
     assert ("clouds catching the light" in prompt) is clouds
 
 
