@@ -20,13 +20,15 @@ A device asks which services its owner's account has linked (GET /account, servi
 aren't in its config: a touchscreen's settings then say how to set up one that isn't.
 
 A touchscreen plays its owner's Spotify itself (its Web Playback SDK), so it asks for a short-lived access token for
-the account's link (GET /spotify/token); the refresh token and the app's secret stay here.
+the account's link (GET /spotify/token); the refresh token and the app's secret stay here. Its Spotify Soloist player
+(Spotify's headless Connect player) can't start without the server's Soloist API key on the device, so a paired
+touchscreen gets that key (GET /soloist/key), which is in no release.
 """
 
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 import requests
-from countdown_api.models import EpaperConfig, TouchscreenConfig
+from countdown_api.models import EpaperConfig, SoloistApiKey, TouchscreenConfig
 from flask import Blueprint, Response, current_app, jsonify, request
 from redis import RedisError
 from sqlalchemy import select
@@ -346,6 +348,23 @@ def spotify_token(device_id: str) -> ResponseReturnValue:
     if token is None:  # unlinked in between
         return jsonify(error="the owner's account hasn't linked Spotify"), 404
     return token.model_dump(mode="json"), 200
+
+
+@bp.get("/soloist/key")
+@require_device_auth
+def soloist_key(device_id: str) -> ResponseReturnValue:
+    """Answer a paired touchscreen the server's Spotify Soloist API key (SoloistApiKey, getSoloistKey).
+
+    404 when the server has none set up, 409 for a device no one has paired yet or an e-paper screen. The key is a
+    secret: it goes only in this answer, never in a log.
+    """
+    device = db.session.get_one(Device, device_id)
+    if device.paired_at is None or device.type != "touchscreen" or device.owner is None:
+        return jsonify(error="only a paired touchscreen gets the Soloist key"), 409
+    key = current_app.config["SPOTIFY_SOLOIST_API_KEY"]
+    if not key:
+        return jsonify(error="this server has no Soloist key set up"), 404
+    return SoloistApiKey(api_key=key).model_dump(mode="json"), 200, {"Cache-Control": "no-store"}
 
 
 @bp.get("/account")

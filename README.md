@@ -93,6 +93,12 @@ It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the S
 secret never leave the broker. `404` means the account hasn't linked Spotify, and `403` that the link predates
 touchscreens and lacks their scopes: the Account page then asks to reconnect it.
 
+Its Spotify Soloist player (Spotify's headless Connect player, which runs on the kiosk Pi) can't start without an API
+key on the device, and the Pi installs from a public release, so the key is the server's: `SPOTIFY_SOLOIST_API_KEY` in
+Vaultwarden (`broker.env` in `secrets-map.json`). **`GET /api/devices/soloist/key`** answers a paired touchscreen
+`SoloistApiKey` (`api_key`), `Cache-Control: no-store`; `404` means the server has no key, `409` that the device isn't
+a paired touchscreen.
+
 **`GET /api/devices/account`** answers which services its owner's account has linked (`DeviceAccount`: `parcel` and
 `spotify`, each `{"linked": true|false}`), and never a login or key. The links are the account's, so they aren't in the
 config, whose `parcels.enabled` is off both while the screen's switch is off and while the account has no Parcel key:
