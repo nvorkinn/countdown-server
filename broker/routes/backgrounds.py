@@ -30,7 +30,7 @@ IMMUTABLE = "public, max-age=31536000, immutable"
 
 @bp.get("/api/backgrounds/<digest>")
 def background_image(digest: str) -> ResponseReturnValue:
-    """Answer the background (WebP, or JPEG if older); 404 for no such picture (or not a digest), 503 if Redis is down."""
+    """Answer the background (WebP, or JPEG if older); 404 for no such picture or not a digest, 503 if Redis is down."""
     if not DIGEST.fullmatch(digest):
         return jsonify(error="no such background"), 404
     try:
