@@ -165,6 +165,16 @@ def test_the_prompt_has_the_scene_season_light_weather_occasions_and_the_calm_zo
     assert "1280" not in prompt  # zones in words, not pixels
 
 
+@pytest.mark.parametrize(("code", "clouds"), [(0, False), (2, True), (3, True), (45, False), (61, True), (95, True)])
+def test_clouds_catch_the_light_only_when_the_sky_has_them(code, clouds):
+    context = Context(date(2026, 11, 23), Weather(code, 7, 10), [])
+
+    prompt = backgrounds.prompt(LONDON, "day", context)
+
+    assert "a rich, colourful sky true to the weather above" in prompt
+    assert ("clouds catching the light" in prompt) is clouds
+
+
 def test_london_goes_through_its_scenes_a_day_at_a_time():
     week = [backgrounds.scene_of(LONDON, date(2026, 11, 17) + timedelta(days=n)) for n in range(7)]
 

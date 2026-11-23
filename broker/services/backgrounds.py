@@ -190,6 +190,13 @@ LIGHT: dict[BackgroundPhase, tuple[str, str]] = {
     ),
 }
 OVERCAST = 3
+# Fog and mist (WMO 45 and 48), the one cloudy band with no clouds to see.
+FOG = (45, 48)
+
+
+def cloudy(code: int) -> bool:
+    """Return whether a WMO weather code's sky has clouds in it: all but a clear sky and fog."""
+    return code > 0 and code not in FOG
 
 
 # ------------------------------------------------------------------------------------------------- the occasions
@@ -433,6 +440,8 @@ def prompt(place: Place, phase: BackgroundPhase, context: Context) -> str:
     light = overcast if context.weather.code >= OVERCAST else clear
     when = f"{SEASONS[context.local_date.month]} ({context.local_date.strftime('%B')})"
     view = scene_of(place, context.local_date)
+    # Named only when the forecast has clouds: a model draws what a prompt names, so a clear sky would grow some.
+    clouds = ", its clouds catching the light" if cloudy(context.weather.code) else ""
     lines = [
         f"A wide, photographic, landscape-format image of {view.subject}, in {when}, {light}.",
         f"Weather: {describe_weather(context.weather)}.",
@@ -468,10 +477,10 @@ def prompt(place: Place, phase: BackgroundPhase, context: Context) -> str:
             "nothing close up in it (no boats, people, railings, benches or objects)."
         ),
         (
-            "A little more dramatic than an everyday snapshot: a rich, colourful sky true to the weather above, "
-            "higher contrast and deeper shadows, the lit subject glowing against its darker surroundings. Keep it "
-            "believable rather than overdone. The calm areas stay darker and even so white text over them stays "
-            "readable. Realistic colours, high detail in the subject only."
+            "A little more dramatic than an everyday snapshot: a rich, colourful sky true to the weather above"
+            f"{clouds}, higher contrast and deeper shadows, the lit subject glowing against its darker surroundings. "
+            "Keep it believable rather than overdone. The calm areas stay darker and even so white text over them "
+            "stays readable. Realistic colours, high detail in the subject only."
         ),
         "Absolutely no text, letters, numbers, signs, logos, watermarks, borders or user interface.",
     ]
