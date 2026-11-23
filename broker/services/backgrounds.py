@@ -468,9 +468,10 @@ def prompt(place: Place, phase: BackgroundPhase, context: Context) -> str:
             "nothing close up in it (no boats, people, railings, benches or objects)."
         ),
         (
-            "Moody and atmospheric, with rich natural light, colour and contrast in the subject, while the calm areas "
-            "stay darker and even so white text over them stays readable. Realistic, natural colours, high detail "
-            "in the subject only."
+            "A little more dramatic than an everyday snapshot: a colourful, textured sky with clouds catching the "
+            "light, higher contrast and deeper shadows, the lit subject glowing against its darker surroundings. Keep "
+            "it believable rather than overdone. The calm areas stay darker and even so white text over them stays "
+            "readable. Realistic colours, high detail in the subject only."
         ),
         "Absolutely no text, letters, numbers, signs, logos, watermarks, borders or user interface.",
     ]
