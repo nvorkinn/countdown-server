@@ -16,6 +16,7 @@ erDiagram
     devices }o..o| glowmarkt_credentials : "owner's energy"
     devices }o..o| github_tokens : "owner's developer panel"
     devices }o..o| parcel_keys : "owner's parcel notices"
+    devices }o..o| soloist_keys : "owner's Soloist key"
 
     devices {
         string device_id PK "token_hex(6)"
@@ -100,6 +101,10 @@ erDiagram
         string user_id PK "the owner"
         string key_encrypted
     }
+    soloist_keys {
+        string user_id PK "the owner"
+        string key_encrypted
+    }
 ```
 
 | Table | One row per | Notes |
@@ -115,8 +120,9 @@ erDiagram
 | `glowmarkt_credentials` | linked Glowmarkt account | The password is encrypted. |
 | `github_tokens` | developer panel token | Encrypted. |
 | `parcel_keys` | parcel notices Parcel API key | Encrypted. |
+| `soloist_keys` | Spotify Soloist API key | Encrypted. Sent to the owner's paired touchscreens, which start Soloist with it. |
 
-- **Accounts.** The five login tables are keyed by the user id of a device's owner (`device_users`), not by screen: a login serves all
+- **Accounts.** The six login tables are keyed by the user id of a device's owner (`device_users`), not by screen: a login serves all
   of a user's screens, and each screen's own `*_enabled` column in `device_config` says whether it shows that service
   (`services/accounts.py`). The providers still work screen by screen, reaching a screen's login through its owner.
   Unpairing or forgetting a screen leaves its owner's logins alone.

@@ -33,6 +33,7 @@
 </form>
 <form id="githubDisconnectForm" method="POST" action="{{ url_for('account.github_disconnect') }}"></form>
 <form id="parcelDisconnectForm" method="POST" action="{{ url_for('account.parcel_disconnect') }}"></form>
+<form id="soloistDisconnectForm" method="POST" action="{{ url_for('account.soloist_disconnect') }}"></form>
 
 <form class="settings" id="settingsForm" method="POST" action="{{ url_for('account.account') }}" autocomplete="off">
     <div class="integration-grid">
@@ -120,6 +121,34 @@
                 </p>
             </div>
         </section>
+
+        {% if soloist_shown %}
+        <section class="section integration">
+            <header class="card-header">
+                <h2 class="card-title">Spotify Soloist</h2>
+            </header>
+            {% call service_row('Soloist', soloist_linked) %}
+                {% if soloist_linked %}
+                    <button type="submit" form="soloistDisconnectForm" class="btn-action btn-delete" data-confirm="Remove the Soloist key? Your touchscreens won't be sent it again.">Remove</button>
+                {% endif %}
+            {% endcall %}
+            <div class="form-group">
+                <label for="soloist_api_key">{{ 'New key' if soloist_linked else 'API key' }}</label>
+                <input
+                    type="password"
+                    id="soloist_api_key"
+                    name="soloist_api_key"
+                    placeholder="{{ 'Leave blank to keep it' if soloist_linked else '' }}"
+                    autocomplete="new-password"
+                >
+                <p class="form-hint">
+                    Make your own key in your <a href="https://developer.spotify.com/dashboard/soloist" target="_blank" rel="noopener">Spotify for Developers dashboard</a>.
+                    Spotify Premium is required. It is sent to your touchscreens, which start Soloist with it:
+                    if you remove the key or give a touchscreen away, revoke it in the dashboard too.
+                </p>
+            </div>
+        </section>
+        {% endif %}
 
         <section class="section integration">
             <header class="card-header">
