@@ -7,7 +7,7 @@ the screen's switch is off and while the account has no Parcel key. This is how 
 from countdown_api.models import DeviceAccount
 
 from broker.db import db
-from broker.models import Device, ParcelKey, SpotifyToken
+from broker.models import Device, ParcelKey, SoloistKey, SpotifyToken
 from tests.routes.test_touchscreens import TOUCHSCREEN, _auth, _paired, _registered
 
 ACCOUNT_URL = "/api/devices/account"
@@ -31,6 +31,9 @@ def test_the_contracts_account_is_what_the_route_answers(app, client):
     device_id = _paired(app, client)
     with app.app_context():
         db.session.add(SpotifyToken(user_id=_owner(app, device_id), refresh_token="refresh-secret"))
+        soloist = SoloistKey(user_id=_owner(app, device_id))
+        soloist.key = "soloist-api-key-secret"
+        db.session.add(soloist)
         db.session.commit()
 
     response = client.get(ACCOUNT_URL, headers=_auth())
@@ -39,6 +42,7 @@ def test_the_contracts_account_is_what_the_route_answers(app, client):
     assert response.get_json() == TOUCHSCREEN["account"]
     assert DeviceAccount.model_validate(response.get_json()).spotify.linked
     assert "refresh-secret" not in response.get_data(as_text=True)
+    assert "soloist-api-key-secret" not in response.get_data(as_text=True)
 
 
 def test_an_account_with_nothing_linked_says_so(app, client):
@@ -46,7 +50,11 @@ def test_an_account_with_nothing_linked_says_so(app, client):
 
     response = client.get(ACCOUNT_URL, headers=_auth())
 
-    assert response.get_json() == {"parcel": {"linked": False}, "spotify": {"linked": False}}
+    assert response.get_json() == {
+        "parcel": {"linked": False},
+        "spotify": {"linked": False},
+        "soloist": {"linked": False},
+    }
 
 
 def test_a_saved_parcel_key_is_linked_whatever_the_screens_switch_says(app, client):

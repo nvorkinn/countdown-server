@@ -15,7 +15,7 @@ from flask import Blueprint, current_app, redirect, render_template, request, ur
 from broker.auth import require_paired_user, signed_in_user
 from broker.clients import apple_music, spotify
 from broker.db import db
-from broker.models import GitHubToken, GlowmarktCredentials, ParcelKey, SpotifyToken
+from broker.models import GitHubToken, GlowmarktCredentials, ParcelKey, SoloistKey, SpotifyToken
 from broker.routes.pages import _write_subscriptions_to_redis
 from broker.services import accounts, config_store, device_keys, parcel_key, render_jobs
 
@@ -71,6 +71,8 @@ def _stage_logins(user_id: str) -> list[Callable[[str], list[str]]]:
         changed.append(device_keys.developer)
     if _save_parcel_key(user_id):
         changed.append(device_keys.parcels)
+    # No provider reads the Soloist key, so the store has nothing made from it: a touchscreen asks for it itself.
+    _save_soloist_key(user_id)
     return changed
 
 
@@ -136,6 +138,19 @@ def _save_parcel_key(user_id: str) -> bool:
     return True
 
 
+def _save_soloist_key(user_id: str) -> None:
+    """Stage the posted Soloist API key for the user's account; a field left blank keeps the stored one.
+
+    The key is never logged, and never shown again: only the user's paired touchscreens are sent it.
+    """
+    key = request.form.get("soloist_api_key", "").strip()
+    if not key:
+        return
+    stored = db.session.get(SoloistKey, user_id) or SoloistKey(user_id=user_id)
+    stored.key = key
+    db.session.add(stored)
+
+
 def _parcel_status(user_id: str) -> ParcelsLinkStatus | None:
     """Return what Parcel last said of the key, from the first of the user's screens the provider has asked for."""
     store = current_app.extensions["redis"]
@@ -161,6 +176,9 @@ def _render_account() -> str:
         github_linked=db.session.get(GitHubToken, user_id) is not None,
         parcel_linked=parcel_key.has_key(db, user_id),
         parcel_status=_parcel_status(user_id),
+        # Soloist runs on a touchscreen's Pi, so only an account with one is asked for its key.
+        soloist_shown=accounts.has_touchscreen(user_id),
+        soloist_linked=db.session.get(SoloistKey, user_id) is not None,
         glowmarkt={
             "username": creds.username if creds else "",
             "has_password": bool(creds and creds.password_encrypted),
@@ -236,4 +254,19 @@ def parcel_disconnect() -> ResponseReturnValue:
         accounts.forget_keys(user_id, device_keys.parcels)
         _write_subscriptions_to_redis()
         config_store.publish_all()
+    return redirect(url_for("account.account"))
+
+
+@bp.post("/soloist/disconnect")
+@require_paired_user
+def soloist_disconnect() -> ResponseReturnValue:
+    """Forget the account's Soloist API key, so none of the user's touchscreens is sent it again.
+
+    A touchscreen that already started Soloist with it still has it until it restarts, and the key itself stays good:
+    only revoking it in the Spotify for Developers dashboard ends it, which the page says.
+    """
+    key = db.session.get(SoloistKey, signed_in_user())
+    if key is not None:
+        db.session.delete(key)
+        db.session.commit()
     return redirect(url_for("account.account"))

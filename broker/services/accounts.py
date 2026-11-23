@@ -1,9 +1,10 @@
 """A user's account: the services linked to it, which every screen they own can show.
 
-Spotify, Apple Music, GitHub, Parcel and Glowmarkt are linked once, to the signed-in user (auth.current_user), in rows
-keyed by their user id (models.SpotifyToken and the rest); each screen switches each one on or off for itself
-(DeviceConfig.spotify_enabled and the rest). The providers still work screen by screen, writing each screen's own keys,
-so they reach a screen's services through its owner (Device.owner).
+Spotify, Apple Music, GitHub, Parcel, Glowmarkt and Spotify Soloist are linked once, to the signed-in user
+(auth.current_user), in rows keyed by their user id (models.SpotifyToken and the rest); each screen switches each one
+on or off for itself (DeviceConfig.spotify_enabled and the rest; Soloist has no switch, a touchscreen asks for its key).
+The providers still work screen by screen, writing each screen's own keys, so they reach a screen's services through
+its owner (Device.owner).
 """
 
 from typing import TYPE_CHECKING
@@ -12,7 +13,7 @@ from countdown_api.models import AccountLink, DeviceAccount
 from sqlalchemy import select
 
 from broker.db import db
-from broker.models import Device, ParcelKey, SpotifyToken
+from broker.models import Device, ParcelKey, SoloistKey, SpotifyToken
 from broker.services import device_keys
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ def links(user_id: str) -> DeviceAccount:
     return DeviceAccount(
         parcel=AccountLink(linked=db.session.get(ParcelKey, user_id) is not None),
         spotify=AccountLink(linked=db.session.get(SpotifyToken, user_id) is not None),
+        soloist=AccountLink(linked=db.session.get(SoloistKey, user_id) is not None),
     )
 
 

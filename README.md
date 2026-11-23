@@ -93,8 +93,15 @@ It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the S
 secret never leave the broker. `404` means the account hasn't linked Spotify, and `403` that the link predates
 touchscreens and lacks their scopes: the Account page then asks to reconnect it.
 
-**`GET /api/devices/account`** answers which services its owner's account has linked (`DeviceAccount`: `parcel` and
-`spotify`, each `{"linked": true|false}`), and never a login or key. The links are the account's, so they aren't in the
+**`GET /api/devices/soloist/key`** answers it its owner's Spotify Soloist API key (`SoloistApiKey`: `api_key`), which
+it starts the Soloist daemon on its Pi with (Soloist takes the key at every start, so this is the one saved key the
+broker sends out). It is the owner's own, pasted on their Account page, and only their own paired touchscreens are sent
+it, `Cache-Control: no-store`. `404` means the account has none saved, and `409` a device that isn't a paired
+touchscreen. Removing the key or unpairing a screen stops it being sent, but a screen keeps what it already has: the
+owner revokes the key in their Spotify for Developers dashboard.
+
+**`GET /api/devices/account`** answers which services its owner's account has linked (`DeviceAccount`: `parcel`,
+`spotify` and `soloist`, each `{"linked": true|false}`), and never a login or key. The links are the account's, so they aren't in the
 config, whose `parcels.enabled` is off both while the screen's switch is off and while the account has no Parcel key:
 with this a touchscreen's settings tell the two apart, and say how to set Parcel up. `409` until the device is paired.
 

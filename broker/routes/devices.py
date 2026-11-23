@@ -26,7 +26,8 @@ the account's link (GET /spotify/token); the refresh token and the app's secret 
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 import requests
-from countdown_api.models import EpaperConfig, TouchscreenConfig
+from countdown_api.models import EpaperConfig, SoloistApiKey, TouchscreenConfig
+from cryptography.fernet import InvalidToken
 from flask import Blueprint, Response, current_app, jsonify, request
 from redis import RedisError
 from sqlalchemy import select
@@ -35,7 +36,16 @@ from sqlalchemy.exc import IntegrityError
 from broker.auth import hash_secret, require_device_auth, require_device_or_owner, with_retry_after
 from broker.clients import spotify
 from broker.db import db
-from broker.models import DEVICE_TYPES, FRAME_FORMATS, Device, DeviceConfig, DeviceType, FrameFormat, SpotifyToken
+from broker.models import (
+    DEVICE_TYPES,
+    FRAME_FORMATS,
+    Device,
+    DeviceConfig,
+    DeviceType,
+    FrameFormat,
+    SoloistKey,
+    SpotifyToken,
+)
 from broker.routes.pages import _contract_errors, _publish_saved
 from broker.services import accounts, config_sections, config_store, feed, panels, registration, renderer_config
 
@@ -346,6 +356,31 @@ def spotify_token(device_id: str) -> ResponseReturnValue:
     if token is None:  # unlinked in between
         return jsonify(error="the owner's account hasn't linked Spotify"), 404
     return token.model_dump(mode="json"), 200
+
+
+@bp.get("/soloist/key")
+@require_device_auth
+def soloist_key(device_id: str) -> ResponseReturnValue:
+    """Answer a paired touchscreen its owner's Spotify Soloist API key (SoloistApiKey), to start Soloist with.
+
+    The one route that sends a saved key: Soloist runs on the touchscreen's Pi and takes it at every start. It is the
+    owner's own key and goes only to their own paired touchscreens, so a device anyone registers gets nothing of anyone
+    else's. Never cached (no-store) and never logged. 404 when the owner's account has none, and 409 for a device no
+    one has paired yet or an e-paper screen.
+    """
+    device = db.session.get_one(Device, device_id)
+    if device.paired_at is None or device.type != "touchscreen" or device.owner is None:
+        return jsonify(error="only a paired touchscreen gets a Soloist API key"), 409
+    saved = db.session.get(SoloistKey, device.owner)
+    if saved is None:
+        return jsonify(error="the owner's account has no Soloist API key"), 404
+    try:
+        key = saved.key
+    except InvalidToken:
+        # CREDENTIAL_ENCRYPTION_KEY changed since it was saved: as good as none, until the owner pastes it again.
+        current_app.logger.warning("A saved Soloist API key won't decrypt; its owner has to save it again")
+        return jsonify(error="the owner's account has no Soloist API key"), 404
+    return SoloistApiKey(api_key=key).model_dump(mode="json"), 200, {"Cache-Control": "no-store"}
 
 
 @bp.get("/account")

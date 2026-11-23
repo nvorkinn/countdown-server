@@ -483,6 +483,29 @@ class ParcelKey(Model):
         self.key_encrypted = encrypt(plaintext)
 
 
+class SoloistKey(Model):
+    """The Spotify Soloist API key a user gave for their touchscreens, encrypted at rest.
+
+    Issued from their own Spotify for Developers dashboard, as Spotify has each person make their own. Soloist runs on
+    a touchscreen's Pi and takes the key at every start, so unlike the other logins it leaves the broker: a paired
+    touchscreen of the user's is sent it (GET /api/devices/soloist/key), and nothing else is.
+    """
+
+    __tablename__ = "soloist_keys"
+
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    key_encrypted: Mapped[str] = mapped_column(String)
+
+    @property
+    def key(self) -> str:
+        """The API key, decrypted."""
+        return decrypt(self.key_encrypted)
+
+    @key.setter
+    def key(self, plaintext: str) -> None:
+        self.key_encrypted = encrypt(plaintext)
+
+
 class AppleMusicToken(Model):
     """The Apple Music account linked to a user's account: its Music User Token, encrypted at rest.
 
