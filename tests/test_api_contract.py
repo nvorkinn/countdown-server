@@ -18,7 +18,6 @@ OPERATIONS = frozenset({"get", "put", "post", "delete", "patch"})
 # `/api` routes not in the contract yet, each with why. The last test fails once one is in it (or gone from the
 # broker), so this only shrinks: add the route to the contract rather than here.
 NOT_IN_CONTRACT = {
-    ("POST", "/api/frame"): "the e-paper screen's frame poll and log report (countdown-esp32), older than the paths",
     ("GET", "/api/status/devices"): "monitoring (a Home Assistant sensor), with its own status token",
     ("GET", "/api/status/health"): "the health check, for monitoring",
 }
