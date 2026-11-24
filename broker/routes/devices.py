@@ -26,7 +26,7 @@ the account's link (GET /spotify/token); the refresh token and the app's secret 
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 import requests
-from countdown_api.models import EpaperConfig, SoloistApiKey, TouchscreenConfig
+from countdown_api.models import EpaperConfig, SoloistApiKey, SoloistKeyCode, SoloistKeys, TouchscreenConfig
 from cryptography.fernet import InvalidToken
 from flask import Blueprint, Response, current_app, jsonify, request
 from redis import RedisError
@@ -43,11 +43,19 @@ from broker.models import (
     DeviceConfig,
     DeviceType,
     FrameFormat,
-    SoloistKey,
     SpotifyToken,
 )
 from broker.routes.pages import _contract_errors, _publish_saved
-from broker.services import accounts, config_sections, config_store, feed, panels, registration, renderer_config
+from broker.services import (
+    accounts,
+    config_sections,
+    config_store,
+    feed,
+    panels,
+    registration,
+    renderer_config,
+    soloist,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -358,28 +366,83 @@ def spotify_token(device_id: str) -> ResponseReturnValue:
     return token.model_dump(mode="json"), 200
 
 
+def _soloist_touchscreen(device_id: str) -> ResponseReturnValue | None:
+    """Return the 409 for a device that has no people with Soloist keys: one not paired yet, or an e-paper screen."""
+    if soloist.is_paired_touchscreen(db.session.get_one(Device, device_id)):
+        return None
+    return jsonify(error="only a paired touchscreen has Soloist API keys"), 409
+
+
+@bp.post("/soloist/codes")
+@require_device_auth
+def create_soloist_key_code(device_id: str) -> ResponseReturnValue:
+    """Answer a paired touchscreen a code one of its people saves their Soloist API key with (SoloistKeyCode).
+
+    The touchscreen names the person (`person`, a name of its own) and shows the code as a link to /soloist, which
+    they open on their phone. Ten minutes, one use; a new one replaces theirs that wasn't used. 400 without a person
+    it can name, and 409 for a device no one has paired yet or an e-paper screen.
+    """
+    if (refusal := _soloist_touchscreen(device_id)) is not None:
+        return refusal
+    body = request.get_json(silent=True)
+    person = body.get("person") if isinstance(body, dict) else None
+    if not soloist.is_person(person):
+        return jsonify(error="person is needed: the touchscreen's own name for them"), 400
+    code, expires_in = soloist.issue_code(device_id, person)
+    return SoloistKeyCode(code=code, expires_in=expires_in).model_dump(mode="json"), 201
+
+
+@bp.get("/soloist/keys")
+@require_device_auth
+def list_soloist_keys(device_id: str) -> ResponseReturnValue:
+    """Answer a paired touchscreen which of its people have a Soloist API key saved (SoloistKeys), and never a key.
+
+    So it sees a code it showed has been used. 409 for a device no one has paired yet or an e-paper screen.
+    """
+    if (refusal := _soloist_touchscreen(device_id)) is not None:
+        return refusal
+    return SoloistKeys(people=soloist.people(device_id)).model_dump(mode="json"), 200
+
+
+@bp.delete("/soloist/keys/<person>")
+@require_device_auth
+def delete_soloist_key(device_id: str, person: str) -> ResponseReturnValue:
+    """Forget the Soloist API key saved for one of a paired touchscreen's people, and their unused code.
+
+    As when the touchscreen removes them from its own list. 204 whether or not they had one, and 409 for a device no
+    one has paired yet or an e-paper screen.
+    """
+    if (refusal := _soloist_touchscreen(device_id)) is not None:
+        return refusal
+    soloist.remove(device_id, person)
+    return "", 204
+
+
 @bp.get("/soloist/key")
 @require_device_auth
 def soloist_key(device_id: str) -> ResponseReturnValue:
-    """Answer a paired touchscreen its owner's Spotify Soloist API key (SoloistApiKey), to start Soloist with.
+    """Answer a paired touchscreen the Soloist API key saved for one of its people (SoloistApiKey), to start Soloist.
 
-    The one route that sends a saved key: Soloist runs on the touchscreen's Pi and takes it at every start. It is the
-    owner's own key and goes only to their own paired touchscreens, so a device anyone registers gets nothing of anyone
-    else's. Never cached (no-store) and never logged. 404 when the owner's account has none, and 409 for a device no
-    one has paired yet or an e-paper screen.
+    The one route that sends a saved key: Soloist runs on the touchscreen's Pi and takes it at every start. `person`
+    names whose, as the touchscreen named them for their code. A touchscreen is only ever sent keys saved for it
+    (services/soloist.py), so a device anyone registers gets no one else's. Never cached (no-store), never logged, and
+    never answered to a web page (broker/cors.py). 400 without a person, 404 when they have no key, and 409 for a
+    device no one has paired yet or an e-paper screen.
     """
-    device = db.session.get_one(Device, device_id)
-    if device.paired_at is None or device.type != "touchscreen" or device.owner is None:
-        return jsonify(error="only a paired touchscreen gets a Soloist API key"), 409
-    saved = db.session.get(SoloistKey, device.owner)
+    if (refusal := _soloist_touchscreen(device_id)) is not None:
+        return refusal
+    person = request.args.get("person", "")
+    if not person:
+        return jsonify(error="person is needed"), 400
+    saved = soloist.key_of(device_id, person)
     if saved is None:
-        return jsonify(error="the owner's account has no Soloist API key"), 404
+        return jsonify(error="no Soloist API key saved for them"), 404
     try:
         key = saved.key
     except InvalidToken:
-        # CREDENTIAL_ENCRYPTION_KEY changed since it was saved: as good as none, until the owner pastes it again.
-        current_app.logger.warning("A saved Soloist API key won't decrypt; its owner has to save it again")
-        return jsonify(error="the owner's account has no Soloist API key"), 404
+        # CREDENTIAL_ENCRYPTION_KEY changed since it was saved: as good as none, until they paste it again.
+        current_app.logger.warning("A saved Soloist API key won't decrypt; it has to be saved again")
+        return jsonify(error="no Soloist API key saved for them"), 404
     return SoloistApiKey(api_key=key).model_dump(mode="json"), 200, {"Cache-Control": "no-store"}
 
 

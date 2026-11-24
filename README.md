@@ -93,15 +93,29 @@ It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the S
 secret never leave the broker. `404` means the account hasn't linked Spotify, and `403` that the link predates
 touchscreens and lacks their scopes: the Account page then asks to reconnect it.
 
-**`GET /api/devices/soloist/key`** answers it its owner's Spotify Soloist API key (`SoloistApiKey`: `api_key`), which
-it starts the Soloist daemon on its Pi with (Soloist takes the key at every start, so this is the one saved key the
-broker sends out). It is the owner's own, pasted on their Account page, and only their own paired touchscreens are sent
-it, `Cache-Control: no-store`. `404` means the account has none saved, and `409` a device that isn't a paired
-touchscreen. Removing the key or unpairing a screen stops it being sent, but a screen keeps what it already has: the
-owner revokes the key in their Spotify for Developers dashboard.
+**Spotify Soloist keys.** Soloist runs on the touchscreen's Pi and takes an API key at every start. Spotify has each
+person make their own key and not share it, and a touchscreen has several people on it, so the broker keeps a key for
+each of a touchscreen's people (`broker/services/soloist.py`). The household has no accounts here: the touchscreen
+names its people itself (`person`, their Spotify id).
 
-**`GET /api/devices/account`** answers which services its owner's account has linked (`DeviceAccount`: `parcel`,
-`spotify` and `soloist`, each `{"linked": true|false}`), and never a login or key. The links are the account's, so they aren't in the
+- **`POST /api/devices/soloist/codes`** `{"person"}` answers a code (`SoloistKeyCode`: 32 hex digits, ten minutes, one
+  use), which the touchscreen shows as a link to the settings site's **`/soloist?code=`**.
+- **`/soloist`** is public: the person opens it on their phone and pastes their key, with no login. The code says
+  which touchscreen and person it is for. The key is stored encrypted and never shown again.
+- **`GET /api/devices/soloist/keys`** answers which people have a key saved (`SoloistKeys`), never a key, so the
+  touchscreen sees a code has been used.
+- **`GET /api/devices/soloist/key?person=`** answers that person's key (`SoloistApiKey`), the one saved key the broker
+  sends out. `Cache-Control: no-store`, and never answered to a web page, the touchscreen's own included (no CORS
+  headers, broker/cors.py): its local service asks for it, not its page. `404` with none saved.
+- **`DELETE /api/devices/soloist/keys/{person}`** forgets a person's key, as when the touchscreen removes them.
+
+A touchscreen is only ever sent keys that were saved for it, so a device anyone registers gets no one else's. All
+five are a `409` for a device that isn't a paired touchscreen. A touchscreen that changes hands or is unpaired loses
+its keys. A key the touchscreen was already sent it still has: its person revokes it in their Spotify for Developers
+dashboard.
+
+**`GET /api/devices/account`** answers which services its owner's account has linked (`DeviceAccount`: `parcel` and
+`spotify`, each `{"linked": true|false}`), and never a login or key. The links are the account's, so they aren't in the
 config, whose `parcels.enabled` is off both while the screen's switch is off and while the account has no Parcel key:
 with this a touchscreen's settings tell the two apart, and say how to set Parcel up. `409` until the device is paired.
 
@@ -130,7 +144,7 @@ of the day, each named by its SHA-256. The screen loads each as a plain image fr
 Every browser page needs a Pocket ID login as a member of the group `countdown`. Caddy forward-auths the request to
 Tinyauth, which sets the `Remote-*` headers (`Remote-User`, `Remote-Email`, `Remote-Name`, `Remote-Groups`, `Remote-Sub`)
 that the broker trusts (so it is reachable only from the `edge` network, and Caddy strips those headers from every
-incoming request). The sign-up page (`/pair`) and the device endpoints stay public; `/pair/add` and `/pair/token` need the login.
+incoming request). The sign-up page (`/pair`), the page for a Soloist key (`/soloist`, let in by its code) and the device endpoints stay public; `/pair/add` and `/pair/token` need the login.
 
 - **By token (the normal way).** After Wi-Fi setup the screen sends its owner's browser to `/pair?t=<token>` (or
   `/pair#<token>`), where the token is `sha256("pairing:" + sha256hex(secret))`. The page waits, polling

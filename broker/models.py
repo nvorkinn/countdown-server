@@ -47,6 +47,9 @@ class Device(Model):
 
     config: Mapped[DeviceConfig | None] = relationship(back_populates="device", cascade="all, delete-orphan")
     pairing_codes: Mapped[list[PairingCode]] = relationship(back_populates="device", cascade="all, delete-orphan")
+    # A touchscreen's people's Spotify Soloist API keys, and the codes they save them with (services/soloist.py).
+    soloist_keys: Mapped[list[SoloistKey]] = relationship(back_populates="device", cascade="all, delete-orphan")
+    soloist_codes: Mapped[list[SoloistCode]] = relationship(back_populates="device", cascade="all, delete-orphan")
     # The services a screen shows (Spotify, Apple Music, GitHub, Parcel, Glowmarkt) are linked to its owner's account,
     # not to the screen: see SpotifyToken and the rest, keyed by user_id.
     assignment: Mapped[RendererAssignment | None] = relationship(back_populates="device", cascade="all, delete-orphan")
@@ -484,17 +487,22 @@ class ParcelKey(Model):
 
 
 class SoloistKey(Model):
-    """The Spotify Soloist API key a user gave for their touchscreens, encrypted at rest.
+    """The Spotify Soloist API key of one of a touchscreen's people, encrypted at rest (services/soloist.py).
 
-    Issued from their own Spotify for Developers dashboard, as Spotify has each person make their own. Soloist runs on
-    a touchscreen's Pi and takes the key at every start, so unlike the other logins it leaves the broker: a paired
-    touchscreen of the user's is sent it (GET /api/devices/soloist/key), and nothing else is.
+    Spotify has each person make their own key and not share it, and a touchscreen has several people on it, so a key
+    is kept for a touchscreen and a person. `person` is the touchscreen's own name for them (it uses their Spotify
+    id), which the broker reads nothing into. Soloist runs on the touchscreen's Pi and takes the key at every start,
+    so unlike the accounts' logins it leaves the broker: the touchscreen it was saved for is sent it (GET
+    /api/devices/soloist/key), and nothing else is.
     """
 
     __tablename__ = "soloist_keys"
 
-    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id", ondelete="CASCADE"), primary_key=True)
+    person: Mapped[str] = mapped_column(String, primary_key=True)
     key_encrypted: Mapped[str] = mapped_column(String)
+
+    device: Mapped[Device] = relationship(back_populates="soloist_keys")
 
     @property
     def key(self) -> str:
@@ -504,6 +512,23 @@ class SoloistKey(Model):
     @key.setter
     def key(self, plaintext: str) -> None:
         self.key_encrypted = encrypt(plaintext)
+
+
+class SoloistCode(Model):
+    """A code a touchscreen shows so one of its people can save their Soloist API key for it, until it expires.
+
+    Long and random, as it's opened as a link (/soloist), not typed. It names the touchscreen and the person the key
+    is for, so the page needs no login.
+    """
+
+    __tablename__ = "soloist_codes"
+
+    code: Mapped[str] = mapped_column(String, primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id", ondelete="CASCADE"), index=True)
+    person: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+    device: Mapped[Device] = relationship(back_populates="soloist_codes")
 
 
 class AppleMusicToken(Model):

@@ -16,7 +16,8 @@ erDiagram
     devices }o..o| glowmarkt_credentials : "owner's energy"
     devices }o..o| github_tokens : "owner's developer panel"
     devices }o..o| parcel_keys : "owner's parcel notices"
-    devices }o..o| soloist_keys : "owner's Soloist key"
+    devices ||--o{ soloist_keys : "its people's Soloist keys"
+    devices ||--o{ soloist_codes : "codes to save them with"
 
     devices {
         string device_id PK "token_hex(6)"
@@ -102,8 +103,15 @@ erDiagram
         string key_encrypted
     }
     soloist_keys {
-        string user_id PK "the owner"
+        string device_id PK "the touchscreen"
+        string person PK "its own name for them"
         string key_encrypted
+    }
+    soloist_codes {
+        string code PK
+        string device_id FK
+        string person
+        datetime expires_at
     }
 ```
 
@@ -120,9 +128,10 @@ erDiagram
 | `glowmarkt_credentials` | linked Glowmarkt account | The password is encrypted. |
 | `github_tokens` | developer panel token | Encrypted. |
 | `parcel_keys` | parcel notices Parcel API key | Encrypted. |
-| `soloist_keys` | Spotify Soloist API key | Encrypted. Sent to the owner's paired touchscreens, which start Soloist with it. |
+| `soloist_keys` | touchscreen and person | A person's own Spotify Soloist API key, encrypted, sent only to the touchscreen it was saved for. `person` is the touchscreen's name for them. |
+| `soloist_codes` | live code | A touchscreen's code for one of its people to save their key with: 10 minutes, one use. Lapsed codes are swept whenever a new one is issued. |
 
-- **Accounts.** The six login tables are keyed by the user id of a device's owner (`device_users`), not by screen: a login serves all
+- **Accounts.** The five login tables are keyed by the user id of a device's owner (`device_users`), not by screen: a login serves all
   of a user's screens, and each screen's own `*_enabled` column in `device_config` says whether it shows that service
   (`services/accounts.py`). The providers still work screen by screen, reaching a screen's login through its owner.
   Unpairing or forgetting a screen leaves its owner's logins alone.

@@ -16,8 +16,12 @@ from flask import Flask, Response, current_app, request
 # e-paper screens' frames aren't here.
 PATH_PREFIXES = ("/api/devices/",)
 PATHS = frozenset({"/api/stops/search", "/api/places/search", "/api/places/here"})
+# The one device route no web page is answered, the app's included: it sends a person's Soloist API key, which
+# Spotify says never to put in a client-side app. The touchscreen's own service asks for it and hands it to Soloist.
+# With no CORS headers a browser fails the preflight, so the page's script never sees the answer.
+NOT_FOR_PAGES = frozenset({"/api/devices/soloist/key"})
 
-ALLOW_METHODS = "GET, POST, PUT, OPTIONS"
+ALLOW_METHODS = "GET, POST, PUT, DELETE, OPTIONS"
 ALLOW_HEADERS = "Authorization, Content-Type, If-Match, If-None-Match"
 EXPOSE_HEADERS = "ETag"
 # How long a browser may keep a preflight's answer: an hour, so a touchscreen doesn't ask before every save.
@@ -30,7 +34,7 @@ def init_app(app: Flask) -> None:
 
 
 def _add_cors_headers(response: Response) -> Response:
-    if not (request.path in PATHS or request.path.startswith(PATH_PREFIXES)):
+    if request.path in NOT_FOR_PAGES or not (request.path in PATHS or request.path.startswith(PATH_PREFIXES)):
         return response
     # Whether the headers are there depends on the Origin, so a cache mustn't give one origin's answer to another.
     response.vary.add("Origin")
