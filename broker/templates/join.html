@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Join a touchscreen{% endblock %}
+{% block heading %}Join a touchscreen{% endblock %}
+
+{% block content %}
+<div class="card">
+    {% if error %}
+    <div class="card-header">
+        <h2 class="card-title">You haven't joined</h2>
+    </div>
+    <div class="error-banner">{{ error }}</div>
+    {% elif confirm %}
+    <div class="card-header">
+        <h2 class="card-title">Join {{ screen }}?</h2>
+        <p class="card-subtitle">
+            Joining links your account to this touchscreen, so it can play your music as you. It will be able to get
+            the Spotify Soloist key you save to your account. Only join a touchscreen you are standing at now.
+        </p>
+    </div>
+    <form method="POST" action="{{ url_for('join.join') }}">
+        <input type="hidden" name="code" value="{{ code }}">
+        <button type="submit" class="btn-save">Join touchscreen</button>
+    </form>
+    {% else %}
+    <div class="card-header">
+        <h2 class="card-title">{% if owner %}{{ screen }} is your own{% else %}You've joined {{ screen }}{% endif %}</h2>
+        <p class="card-subtitle">
+            {% if soloist_linked %}It knows who you are now, and can use your Spotify Soloist key.
+            {% else %}It knows who you are now. Save your Spotify Soloist key to your account for it to play as you.{% endif %}
+        </p>
+    </div>
+    <a class="btn-save" href="{{ url_for('account.account') }}">Open your account</a>
+    {% endif %}
+</div>
+{% endblock %}

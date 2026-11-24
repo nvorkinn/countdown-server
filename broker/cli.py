@@ -38,6 +38,7 @@ from .services import (
     config_store,
     device_keys,
     frame_record,
+    members,
     pairing,
     pairing_key,
     registration,
@@ -111,6 +112,9 @@ def owner(device_id: str, user: str) -> None:
     device = _get_device(device_id)
     previous = device.owner
     device.owner = user
+    if previous != user:
+        # Its members joined it as its last owner's.
+        members.forget(device)
     if device.paired_at is None:
         device.paired_at = datetime.now(UTC)
     # As pairing does: named, so the render pool draws it, and no code left to show.
@@ -134,6 +138,7 @@ def unpair(device_id: str, *, wipe_config: bool) -> None:
     device = _get_device(device_id)
     device.paired_at = None
     device.owner = None
+    members.forget(device)
     device.pairing_codes.clear()
     if wipe_config:
         # Reset to the model's defaults by replacing the row. The flush matters: without it SQLAlchemy

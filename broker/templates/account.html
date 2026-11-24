@@ -8,7 +8,7 @@
     <div>
         <p class="kicker">Your account</p>
         <h1>{{ username or 'Account' }}</h1>
-        <p class="hero-lede">Services connected here work on all your screens. Each screen's page picks which it shows.</p>
+        <p class="hero-lede">{% if owns_screen %}Services connected here work on all your screens. Each screen's page picks which it shows.{% else %}What you save here is yours, for the touchscreens you have joined.{% endif %}</p>
     </div>
 </section>
 {% endblock %}
@@ -34,9 +34,13 @@
 <form id="githubDisconnectForm" method="POST" action="{{ url_for('account.github_disconnect') }}"></form>
 <form id="parcelDisconnectForm" method="POST" action="{{ url_for('account.parcel_disconnect') }}"></form>
 <form id="soloistDisconnectForm" method="POST" action="{{ url_for('account.soloist_disconnect') }}"></form>
+{% for screen in joined %}
+<form id="leaveForm-{{ screen.id }}" method="POST" action="{{ url_for('account.leave_screen', device_id=screen.id) }}"></form>
+{% endfor %}
 
 <form class="settings" id="settingsForm" method="POST" action="{{ url_for('account.account') }}" autocomplete="off">
     <div class="integration-grid">
+        {% if owns_screen %}
         <section class="section integration">
             <header class="card-header">
                 <h2 class="card-title">Music</h2>
@@ -122,6 +126,7 @@
             </div>
         </section>
 
+        {% endif %}
         {% if soloist_shown %}
         <section class="section integration">
             <header class="card-header">
@@ -143,13 +148,28 @@
                 >
                 <p class="form-hint">
                     Make your own key in your <a href="https://developer.spotify.com/dashboard/soloist" target="_blank" rel="noopener">Spotify for Developers dashboard</a>.
-                    Spotify Premium is required. It is sent to your touchscreens, which start Soloist with it:
-                    if you remove the key or give a touchscreen away, revoke it in the dashboard too.
+                    Spotify Premium is required. The key is yours alone: it is sent to your touchscreens and the ones
+                    you have joined, which start Soloist with it when you play. If you remove the key, leave a
+                    touchscreen or give one away, revoke it in the dashboard too.
                 </p>
             </div>
         </section>
         {% endif %}
 
+        {% if joined %}
+        <section class="section integration">
+            <header class="card-header">
+                <h2 class="card-title">Touchscreens you've joined</h2>
+            </header>
+            {% for screen in joined %}
+                {% call service_row(screen.label, true) %}
+                    <button type="submit" form="leaveForm-{{ screen.id }}" class="btn-action btn-delete" data-confirm="Leave {{ screen.label }}? It won't be sent your Soloist key again.">Leave</button>
+                {% endcall %}
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if owns_screen %}
         <section class="section integration">
             <header class="card-header">
                 <h2 class="card-title">Energy</h2>
@@ -173,6 +193,7 @@
             </div>
             <p class="form-hint">Your Bright app login.</p>
         </section>
+        {% endif %}
     </div>
 
     <div class="save-bar" id="saveBar">

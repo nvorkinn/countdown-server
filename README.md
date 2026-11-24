@@ -93,12 +93,28 @@ It plays its owner's Spotify itself (the Max Mix's Web Playback SDK), with the S
 secret never leave the broker. `404` means the account hasn't linked Spotify, and `403` that the link predates
 touchscreens and lacks their scopes: the Account page then asks to reconnect it.
 
-**`GET /api/devices/soloist/key`** answers it its owner's Spotify Soloist API key (`SoloistApiKey`: `api_key`), which
-it starts the Soloist daemon on its Pi with (Soloist takes the key at every start, so this is the one saved key the
-broker sends out). It is the owner's own, pasted on their Account page, and only their own paired touchscreens are sent
-it, `Cache-Control: no-store`. `404` means the account has none saved, and `409` a device that isn't a paired
-touchscreen. Removing the key or unpairing a screen stops it being sent, but a screen keeps what it already has: the
-owner revokes the key in their Spotify for Developers dashboard.
+**`GET /api/devices/soloist/key`** answers it the Spotify Soloist API key (`SoloistApiKey`: `api_key`) of one of its
+people, which it starts the Soloist daemon on its Pi with for them (Soloist takes the key at every start, so this is
+the one saved key the broker sends out). Spotify has each person make their own key and not share it, so each pastes
+theirs on their own Account page, and the touchscreen asks for the key of whoever is playing: `?user_id=` names them,
+and without it it's the owner's. Only someone linked to the touchscreen can be named, its owner or a member (below);
+anyone else is a `404`, the same as a person with no key saved. `409` is a device that isn't a paired touchscreen. The
+answer is `Cache-Control: no-store` and is never answered to a web page, the touchscreen's own included (no CORS
+headers, broker/cors.py): its local service asks for it, not its page. Removing the key, leaving or unpairing a screen
+stops it being sent, but a screen keeps what it already has: the person revokes the key in their Spotify for
+Developers dashboard.
+
+**Members.** A touchscreen is its owner's, and the other people of the household join it as members, each with their
+own account (`broker/services/members.py`). The touchscreen asks **`POST /api/devices/members/codes`** for a code
+(`MemberCode`: 32 hex digits, ten minutes, one use) and shows it as a link to the settings site's **`/join?code=`**.
+The person opens it on their phone, signs in and confirms; the visit alone changes nothing, and the confirming post is
+taken only from this site. The touchscreen polls **`GET /api/devices/members/codes/{code}`** (`MemberCodeStatus`) for
+the user id of whoever joined, which is how it names them from then on. Its owner can use a code too, which only tells
+it who they are. **`DELETE /api/devices/members/{user_id}`** unlinks a member (`409` for the owner), and a member can
+leave from their Account page. A member has no say over the touchscreen: its settings stay its owner's, and their
+Account page has only their Soloist key and the screens they joined. Members go when a touchscreen changes hands or is
+unpaired. Who is in the room is the touchscreen's own business (it lets a person be picked only while their phone is
+near); the broker keeps only who agreed to be linked, as anyone can register a device and say what they like from it.
 
 **`GET /api/devices/account`** answers which services its owner's account has linked (`DeviceAccount`: `parcel`,
 `spotify` and `soloist`, each `{"linked": true|false}`), and never a login or key. The links are the account's, so they aren't in the

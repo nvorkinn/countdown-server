@@ -15,6 +15,7 @@ from .routes import (
     backgrounds,
     devices,
     frames,
+    join,
     pages,
     place_search,
     register,
@@ -83,6 +84,7 @@ def create_app() -> Flask:
     app.register_blueprint(pages.bp)
     app.register_blueprint(account.bp)
     app.register_blueprint(register.bp)
+    app.register_blueprint(join.bp)
     app.register_blueprint(stop_search.bp)
     app.register_blueprint(place_search.bp)
     app.register_blueprint(frames.bp)

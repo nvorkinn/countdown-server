@@ -20,7 +20,7 @@ from sqlalchemy import delete, or_, select
 
 from broker.db import db
 from broker.models import Device, PairingCode, PendingPairing
-from broker.services import assignments, device_keys, pairing_key, render_jobs, render_screens
+from broker.services import assignments, device_keys, members, pairing_key, render_jobs, render_screens
 
 # Excludes visually ambiguous characters (0/O, 1/I/L) since this gets typed in by hand.
 CODE_ALPHABET = "".join(c for c in string.ascii_uppercase + string.digits if c not in "0O1IL")
@@ -65,6 +65,9 @@ def _pair(device: Device, user: str) -> str | None:
     db.session.execute(delete(PairingCode).where(PairingCode.device_id == device.device_id))
     previous = device.owner
     device.owner = user
+    if previous != user:
+        # Its members joined it as its last owner's: nothing of theirs is the new owner's screen's to ask for.
+        members.forget(device)
     if device.paired_at is None:
         device.paired_at = datetime.now(UTC)
     # Its stable name, so the render pool lists it (and draws it) at once; the owner can call it anything later.

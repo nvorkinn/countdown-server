@@ -12,12 +12,12 @@ from typing import TYPE_CHECKING
 from cryptography.fernet import InvalidToken
 from flask import Blueprint, current_app, redirect, render_template, request, url_for
 
-from broker.auth import require_paired_user, signed_in_user
+from broker.auth import require_account_user, require_paired_user, screen_label, signed_in_user
 from broker.clients import apple_music, spotify
 from broker.db import db
 from broker.models import GitHubToken, GlowmarktCredentials, ParcelKey, SoloistKey, SpotifyToken
 from broker.routes.pages import _write_subscriptions_to_redis
-from broker.services import accounts, config_store, device_keys, parcel_key, render_jobs
+from broker.services import accounts, config_store, device_keys, members, parcel_key, render_jobs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -30,9 +30,13 @@ bp = Blueprint("account", __name__, url_prefix="/account")
 
 
 @bp.route("", methods=["GET", "POST"])
-@require_paired_user
+@require_account_user
 def account() -> ResponseReturnValue:
-    """Show the account's logins, and save the ones posted."""
+    """Show the account's logins, and save the ones posted.
+
+    For someone with a screen of their own, and for a member of someone else's touchscreen, who has only what a
+    touchscreen asks for of a person (their Soloist API key) and the screens they joined.
+    """
     if request.method == "POST":
         return _save_logins()
     return _render_account()
@@ -65,14 +69,17 @@ def _stage_logins(user_id: str) -> list[Callable[[str], list[str]]]:
     counts as changed even if it's the same, so the parcel provider tries afresh one Parcel refused.
     """
     changed: list[Callable[[str], list[str]]] = []
+    # No provider reads the Soloist key, so the store has nothing made from it: a touchscreen asks for it itself.
+    _save_soloist_key(user_id)
+    if not accounts.screens(user_id):
+        # A member of someone else's touchscreen: the rest is for screens of their own, and isn't on their page.
+        return changed
     if _save_glowmarkt_credentials(user_id):
         changed.append(device_keys.energy)
     if _save_github_token(user_id):
         changed.append(device_keys.developer)
     if _save_parcel_key(user_id):
         changed.append(device_keys.parcels)
-    # No provider reads the Soloist key, so the store has nothing made from it: a touchscreen asks for it itself.
-    _save_soloist_key(user_id)
     return changed
 
 
@@ -164,6 +171,7 @@ def _render_account() -> str:
     user_id = signed_in_user()
     creds = db.session.get(GlowmarktCredentials, user_id)
     spotify_link = db.session.get(SpotifyToken, user_id)
+    joined = members.joined(user_id)
     return render_template(
         "account.html",
         spotify_linked=spotify_link is not None,
@@ -176,8 +184,11 @@ def _render_account() -> str:
         github_linked=db.session.get(GitHubToken, user_id) is not None,
         parcel_linked=parcel_key.has_key(db, user_id),
         parcel_status=_parcel_status(user_id),
-        # Soloist runs on a touchscreen's Pi, so only an account with one is asked for its key.
-        soloist_shown=accounts.has_touchscreen(user_id),
+        # The rest of the page is for screens of one's own; a member of someone else's touchscreen has none.
+        owns_screen=bool(accounts.screens(user_id)),
+        joined=[{"id": device.device_id, "label": screen_label(device)} for device in joined],
+        # Soloist runs on a touchscreen's Pi, so only an account with one, or that joined one, is asked for its key.
+        soloist_shown=accounts.has_touchscreen(user_id) or bool(joined),
         soloist_linked=db.session.get(SoloistKey, user_id) is not None,
         glowmarkt={
             "username": creds.username if creds else "",
@@ -258,7 +269,7 @@ def parcel_disconnect() -> ResponseReturnValue:
 
 
 @bp.post("/soloist/disconnect")
-@require_paired_user
+@require_account_user
 def soloist_disconnect() -> ResponseReturnValue:
     """Forget the account's Soloist API key, so none of the user's touchscreens is sent it again.
 
@@ -269,4 +280,19 @@ def soloist_disconnect() -> ResponseReturnValue:
     if key is not None:
         db.session.delete(key)
         db.session.commit()
+    return redirect(url_for("account.account"))
+
+
+@bp.post("/screens/<device_id>/leave")
+@require_account_user
+def leave_screen(device_id: str) -> ResponseReturnValue:
+    """Unlink the signed-in person from a touchscreen they joined as a member, so it's told nothing of them again.
+
+    Their own doing, as joining was. A screen they aren't a member of (their own among them) is left as it is. As
+    with removing the key, what the touchscreen was already sent it still has: the page says to revoke the key.
+    """
+    user_id = signed_in_user()
+    device = next((device for device in members.joined(user_id) if device.device_id == device_id), None)
+    if device is not None:
+        members.remove(device, user_id)
     return redirect(url_for("account.account"))

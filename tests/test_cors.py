@@ -49,6 +49,8 @@ def touchscreen(app, client):
         ("/api/devices/register", "POST"),
         ("/api/devices/spotify/token", "GET"),
         ("/api/devices/account", "GET"),
+        ("/api/devices/members/codes", "POST"),
+        ("/api/devices/members/member-1", "DELETE"),
         ("/api/stops/search", "GET"),
         ("/api/places/search", "GET"),
         ("/api/places/here", "GET"),
@@ -123,3 +125,18 @@ def test_the_settings_site_and_the_other_routes_get_no_cors_headers(client, path
     response = client.get(path, headers=_from_app())
 
     assert "Access-Control-Allow-Origin" not in response.headers
+
+
+def test_the_soloist_key_is_never_answered_to_a_page_not_even_the_apps(app, client, touchscreen):
+    preflight = client.options(
+        "/api/devices/soloist/key",
+        headers=_from_app(
+            **{"Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "authorization"}
+        ),
+    )
+    response = client.get("/api/devices/soloist/key", headers=_from_app(**_auth()))
+
+    # No CORS headers at all: the browser fails the preflight, and would keep the answer from the page's script.
+    for answer in (preflight, response):
+        assert "Access-Control-Allow-Origin" not in answer.headers
+        assert "Access-Control-Allow-Headers" not in answer.headers

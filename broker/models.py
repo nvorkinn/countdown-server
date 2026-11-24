@@ -47,10 +47,12 @@ class Device(Model):
 
     config: Mapped[DeviceConfig | None] = relationship(back_populates="device", cascade="all, delete-orphan")
     pairing_codes: Mapped[list[PairingCode]] = relationship(back_populates="device", cascade="all, delete-orphan")
+    member_codes: Mapped[list[MemberCode]] = relationship(back_populates="device", cascade="all, delete-orphan")
     # The services a screen shows (Spotify, Apple Music, GitHub, Parcel, Glowmarkt) are linked to its owner's account,
     # not to the screen: see SpotifyToken and the rest, keyed by user_id.
     assignment: Mapped[RendererAssignment | None] = relationship(back_populates="device", cascade="all, delete-orphan")
-    # Who the device is linked to, each with a role (DeviceUser): its one owner, and later its members.
+    # Who the device is linked to, each with a role (DeviceUser): its one owner, and a touchscreen's members, who
+    # joined it themselves (services/members.py).
     # Loaded with the device, as most reads of one ask who owns it.
     users: Mapped[list[DeviceUser]] = relationship(
         back_populates="device", cascade="all, delete-orphan", lazy="selectin"
@@ -136,6 +138,23 @@ class PairingCode(Model):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
     device: Mapped[Device] = relationship(back_populates="pairing_codes")
+
+
+class MemberCode(Model):
+    """A code a touchscreen shows so a person can join it as a member (services/members.py), until it expires.
+
+    Long and random, as it's opened as a link (/join), not typed. `user_id` is who joined with it, null until someone
+    has: the touchscreen reads that to learn who they are, so a used code is kept until it lapses.
+    """
+
+    __tablename__ = "member_codes"
+
+    code: Mapped[str] = mapped_column(String, primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id", ondelete="CASCADE"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    user_id: Mapped[str | None] = mapped_column(String)
+
+    device: Mapped[Device] = relationship(back_populates="member_codes")
 
 
 # The values the store contract allows for each setting below, which the columns hold (the config page checks them).
@@ -488,7 +507,8 @@ class SoloistKey(Model):
 
     Issued from their own Spotify for Developers dashboard, as Spotify has each person make their own. Soloist runs on
     a touchscreen's Pi and takes the key at every start, so unlike the other logins it leaves the broker: a paired
-    touchscreen of the user's is sent it (GET /api/devices/soloist/key), and nothing else is.
+    touchscreen the user is linked to, as its owner or a member, is sent it (GET /api/devices/soloist/key), and
+    nothing else is.
     """
 
     __tablename__ = "soloist_keys"

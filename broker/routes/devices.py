@@ -26,7 +26,7 @@ the account's link (GET /spotify/token); the refresh token and the app's secret 
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 import requests
-from countdown_api.models import EpaperConfig, SoloistApiKey, TouchscreenConfig
+from countdown_api.models import EpaperConfig, MemberCode, MemberCodeStatus, SoloistApiKey, TouchscreenConfig
 from cryptography.fernet import InvalidToken
 from flask import Blueprint, Response, current_app, jsonify, request
 from redis import RedisError
@@ -47,7 +47,16 @@ from broker.models import (
     SpotifyToken,
 )
 from broker.routes.pages import _contract_errors, _publish_saved
-from broker.services import accounts, config_sections, config_store, feed, panels, registration, renderer_config
+from broker.services import (
+    accounts,
+    config_sections,
+    config_store,
+    feed,
+    members,
+    panels,
+    registration,
+    renderer_config,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -361,26 +370,73 @@ def spotify_token(device_id: str) -> ResponseReturnValue:
 @bp.get("/soloist/key")
 @require_device_auth
 def soloist_key(device_id: str) -> ResponseReturnValue:
-    """Answer a paired touchscreen its owner's Spotify Soloist API key (SoloistApiKey), to start Soloist with.
+    """Answer a paired touchscreen the Spotify Soloist API key of one of its people (SoloistApiKey), to start Soloist.
 
-    The one route that sends a saved key: Soloist runs on the touchscreen's Pi and takes it at every start. It is the
-    owner's own key and goes only to their own paired touchscreens, so a device anyone registers gets nothing of anyone
-    else's. Never cached (no-store) and never logged. 404 when the owner's account has none, and 409 for a device no
-    one has paired yet or an e-paper screen.
+    The one route that sends a saved key: Soloist runs on the touchscreen's Pi and takes it at every start. A key is
+    its person's own and no one else's to use, so the touchscreen asks for the key of whoever is playing: `user_id`
+    names them, and without it it's the owner's. Only someone linked to the touchscreen can be named, its owner or a
+    member who joined it themselves (services/members.py), so a device anyone registers gets nothing of anyone who
+    didn't agree to it. Never cached (no-store), never logged, and never answered to a web page (broker/cors.py). 404
+    when they have no key or aren't linked (not told apart), and 409 for a device no one has paired yet or an e-paper
+    screen.
     """
     device = db.session.get_one(Device, device_id)
-    if device.paired_at is None or device.type != "touchscreen" or device.owner is None:
+    if not members.is_paired_touchscreen(device):
         return jsonify(error="only a paired touchscreen gets a Soloist API key"), 409
-    saved = db.session.get(SoloistKey, device.owner)
+    user_id = request.args.get("user_id") or device.owner
+    saved = db.session.get(SoloistKey, user_id) if user_id and members.is_linked(device, user_id) else None
     if saved is None:
-        return jsonify(error="the owner's account has no Soloist API key"), 404
+        return jsonify(error="no Soloist API key for them"), 404
     try:
         key = saved.key
     except InvalidToken:
-        # CREDENTIAL_ENCRYPTION_KEY changed since it was saved: as good as none, until the owner pastes it again.
-        current_app.logger.warning("A saved Soloist API key won't decrypt; its owner has to save it again")
-        return jsonify(error="the owner's account has no Soloist API key"), 404
+        # CREDENTIAL_ENCRYPTION_KEY changed since it was saved: as good as none, until they paste it again.
+        current_app.logger.warning("A saved Soloist API key won't decrypt; it has to be saved again")
+        return jsonify(error="no Soloist API key for them"), 404
     return SoloistApiKey(api_key=key).model_dump(mode="json"), 200, {"Cache-Control": "no-store"}
+
+
+@bp.post("/members/codes")
+@require_device_auth
+def create_member_code(device_id: str) -> ResponseReturnValue:
+    """Answer a paired touchscreen a code a person joins it with as a member (MemberCode, createMemberCode).
+
+    The touchscreen shows it as a link to /join, which the person opens on their phone. Ten minutes, one use; a new
+    one replaces any the touchscreen had that no one used. 409 for a device no one has paired yet or an e-paper screen.
+    """
+    if not members.is_paired_touchscreen(db.session.get_one(Device, device_id)):
+        return jsonify(error="only a paired touchscreen has members"), 409
+    code, expires_in = members.issue_code(device_id)
+    return MemberCode(code=code, expires_in=expires_in).model_dump(mode="json"), 201
+
+
+@bp.get("/members/codes/<code>")
+@require_device_auth
+def member_code(device_id: str, code: str) -> ResponseReturnValue:
+    """Answer a touchscreen what became of a code of its own (MemberCodeStatus): who joined with it, or no one yet.
+
+    The user id is how the touchscreen names the person from then on. 404 for a code that lapsed or isn't its own.
+    """
+    found = members.code_of(device_id, code)
+    if found is None:
+        return jsonify(error="no such code"), 404
+    return MemberCodeStatus(user_id=found.user_id).model_dump(mode="json"), 200
+
+
+@bp.delete("/members/<user_id>")
+@require_device_auth
+def remove_member(device_id: str, user_id: str) -> ResponseReturnValue:
+    """Unlink a member from a paired touchscreen, as when it removes the person from its own list (removeMember).
+
+    204 whether or not they were one. 409 for its owner, who isn't a member (a touchscreen changes hands on the
+    settings site), and for a device no one has paired yet or an e-paper screen.
+    """
+    device = db.session.get_one(Device, device_id)
+    if not members.is_paired_touchscreen(device):
+        return jsonify(error="only a paired touchscreen has members"), 409
+    if not members.remove(device, user_id):
+        return jsonify(error="the owner isn't a member"), 409
+    return "", 204
 
 
 @bp.get("/account")

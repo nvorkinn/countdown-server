@@ -11,7 +11,7 @@ from flask import current_app, g, jsonify, redirect, request, url_for
 from sqlalchemy import select
 
 from .db import db
-from .models import Device
+from .models import Device, DeviceUser
 
 if TYPE_CHECKING:
     from flask import Response
@@ -257,6 +257,26 @@ def require_paired_user(view: View) -> View:
             g.device_id = requested
         else:
             return jsonify(error="not found"), 404
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def require_account_user(view: View) -> View:
+    """Protect the account's pages, for someone with a screen of their own or one they joined as a member.
+
+    A member has no screen to set up but has an account all the same: what they save to it for themselves (their
+    Soloist API key) is what the touchscreen they joined asks for. Anyone with neither goes to /pair, as on the other
+    pages.
+    """
+
+    @functools.wraps(view)
+    def wrapped(*args: object, **kwargs: object) -> ResponseReturnValue:
+        user = current_user()
+        if user is None:
+            return "Sign in required.", 401
+        if not user_devices() and db.session.scalar(select(DeviceUser).where(DeviceUser.user_id == user)) is None:
+            return redirect(url_for("pages.add_screen"))
         return view(*args, **kwargs)
 
     return wrapped

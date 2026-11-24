@@ -10,6 +10,7 @@ erDiagram
     devices ||--o{ pairing_codes : "codes"
     devices ||--o| renderer_assignments : "slug"
     devices ||--o{ device_users : "owner and members"
+    devices ||--o{ member_codes : "codes to join with"
     devices }o..o| spotify_tokens : "owner's Spotify"
     devices }o..o| apple_music_tokens : "owner's Apple Music"
     devices }o..o{ apple_music_plays : "owner's play log"
@@ -63,6 +64,12 @@ erDiagram
         string device_id FK
         datetime expires_at
     }
+    member_codes {
+        string code PK
+        string device_id FK
+        datetime expires_at
+        string user_id "who joined with it, null until someone has"
+    }
     renderer_assignments {
         string id PK
         string device_id FK, UK
@@ -110,8 +117,9 @@ erDiagram
 | Table | One row per | Notes |
 |---|---|---|
 | `devices` | screen | Created when the screen registers. Who it's linked to is in `device_users`. `last_seen_at` and `display_last_seen_at` are updated at most once a minute; the latter decides whether the pool still draws the screen. |
-| `device_users` | screen | A user linked to a device, with a role: its one `owner` (a partial unique index allows one), or a `member` (none yet). An e-paper screen has just its owner's row. The user id is a plain string (there's no users table). `Device.owner` reads and sets the owner's row, in Python and in queries. |
+| `device_users` | screen and user | A user linked to a device, with a role: its one `owner` (a partial unique index allows one), or a `member`, who joined a touchscreen with a code (`services/members.py`) and goes when it changes hands. An e-paper screen has just its owner's row. The user id is a plain string (there's no users table). `Device.owner` reads and sets the owner's row, in Python and in queries. |
 | `device_config` | screen | Created at registration with the size the screen reported. `tfl_stop_ids` holds TfL and Entur (`NSR:...`) stops in the owner's order. |
+| `member_codes` | live code | A touchscreen's code for a person to join it as a member: 10 minutes, one use. `user_id` is who joined with it, which the touchscreen reads; lapsed codes are swept whenever a new one is issued. |
 | `pairing_codes` | live code | 10 minutes, one use. Expired codes are swept whenever a new one is issued. |
 | `renderer_assignments` | paired screen | The screen's slug (its device id), which names it in `v1:render:screens` and in metrics. It never changes. |
 | `spotify_tokens` | linked Spotify account | Plaintext, with the scopes Spotify granted (`scope`, null for a link made before touchscreens). Refreshed by the music provider and the touchscreen token route. |
@@ -120,7 +128,7 @@ erDiagram
 | `glowmarkt_credentials` | linked Glowmarkt account | The password is encrypted. |
 | `github_tokens` | developer panel token | Encrypted. |
 | `parcel_keys` | parcel notices Parcel API key | Encrypted. |
-| `soloist_keys` | Spotify Soloist API key | Encrypted. Sent to the owner's paired touchscreens, which start Soloist with it. |
+| `soloist_keys` | Spotify Soloist API key | Encrypted. Each person's own, sent to the paired touchscreens they own or joined, which start Soloist with it for them. |
 
 - **Accounts.** The six login tables are keyed by the user id of a device's owner (`device_users`), not by screen: a login serves all
   of a user's screens, and each screen's own `*_enabled` column in `device_config` says whether it shows that service
