@@ -16,6 +16,7 @@ go when it changes hands or is unpaired (forget): they were saved for its last o
 
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import TypeGuard
 
 from sqlalchemy import delete, or_, select
 
@@ -37,7 +38,7 @@ def is_paired_touchscreen(device: Device) -> bool:
     return device.paired_at is not None and device.type == "touchscreen" and device.owner is not None
 
 
-def is_person(value: object) -> bool:
+def is_person(value: object) -> TypeGuard[str]:
     """Whether `value` is a name a touchscreen can give one of its people (the contract's SoloistPerson)."""
     return (
         isinstance(value, str)
