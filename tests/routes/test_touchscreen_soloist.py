@@ -45,7 +45,14 @@ def _paste(phone, code, key=KEY):
 
 def _saved(client, phone, person=PERSON, key=KEY):
     """Have the person save `key` for the client's touchscreen with a fresh code."""
-    assert "Your key is saved" in _paste(phone, _code(client, person), key).get_data(as_text=True)
+    assert _is_saved(_paste(phone, _code(client, person), key))
+
+
+def _is_saved(page):
+    """Whether the page says the key is saved, or (for a touchscreen's first) sends its owner on through its setup."""
+    if page.status_code == 303:
+        return page.headers["Location"].endswith("/setup")
+    return "Your key is saved" in page.get_data(as_text=True)
 
 
 def _key(client, person=PERSON, secret=SECRET):
@@ -137,8 +144,9 @@ def test_pasting_the_key_saves_it_for_that_person_and_never_shows_it(app, client
 
     page = _paste(phone, _code(client), f" {KEY} ")
 
-    assert "Your key is saved" in page.get_data(as_text=True)
+    assert _is_saved(page)
     assert KEY not in page.get_data(as_text=True)
+    assert KEY not in page.headers.get("Location", "")
     listed = client.get(KEYS_URL, headers=_auth())
     assert listed.get_json() == TOUCHSCREEN["soloist_keys"]
     assert SoloistKeys.model_validate(listed.get_json()).people == [PERSON]
@@ -176,7 +184,7 @@ def test_an_empty_or_overlong_key_is_asked_for_again_with_the_code_unspent(app, 
     assert "Paste the key from your dashboard" in _paste(phone, code, key).get_data(as_text=True)
 
     assert client.get(KEYS_URL, headers=_auth()).get_json() == {"people": []}
-    assert "Your key is saved" in _paste(phone, code).get_data(as_text=True)
+    assert _is_saved(_paste(phone, code))
 
 
 def test_a_new_code_for_a_person_replaces_theirs_and_no_one_elses(app, client, phone):
@@ -186,8 +194,8 @@ def test_a_new_code_for_a_person_replaces_theirs_and_no_one_elses(app, client, p
     second = _code(client)
 
     assert SPENT in _paste(phone, first).get_data(as_text=True)
-    assert "Your key is saved" in _paste(phone, others, "the-others-key").get_data(as_text=True)
-    assert "Your key is saved" in _paste(phone, second).get_data(as_text=True)
+    assert _is_saved(_paste(phone, others, "the-others-key"))
+    assert _is_saved(_paste(phone, second))
 
 
 def test_saving_again_replaces_the_persons_key(app, client, phone):

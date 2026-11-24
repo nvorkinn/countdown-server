@@ -83,18 +83,22 @@ def authorize_url(sign_in: SpotifySignIn) -> str:
     return f"{AUTHORIZE_URL}?{urlencode(query)}"
 
 
-def finish(state: str, code: str, error: str) -> bool:
-    """Keep Spotify's code, or its error, for the sign-in `state` names; False if there's no open sign-in for it."""
+def finish(state: str, code: str, error: str) -> str | None:
+    """Keep Spotify's code, or its error, for the sign-in `state` names, and return its touchscreen's device id.
+
+    None if there's no open sign-in for it.
+    """
     sign_in = open_sign_in(state)
     code, error = code[:MAX_ANSWER], error[:MAX_ANSWER]
     if sign_in is None or not (code or error):
-        return False
+        return None
     if error:
         sign_in.error = error
     else:
         sign_in.code = code
+    device_id = sign_in.device_id
     db.session.commit()
-    return True
+    return device_id
 
 
 def take(device_id: str, sign_in_id: str) -> tuple[Status, str | None] | None:

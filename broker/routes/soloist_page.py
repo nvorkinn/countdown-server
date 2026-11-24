@@ -11,9 +11,9 @@ the touchscreen it was saved for.
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, redirect, render_template, request, url_for
 
-from broker.services import soloist
+from broker.services import soloist, touchscreen_setup
 
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
@@ -42,6 +42,12 @@ def save_key() -> ResponseReturnValue:
         return render_template("soloist.html", error=SPENT)
     if not key or len(key) > soloist.MAX_KEY:
         return render_template("soloist.html", code=code, invalid=True)
-    if not soloist.save(code, key):
+    # The first key on a touchscreen ends its setup: its owner's phone goes back to say it's ready.
+    first = soloist.code_device(code)
+    setting_up = first is not None and touchscreen_setup.in_setup(first)
+    device_id = soloist.save(code, key)
+    if device_id is None:
         return render_template("soloist.html", error=SPENT)
+    if setting_up:
+        return redirect(url_for("pages.phone_setup", device_id=device_id), 303)
     return render_template("soloist.html", saved=True)

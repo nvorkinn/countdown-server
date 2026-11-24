@@ -67,6 +67,7 @@ from broker.services import (
     renderer_config,
     signup,
     stops,
+    touchscreen_setup,
     weather_place,
 )
 from broker.services.postcodes import normalize_postcode
@@ -378,6 +379,28 @@ def pair_done(user_id: str) -> ResponseReturnValue:  # noqa: ARG001 -- only sign
     opened) and has no sidebar or link onward.
     """
     return render_template("pair_done.html", screens=[])
+
+
+@bp.get("/device/setup", defaults={"device_id": None})
+@bp.get("/device/<device_id>/setup")
+@require_paired_user
+def phone_setup() -> ResponseReturnValue:
+    """Send the owner's phone on to the touchscreen's next setup step, wait for it, or say the screen is ready.
+
+    The one QR code a new touchscreen shows pairs it, then lands here; so do the Spotify callback and the Soloist page
+    while it is still being set up (services/touchscreen_setup.py). While the touchscreen catches up, the page asks
+    again every couple of seconds.
+    """
+    step, value = touchscreen_setup.next_step(g.device_id)
+    if step == "spotify":
+        return redirect(url_for("spotify_sign_in_page.start", id=value))
+    if step == "soloist":
+        return redirect(url_for("soloist_page.save_key", code=value))
+    if step == "done":
+        return redirect(url_for("pages.pair_done"))
+    response = current_app.make_response(render_template("touchscreen_setup.html"))
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # Every page about a screen is at /device/<id>/..., and at /device/... for the user's most recently paired one.

@@ -151,7 +151,7 @@ def test_the_done_page_ends_the_visit_with_no_way_on_to_the_settings(client, reg
     assert "/account" not in html
 
 
-def test_the_pairing_page_sends_a_touchscreen_to_the_done_page(client):
+def test_the_pairing_page_sends_a_touchscreen_on_through_its_setup(client):
     html = client.get(f"/pair/add?t={token_for_secret()}").get_data(as_text=True)
 
-    assert "/pair/done" in html
+    assert "/device/setup" in html

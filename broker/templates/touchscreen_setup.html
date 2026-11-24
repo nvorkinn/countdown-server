@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Setting up{% endblock %}
+{% block heading %}Setting up{% endblock %}
+
+{% block content %}
+{% include "_loader_pill.html" %}
+<div class="card waiting-card">
+    <div class="loader-pill" role="img" aria-label="Countdown">
+        {%- for letter in "COUNTDOWN" %}<span aria-hidden="true" style="--i: {{ loop.index0 }}">{{ letter }}</span>{% endfor -%}
+        <span class="sheen" aria-hidden="true"></span>
+    </div>
+    <div class="card-header">
+        <h2 class="card-title">One moment…</h2>
+    </div>
+</div>
+
+<script>
+    // The touchscreen is a step behind the phone (it takes each answer every couple of seconds), so ask again.
+    setTimeout(() => location.reload(), 2000);
+</script>
+{% endblock %}
