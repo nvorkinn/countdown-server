@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Spotify sign-in{% endblock %}
+{% block heading %}{% if spent or declined %}Not signed in{% else %}All set{% endif %}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        {% if spent %}
+        <h2 class="card-title">This code has expired.</h2>
+        <p class="card-subtitle">Scan the new one on the touchscreen.</p>
+        {% elif declined %}
+        <h2 class="card-title">Spotify didn't sign you in.</h2>
+        <p class="card-subtitle">You can close this page.</p>
+        {% else %}
+        <h2 class="card-title">You're signed in on the touchscreen.</h2>
+        <p class="card-subtitle">You can close this page.</p>
+        {% endif %}
+    </div>
+    {% if not spent %}<button type="button" class="btn-save" id="closePage">Close</button>{% endif %}
+</div>
+
+{% if not spent %}
+<script>
+    // As on /pair/done: browsers close only a tab a script opened, so for one a QR scan opened this may do nothing.
+    const closePage = () => window.close("", "_parent", "");
+    document.getElementById("closePage").addEventListener("click", () => {
+        closePage();
+        setTimeout(() => { document.getElementById("closePage").hidden = true; }, 300);
+    });
+</script>
+{% endif %}
+{% endblock %}

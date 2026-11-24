@@ -21,14 +21,27 @@ aren't in its config: a touchscreen's settings then say how to set up one that i
 
 A touchscreen plays its owner's Spotify itself (its Web Playback SDK), so it asks for a short-lived access token for
 the account's link (GET /spotify/token); the refresh token and the app's secret stay here.
+
+A touchscreen's people sign in to Spotify on their phones (POST /spotify/sign-ins, GET /spotify/sign-ins/<id>,
+services/spotify_sign_in.py): the touchscreen shows a code to scan and is handed Spotify's code once the phone is back.
 """
 
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 import requests
-from countdown_api.models import EpaperConfig, SoloistApiKey, SoloistKeyCode, SoloistKeys, TouchscreenConfig
+from countdown_api.models import (
+    EpaperConfig,
+    SoloistApiKey,
+    SoloistKeyCode,
+    SoloistKeys,
+    SpotifySignIn,
+    SpotifySignInRequest,
+    SpotifySignInResult,
+    TouchscreenConfig,
+)
+from pydantic import ValidationError
 from cryptography.fernet import InvalidToken
-from flask import Blueprint, Response, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request, url_for
 from redis import RedisError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -55,6 +68,7 @@ from broker.services import (
     registration,
     renderer_config,
     soloist,
+    spotify_sign_in,
 )
 
 if TYPE_CHECKING:
@@ -444,6 +458,51 @@ def soloist_key(device_id: str) -> ResponseReturnValue:
         current_app.logger.warning("A saved Soloist API key won't decrypt; it has to be saved again")
         return jsonify(error="no Soloist API key saved for them"), 404
     return SoloistApiKey(api_key=key).model_dump(mode="json"), 200, {"Cache-Control": "no-store"}
+
+
+@bp.post("/spotify/sign-ins")
+@require_device_auth
+def create_spotify_sign_in(device_id: str) -> ResponseReturnValue:
+    """Answer a touchscreen a Spotify sign-in to show as a code to scan (SpotifySignIn).
+
+    It sends its client id, PKCE challenge and scopes (SpotifySignInRequest), and keeps the verifier. The answer's
+    redirect_uri is the settings site's callback, which it sends again when it exchanges Spotify's code. 400 for a
+    request that isn't one, and 409 for an e-paper screen.
+    """
+    device = db.session.get_one(Device, device_id)
+    if device.type != "touchscreen":
+        return jsonify(error="only a touchscreen signs in to Spotify"), 409
+    try:
+        asked = SpotifySignInRequest.model_validate(request.get_json(silent=True))
+    except ValidationError:
+        return jsonify(error="client_id, code_challenge and scope are needed"), 400
+    redirect_uri = url_for("spotify_sign_in_page.callback", _external=True)
+    if site := current_app.config["SITE_URL"]:
+        redirect_uri = site + url_for("spotify_sign_in_page.callback")
+    started = spotify_sign_in.start(device, asked.client_id, asked.code_challenge, asked.scope, redirect_uri)
+    answer = SpotifySignIn(
+        id=started.id, redirect_uri=redirect_uri, expires_in=int(spotify_sign_in.TTL.total_seconds())
+    )
+    return answer.model_dump(mode="json"), 201
+
+
+@bp.get("/spotify/sign-ins/<id>")
+@require_device_auth
+def get_spotify_sign_in(device_id: str, id: str) -> ResponseReturnValue:  # noqa: A002 -- the contract's {id}
+    """Answer a touchscreen where its Spotify sign-in stands (SpotifySignInResult), and Spotify's code once, when done.
+
+    404 for no such sign-in of this touchscreen's, one that has lapsed, or one already answered.
+    """
+    taken = spotify_sign_in.take(device_id, id)
+    if taken is None:
+        return jsonify(error="no such sign-in: start another"), 404
+    status, answer = taken
+    result = SpotifySignInResult(
+        status=status,
+        code=answer if status == "done" else None,
+        error=answer if status == "failed" else None,
+    )
+    return result.model_dump(mode="json", exclude_none=True), 200, {"Cache-Control": "no-store"}
 
 
 @bp.get("/account")
