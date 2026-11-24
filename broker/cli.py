@@ -41,6 +41,7 @@ from .services import (
     pairing,
     pairing_key,
     registration,
+    soloist,
     weather_place,
 )
 
@@ -111,6 +112,9 @@ def owner(device_id: str, user: str) -> None:
     device = _get_device(device_id)
     previous = device.owner
     device.owner = user
+    if previous != user:
+        # Its people's Soloist keys were saved for its last owner's household.
+        soloist.forget(device)
     if device.paired_at is None:
         device.paired_at = datetime.now(UTC)
     # As pairing does: named, so the render pool draws it, and no code left to show.
@@ -134,6 +138,7 @@ def unpair(device_id: str, *, wipe_config: bool) -> None:
     device = _get_device(device_id)
     device.paired_at = None
     device.owner = None
+    soloist.forget(device)
     device.pairing_codes.clear()
     if wipe_config:
         # Reset to the model's defaults by replacing the row. The flush matters: without it SQLAlchemy

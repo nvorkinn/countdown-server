@@ -69,9 +69,11 @@ def test_sign_up_is_public_but_adding_a_screen_is_not():
     assert not any(fnmatchcase(route, pattern) for route in ("/pair/add", "/pair/token") for pattern in public)
 
 
-def test_only_sign_up_about_and_static_files_skip_the_login():
+def test_only_sign_up_about_the_soloist_key_page_and_static_files_skip_the_login():
     labels = _labels("countdown-server")
-    assert labels["caddy_0.@public.path"].split() == ["/about", "/static/*"]
+    # /soloist is where one of a touchscreen's people pastes their Soloist key: the household has no accounts, and the
+    # code in its link is what lets them in (broker/routes/soloist_page.py).
+    assert labels["caddy_0.@public.path"].split() == ["/about", "/soloist", "/static/*"]
     assert labels["caddy_0.handle_1"] == "@public"
     # The catch-all: everything else on the settings site imports the login.
     assert "caddy_0.handle_2" not in labels

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Your Spotify Soloist key{% endblock %}
+{% block heading %}Your Spotify Soloist key{% endblock %}
+
+{% block content %}
+<div class="card">
+    {% if error %}
+    <div class="card-header">
+        <h2 class="card-title">The key wasn't saved</h2>
+    </div>
+    <div class="error-banner">{{ error }}</div>
+    {% elif saved %}
+    <div class="card-header">
+        <h2 class="card-title">Your key is saved</h2>
+        <p class="card-subtitle">The touchscreen can play as you now. You can close this page.</p>
+    </div>
+    {% else %}
+    <div class="card-header">
+        <h2 class="card-title">Paste your key</h2>
+        <p class="card-subtitle">
+            The touchscreen plays your music with Spotify Soloist, which needs a key of your own. Make one in your
+            <a href="https://developer.spotify.com/dashboard/soloist" target="_blank" rel="noopener">Spotify for Developers dashboard</a>
+            (Spotify Premium is required), and paste it here. Don't use anyone else's.
+        </p>
+    </div>
+    {% if invalid %}<div class="error-banner">Paste the key from your dashboard.</div>{% endif %}
+    <form method="POST" action="{{ url_for('soloist_page.save_key') }}" autocomplete="off">
+        <input type="hidden" name="code" value="{{ code }}">
+        <div class="form-group">
+            <label for="api_key">API key</label>
+            <input type="password" id="api_key" name="api_key" autocomplete="off" required>
+            <p class="form-hint">
+                It is kept for this touchscreen only. If you stop using the touchscreen, revoke the key in the dashboard.
+            </p>
+        </div>
+        <button type="submit" class="btn-save">Save key</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
