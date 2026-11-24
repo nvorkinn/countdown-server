@@ -4,50 +4,26 @@
 # it gets re-checked rather than forgotten. Prefer merging Dependabot's base-image bump (see .github/dependabot.yml)
 # and deleting the entry over extending the date.
 
-# caddy:2-alpine, victoria-metrics and victoria-logs: Go standard library built into the upstream binaries. Fixed in
-# Go 1.26.10 / 1.27.3; waiting on a Caddy / VictoriaMetrics release built with it (Dependabot proposes the tag).
-CVE-2026-111943 exp:2026-11-24
-CVE-2026-78667 exp:2026-11-24
-CVE-2026-78669 exp:2026-11-24
-CVE-2026-97031 exp:2026-11-24
-# The same, fixed in Go 1.26.11 / 1.27.4 (victoria-metrics v1.156.0 is built with 1.27.3).
-CVE-2026-97054 exp:2026-11-24
+# broker and sqlite-web (python:3.14-slim): pip's bundled copies of msgpack, setuptools and urllib3 in the base
+# image's own pip. pip is not on the broker's PATH at runtime (the app runs from /app/.venv, which has none) and never
+# runs in either container. Goes away with the next python:3.14-slim that ships a newer pip.
+GHSA-6v7p-g79w-8964 exp:2026-12-01
+CVE-2025-47273 exp:2026-12-01
+CVE-2026-97687 exp:2026-12-01
+CVE-2026-97689 exp:2026-12-01
 
-# caddy:2-alpine (brotli-libs) and fluent-bit (libbrotli1): the distro has the fix (Alpine 1.2.1-r0, Debian
-# 1.1.0-2+deb13u1) but upstream has not rebuilt the image on it. Neither image decodes untrusted brotli input
-# (Caddy's encode directive only compresses responses).
-CVE-2026-111497 exp:2026-11-24
+# broker and sqlite-web (python:3.14-slim): msgpack 1.1.2 in the same pip (memory leak deserializing maps), fixed in
+# 1.2.3. Same reasoning as above: pip never runs in either container.
+CVE-2026-114613 exp:2026-12-01
 
-# caddy:2-alpine (curl, libcurl): the distro has the fix (Alpine 8.23.0-r0) but upstream has not rebuilt the image
-# on it. Nothing in the Caddy container runs curl.
-CVE-2026-92392 exp:2026-11-24
+# caddy: golang.org/x/net/html DoS via crafted HTML input (HIGH), fixed in x/net 0.62.0. Vendored in the upstream
+# binary (v0.59.0); waiting on a Caddy release that bumps it.
+CVE-2026-78661 exp:2026-12-01
 
-# caddy:2-alpine: go-jose/v4 v4.1.5 built into the upstream Caddy binary (DoS parsing JWKs with RSA keys). Fixed in
-# 4.1.6; waiting on a Caddy release built with it (Dependabot proposes the tag).
-CVE-2026-116587 exp:2026-11-24
-
-# broker (python:3.14-slim): pip's bundled copies of msgpack, setuptools and urllib3 in the base image's own pip.
-# pip is not on the broker's PATH at runtime (the app runs from /app/.venv, which has none) and never runs in the
-# container. Goes away with the next python:3.14-slim that ships a newer pip.
-GHSA-6v7p-g79w-8964 exp:2026-11-24
-CVE-2025-47273 exp:2026-11-24
-CVE-2026-97687 exp:2026-11-24
-CVE-2026-97689 exp:2026-11-24
-
-# broker (python:3.14-slim): msgpack 1.1.2 in the same pip (memory leak deserializing maps), fixed in 1.2.3. Same reasoning
-# as above: pip never runs in the container.
-CVE-2026-114613 exp:2026-11-24
-
-# caddy and victoria-metrics: golang.org/x/net/html DoS via crafted HTML input (HIGH), fixed in x/net 0.62.0. Vendored in
-# the upstream binaries (caddy has v0.59.0, victoria-metrics v0.60.0); waiting on an upstream release that bumps it.
-CVE-2026-78661 exp:2026-11-24
-
-# broker (python:3.14-slim) and fluent-bit (debian 13.7): zlib1g 1.3.1-1+b1, fixed in Debian as 1.3.1-1+deb13u1 but not
-# yet in the upstream images. The flaws are in zlib's gz* file API (gz_vacate heap overflow) and a webpack-dev-middleware
-# title mixed into the zlib entry; neither image reads gzip files through zlib's gz* functions (Python's zlib module and
-# Fluent Bit's compression use inflate/deflate streams). Goes away with the next python:3.14-slim / fluent-bit rebuild.
-CVE-2026-76844 exp:2026-11-24
-CVE-2026-85091 exp:2026-11-24
+# broker and sqlite-web (python:3.14-slim): zlib1g 1.3.1-1+b1, fixed in Debian as 1.3.1-1+deb13u1 but not yet in the
+# upstream image. The flaw is in zlib's gz* file API, which neither image reads gzip files through (Python's zlib
+# module uses inflate/deflate streams). Goes away with the next python:3.14-slim rebuild.
+CVE-2026-85091 exp:2026-12-01
 
 # fluent-bit (debian 13.7): libpq5 17.11-0+deb13u1, PostgreSQL's client library, fixed in Debian as 17.12-0+deb13u1 but
 # not yet in fluent/fluent-bit:5.2.0. Nearly all are flaws in the PostgreSQL server (code run by SQL functions,
@@ -92,17 +68,17 @@ CVE-2026-6467 exp:2026-11-29
 # fluent-bit (libkrb5-3, libk5crypto3, libgssapi-krb5-2, libkrb5support0): MIT krb5, fixed in Debian 1.21.3-5+deb13u2
 # but upstream has not rebuilt the image on it. Almost all are KDC or kadmind DoS, daemons not in the image, and Fluent
 # Bit here never does Kerberos.
-CVE-2026-107364 exp:2026-11-24
-CVE-2026-112315 exp:2026-11-24
-CVE-2026-112316 exp:2026-11-24
-CVE-2026-112317 exp:2026-11-24
-CVE-2026-112318 exp:2026-11-24
-CVE-2026-112319 exp:2026-11-24
-CVE-2026-112320 exp:2026-11-24
-CVE-2026-112321 exp:2026-11-24
-CVE-2026-112322 exp:2026-11-24
-CVE-2026-112323 exp:2026-11-24
-CVE-2026-118380 exp:2026-11-24
-CVE-2026-119079 exp:2026-11-24
-CVE-2026-71199 exp:2026-11-24
-CVE-2026-71200 exp:2026-11-24
+CVE-2026-107364 exp:2026-12-01
+CVE-2026-112315 exp:2026-12-01
+CVE-2026-112316 exp:2026-12-01
+CVE-2026-112317 exp:2026-12-01
+CVE-2026-112318 exp:2026-12-01
+CVE-2026-112319 exp:2026-12-01
+CVE-2026-112320 exp:2026-12-01
+CVE-2026-112321 exp:2026-12-01
+CVE-2026-112322 exp:2026-12-01
+CVE-2026-112323 exp:2026-12-01
+CVE-2026-118380 exp:2026-12-01
+CVE-2026-119079 exp:2026-12-01
+CVE-2026-71199 exp:2026-12-01
+CVE-2026-71200 exp:2026-12-01
