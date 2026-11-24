@@ -20,6 +20,7 @@ from .routes import (
     register,
     soloist_page,
     spotify_oauth,
+    spotify_sign_in_page,
     status,
     stop_search,
 )
@@ -85,6 +86,7 @@ def create_app() -> Flask:
     app.register_blueprint(account.bp)
     app.register_blueprint(register.bp)
     app.register_blueprint(soloist_page.bp)
+    app.register_blueprint(spotify_sign_in_page.bp)
     app.register_blueprint(stop_search.bp)
     app.register_blueprint(place_search.bp)
     app.register_blueprint(frames.bp)

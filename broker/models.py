@@ -50,6 +50,8 @@ class Device(Model):
     # A touchscreen's people's Spotify Soloist API keys, and the codes they save them with (services/soloist.py).
     soloist_keys: Mapped[list[SoloistKey]] = relationship(back_populates="device", cascade="all, delete-orphan")
     soloist_codes: Mapped[list[SoloistCode]] = relationship(back_populates="device", cascade="all, delete-orphan")
+    # Its people's Spotify sign-ins on their phones, until each is answered (services/spotify_sign_in.py).
+    spotify_sign_ins: Mapped[list[SpotifySignIn]] = relationship(back_populates="device", cascade="all, delete-orphan")
     # The services a screen shows (Spotify, Apple Music, GitHub, Parcel, Glowmarkt) are linked to its owner's account,
     # not to the screen: see SpotifyToken and the rest, keyed by user_id.
     assignment: Mapped[RendererAssignment | None] = relationship(back_populates="device", cascade="all, delete-orphan")
@@ -529,6 +531,29 @@ class SoloistCode(Model):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
     device: Mapped[Device] = relationship(back_populates="soloist_codes")
+
+
+class SpotifySignIn(Model):
+    """A touchscreen's Spotify sign-in on a phone (services/spotify_sign_in.py), until it lapses or is answered.
+
+    It keeps what the phone asks Spotify for (the touchscreen's client id, PKCE challenge and scopes), then Spotify's
+    code or error. The verifier stays on the touchscreen, so the code is no use to anyone else.
+    """
+
+    __tablename__ = "spotify_sign_ins"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[str] = mapped_column(String)
+    code_challenge: Mapped[str] = mapped_column(String)
+    scope: Mapped[str] = mapped_column(String)
+    redirect_uri: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # Spotify's answer, once the phone is back: its code, or its error.
+    code: Mapped[str | None] = mapped_column(String)
+    error: Mapped[str | None] = mapped_column(String)
+
+    device: Mapped[Device] = relationship(back_populates="spotify_sign_ins")
 
 
 class AppleMusicToken(Model):
