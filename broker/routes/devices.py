@@ -39,9 +39,9 @@ from countdown_api.models import (
     SpotifySignInResult,
     TouchscreenConfig,
 )
-from pydantic import ValidationError
 from cryptography.fernet import InvalidToken
 from flask import Blueprint, Response, current_app, jsonify, request, url_for
+from pydantic import ValidationError
 from redis import RedisError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
