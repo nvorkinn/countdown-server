@@ -48,6 +48,8 @@ def save_key() -> ResponseReturnValue:
     device_id = soloist.save(code, key)
     if device_id is None:
         return render_template("soloist.html", error=SPENT)
-    if setting_up:
-        return redirect(url_for("pages.phone_setup", device_id=device_id), 303)
-    return render_template("soloist.html", saved=True)
+    return (
+        redirect(url_for("pages.phone_setup", device_id=device_id), 303)
+        if setting_up
+        else render_template("soloist.html", saved=True)
+    )

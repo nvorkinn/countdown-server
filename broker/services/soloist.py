@@ -76,7 +76,8 @@ def code_is_open(code: str) -> bool:
 
 def code_device(code: str) -> str | None:
     """Return the touchscreen an open code is for, if it is one."""
-    return db.session.get(SoloistCode, code).device_id if code_is_open(code) else None
+    found = db.session.get(SoloistCode, code)
+    return found.device_id if found is not None and code_is_open(code) else None
 
 
 def save(code: str, key: str) -> str | None:
