@@ -74,8 +74,16 @@ def code_is_open(code: str) -> bool:
     return found is not None and found.expires_at >= datetime.now(UTC) and is_paired_touchscreen(found.device)
 
 
-def save(code: str, key: str) -> bool:
-    """Use the code up and save `key` for the touchscreen and person it names, over any they had; False if it won't do.
+def code_device(code: str) -> str | None:
+    """Return the touchscreen an open code is for, if it is one."""
+    found = db.session.get(SoloistCode, code)
+    return found.device_id if found is not None and code_is_open(code) else None
+
+
+def save(code: str, key: str) -> str | None:
+    """Use the code up and save `key` for the touchscreen and person it names, over any they had.
+
+    Returns the touchscreen's device id, or None if the code won't do.
 
     The code is taken by a conditional DELETE, so of two posts racing on one code only one saves. The key is never
     logged.
@@ -88,14 +96,15 @@ def save(code: str, key: str) -> bool:
     device = db.session.get(Device, taken.device_id) if taken is not None else None
     if taken is None or device is None or not is_paired_touchscreen(device):
         db.session.rollback()
-        return False
+        return None
     saved = db.session.get(SoloistKey, (taken.device_id, taken.person))
     if saved is None:
         saved = SoloistKey(device_id=taken.device_id, person=taken.person)
         db.session.add(saved)
     saved.key = key
+    device_id = taken.device_id
     db.session.commit()
-    return True
+    return device_id
 
 
 def people(device_id: str) -> list[str]:

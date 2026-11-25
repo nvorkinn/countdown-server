@@ -4,118 +4,7 @@
 {% block heading %}Connect your device{% endblock %}
 
 {% block content %}
-<style>
-    .waiting-card {
-        text-align: center;
-        padding: 48px 24px 32px;
-    }
-
-    .waiting-card .card-header {
-        margin: 32px 0 0;
-    }
-
-    /* The logo, rebuilt so its letters can move: they flip over in turn like a departure board. */
-    .loader-pill {
-        position: relative;
-        display: inline-flex;
-        gap: 2px;
-        padding: 9px 22px;
-        border-radius: 9999px;
-        background: var(--tfl-red);
-        color: #fff;
-        font-size: 26px;
-        font-weight: 900;
-        letter-spacing: 1px;
-        perspective: 400px;
-    }
-
-    .loader-pill, .loader-pill * {
-        font-family: var(--logo-font);
-    }
-
-    .loader-pill span {
-        display: inline-block;
-        animation: flap 3.2s cubic-bezier(.5, 0, .3, 1) infinite;
-        animation-delay: calc(var(--i) * 70ms);
-    }
-
-    /* A light sweeping across the pill, clipped to it. */
-    .loader-pill .sheen {
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        overflow: hidden;
-        pointer-events: none;
-    }
-
-    .loader-pill .sheen::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .45) 50%, transparent 65%);
-        transform: translateX(-100%);
-        animation: sheen 3.2s ease-in-out infinite;
-    }
-
-    /* Rings pulsing out from the pill, as the device comes online. */
-    .loader-pill::before,
-    .loader-pill::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        border: 2px solid var(--tfl-red);
-        opacity: 0;
-        animation: ring 2.4s ease-out infinite;
-    }
-
-    .loader-pill::after {
-        animation-delay: 1.2s;
-    }
-
-    @keyframes flap {
-        0%, 55% { transform: rotateX(0); }
-        62% { transform: rotateX(-90deg); opacity: .5; }
-        63% { transform: rotateX(90deg); opacity: .5; }
-        72%, 100% { transform: rotateX(0); opacity: 1; }
-    }
-
-    @keyframes sheen {
-        0%, 20% { transform: translateX(-100%); }
-        60%, 100% { transform: translateX(100%); }
-    }
-
-    @keyframes ring {
-        0% { transform: scale(1); opacity: .5; }
-        100% { transform: scale(1.35, 1.9); opacity: 0; }
-    }
-
-    .waiting-card.stopped .loader-pill {
-        background: var(--text-muted);
-    }
-
-    .waiting-card.stopped .loader-pill,
-    .waiting-card.stopped .loader-pill * {
-        animation: none;
-    }
-
-    .waiting-card.stopped .loader-pill::before,
-    .waiting-card.stopped .loader-pill::after {
-        content: none;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        .loader-pill,
-        .loader-pill * {
-            animation: none !important;
-        }
-
-        .loader-pill::before,
-        .loader-pill::after {
-            content: none;
-        }
-    }
-</style>
+{% include "_loader_pill.html" %}
 
 <div class="card waiting-card" id="waiting" hidden>
     <div class="loader-pill" role="img" aria-label="Countdown">
@@ -176,11 +65,11 @@
                 body: JSON.stringify({token: token}),
             }).then(function (response) {
                 if (response.status === 200) {
-                    // A touchscreen sets itself up once paired, so its owner is done here; an e-paper screen goes on
-                    // to its settings.
+                    // A touchscreen goes on through the rest of its setup on this phone (Spotify, then the Soloist
+                    // key); an e-paper screen goes on to its settings.
                     return response.json().then(function (body) {
                         location.replace(body.type === "touchscreen"
-                            ? "{{ url_for('pages.pair_done') }}"
+                            ? "{{ url_for('pages.phone_setup') }}"
                             : "{{ url_for('pages.device_config') }}");
                     });
                 } else if (response.status === 409) {

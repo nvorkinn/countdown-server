@@ -7,9 +7,9 @@ touchscreen to take. Both are public: the household has no accounts here, and th
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, redirect, render_template, request
+from flask import Blueprint, redirect, render_template, request, url_for
 
-from broker.services import spotify_sign_in
+from broker.services import spotify_sign_in, touchscreen_setup
 
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
@@ -28,10 +28,17 @@ def start() -> ResponseReturnValue:
 
 @bp.get("/callback")
 def callback() -> ResponseReturnValue:
-    """Keep what Spotify answered for the sign-in its state names, and tell the person they can close the page."""
+    """Keep what Spotify answered for the sign-in its state names, and tell the person they can close the page.
+
+    A touchscreen still being set up sends its owner's phone on to its next step instead
+    (services/touchscreen_setup.py).
+    """
     state = request.args.get("state", "").strip()
     code = request.args.get("code", "").strip()
     error = request.args.get("error", "").strip()
-    if not spotify_sign_in.finish(state, code, error):
+    device_id = spotify_sign_in.finish(state, code, error)
+    if device_id is None:
         return render_template("spotify_sign_in.html", spent=True)
+    if not error and touchscreen_setup.in_setup(device_id):
+        return redirect(url_for("pages.phone_setup", device_id=device_id))
     return render_template("spotify_sign_in.html", declined=bool(error))
