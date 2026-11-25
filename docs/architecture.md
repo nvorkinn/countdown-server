@@ -137,6 +137,7 @@ sequenceDiagram
     end
     P->>B: POST /pair/token
     Note over B: Sets the owner and names the screen (slug = device id)
+    Note over B: A screen paired for the first time takes the settings its owner saved for new screens
     B->>R: writes its config, lists it, queues a render
     B-->>P: 200 paired, so the page opens the settings
     R->>R: a worker draws the first frame

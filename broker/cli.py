@@ -134,7 +134,11 @@ def owner(device_id: str, user: str) -> None:
 @click.argument("device_id")
 @click.option("--config", "wipe_config", is_flag=True, help="Also reset its settings.")
 def unpair(device_id: str, *, wipe_config: bool) -> None:
-    """Make a device show a pairing code again. Its owner's linked services stay with their account."""
+    """Make a device show a pairing code again. Its owner's linked services stay with their account.
+
+    Whoever pairs with it next is pairing with it for the first time, so it takes the settings they saved for new
+    screens, over the settings it kept.
+    """
     device = _get_device(device_id)
     device.paired_at = None
     device.owner = None

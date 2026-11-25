@@ -20,7 +20,15 @@ from sqlalchemy import delete, or_, select
 
 from broker.db import db
 from broker.models import Device, PairingCode, PendingPairing
-from broker.services import assignments, device_keys, pairing_key, render_jobs, render_screens, soloist
+from broker.services import (
+    assignments,
+    device_keys,
+    pairing_key,
+    render_jobs,
+    render_screens,
+    screen_defaults,
+    soloist,
+)
 
 # Excludes visually ambiguous characters (0/O, 1/I/L) since this gets typed in by hand.
 CODE_ALPHABET = "".join(c for c in string.ascii_uppercase + string.digits if c not in "0O1IL")
@@ -59,6 +67,8 @@ def pair_by_token(user: str, token: str) -> str:
 def _pair(device: Device, user: str) -> str | None:
     """Make `user` the device's owner and drop its codes (not committed); return the owner it had.
 
+    A device paired for the first time takes the settings its owner saved for new screens (services/screen_defaults).
+
     A code is only for handing the device to an owner, so once it has one there's none left to show: without this a
     code issued before pairing by token stayed on the screen until it expired.
     """
@@ -69,6 +79,8 @@ def _pair(device: Device, user: str) -> str | None:
         # Its people's Soloist keys were saved for its last owner's household, not for the new owner's.
         soloist.forget(device)
     if device.paired_at is None:
+        # New to its owner: it starts with the settings they saved for new screens of its type, if any.
+        screen_defaults.apply(device, user)
         device.paired_at = datetime.now(UTC)
     # Its stable name, so the render pool lists it (and draws it) at once; the owner can call it anything later.
     assignments.auto_name(device)

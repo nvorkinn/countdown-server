@@ -6,7 +6,6 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 from countdown_api import keys as store_keys
-from countdown_api.models import EpaperConfig, NoticeBoardAddress, TouchscreenConfig
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
 from redis import Redis, RedisError
 
@@ -40,6 +39,7 @@ from broker.models import (
     THEME_COLOURS,
     THEME_DYNAMIC,
     THEMES,
+    TYPE_FIELDS,
     WEATHER_DESIGNS,
     Device,
     DeviceConfig,
@@ -65,6 +65,7 @@ from broker.services import (
     parcel_key,
     render_jobs,
     renderer_config,
+    screen_defaults,
     signup,
     stops,
     touchscreen_setup,
@@ -76,6 +77,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from datetime import datetime
 
+    from countdown_api.models import NoticeBoardAddress
     from flask.typing import ResponseReturnValue
 
     from broker.models import DeviceType, Layout
@@ -453,32 +455,9 @@ NUMBERS = {
 }
 
 
-# The page's fields that are one device type's own, each in its config's `style`, `display` or `lyrics`: a save from a
-# page of the other type that posts one is refused, as that type's config has nowhere for it.
-TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
-    "epaper": frozenset({"orientation", "style", "weather_design", "layout"}),
-    "touchscreen": frozenset(
-        {
-            "theme",
-            "theme_colour",
-            "theme_dynamic",
-            "screen_sleep_minutes",
-            "screen_brightness",
-            "quiet_hours_on",
-            "quiet_hours_start",
-            "quiet_hours_end",
-            "lyrics_size",
-            "lyrics_align",
-        }
-    ),
-}
-# What an error calls each type of device.
+# What an error calls each type of device. A save from a page of one type that posts a field of the other's
+# (models.TYPE_FIELDS) is refused, as its config has nowhere for it.
 TYPE_NAMES: dict[DeviceType, str] = {"epaper": "an e-paper screen", "touchscreen": "a touchscreen"}
-# The config a save must make: the contract's ConfigResponse member for the device's type, as its `type` picks it.
-CONFIG_MODELS: dict[DeviceType, type[EpaperConfig | TouchscreenConfig]] = {
-    "epaper": EpaperConfig,
-    "touchscreen": TouchscreenConfig,
-}
 
 
 def _foreign_fields(device_type: DeviceType) -> list[str]:
@@ -582,19 +561,13 @@ def _set_integrations(config: DeviceConfig, device_type: DeviceType) -> None:
 def _contract_errors(config: DeviceConfig) -> list[str]:
     """Return what's wrong with the config the settings now make, by the contract's model for the device's type.
 
-    Every save is checked here, whatever the page checked first: the config is built as the device and the render
-    pool read it (renderer_config.build) and validated as a ConfigResponse, whose `type` picks the model.
+    Every save is checked here, whatever the page checked first (renderer_config.contract_allows).
     """
-    device_type = config.device.type
-    try:
-        CONFIG_MODELS[device_type].model_validate(
-            renderer_config.build(config, pairing_code=None).model_dump(mode="json")
-        )
-    except ValueError:  # pydantic's ValidationError is one
-        # Not the error's text: it quotes the values, which are the owner's.
-        current_app.logger.warning("A save of %s made a config the contract refuses", config.device_id)
-        return [f"These settings aren't allowed for {TYPE_NAMES[device_type]}."]
-    return []
+    if renderer_config.contract_allows(config):
+        return []
+    # Not the validation's own text: it quotes the values, which are the owner's.
+    current_app.logger.warning("A save of %s made a config the contract refuses", config.device_id)
+    return [f"These settings aren't allowed for {TYPE_NAMES[config.device.type]}."]
 
 
 def _publish_saved(device_id: str, *, turned: bool) -> None:
@@ -876,6 +849,8 @@ def _has_section(device_type: DeviceType, name: str) -> bool:
 
 # What the page calls each type of device.
 DEVICE_TYPE_LABELS: dict[DeviceType, str] = {"epaper": "E-paper screen", "touchscreen": "Touchscreen"}
+# What the page calls the screens of each type still to be set up, which start with the settings saved for them.
+NEW_SCREENS: dict[DeviceType, str] = {"epaper": "new e-paper screens", "touchscreen": "new touchscreens"}
 
 
 # What's wrong with the account's Parcel key, by what Parcel last said of it for this screen, on the screen's page
@@ -915,6 +890,9 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         notice_address=household_address.stored(config),
         device_type=device.type,
         device_types=DEVICE_TYPE_LABELS,
+        # What the user's new screens of this type start with (services/screen_defaults), if they saved any.
+        new_screens=NEW_SCREENS[device.type],
+        screen_defaults=screen_defaults.get(user_id, device.type),
         themes=THEMES,
         theme_colours=THEME_COLOURS,
         theme_dynamic=THEME_DYNAMIC,
@@ -963,6 +941,26 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         parcel_problem=PARCEL_PROBLEMS.get(parcel_key.link_status(current_app.extensions["redis"], device_id)),
         errors=errors or [],
     )
+
+
+@bp.post("/device/<device_id>/defaults")
+@require_paired_user
+def save_screen_defaults() -> ResponseReturnValue:
+    """Keep the screen's settings, as last saved, as what the user's new screens of its type start with."""
+    device = db.session.get_one(Device, g.device_id)
+    config = db.session.get_one(DeviceConfig, g.device_id)
+    screen_defaults.save(signed_in_user(), config, screen_label(device))
+    db.session.commit()
+    return redirect(url_for("pages.device_config", device_id=g.device_id))
+
+
+@bp.post("/device/<device_id>/defaults/clear")
+@require_paired_user
+def clear_screen_defaults() -> ResponseReturnValue:
+    """Forget the settings the user saved for new screens of this screen's type: they start with the defaults again."""
+    screen_defaults.clear(signed_in_user(), db.session.get_one(Device, g.device_id).type)
+    db.session.commit()
+    return redirect(url_for("pages.device_config", device_id=g.device_id))
 
 
 @bp.post("/device/display/unlink", defaults={"device_id": None})

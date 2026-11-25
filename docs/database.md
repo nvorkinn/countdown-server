@@ -18,6 +18,7 @@ erDiagram
     devices }o..o| parcel_keys : "owner's parcel notices"
     devices ||--o{ soloist_keys : "its people's Soloist keys"
     devices ||--o{ soloist_codes : "codes to save them with"
+    devices }o..o| screen_defaults : "owner's settings for new screens"
 
     devices {
         string device_id PK "token_hex(6)"
@@ -113,6 +114,13 @@ erDiagram
         string person
         datetime expires_at
     }
+    screen_defaults {
+        string user_id PK "the owner"
+        string type PK "epaper or touchscreen"
+        json settings "by device_config column"
+        datetime saved_at
+        string source_name "the screen they were saved from"
+    }
 ```
 
 | Table | One row per | Notes |
@@ -130,6 +138,7 @@ erDiagram
 | `parcel_keys` | parcel notices Parcel API key | Encrypted. |
 | `soloist_keys` | touchscreen and person | A person's own Spotify Soloist API key, encrypted, sent only to the touchscreen it was saved for. `person` is the touchscreen's name for them. |
 | `soloist_codes` | live code | A touchscreen's code for one of its people to save their key with: 10 minutes, one use. Lapsed codes are swept whenever a new one is issued. |
+| `screen_defaults` | user and device type | The settings the user's new screens of that type start with: a snapshot of one screen's `device_config` columns (`services/screen_defaults.py` says which), applied the first time the user pairs with a screen. Not linked to the screen it was saved from. |
 
 - **Accounts.** The five login tables are keyed by the user id of a device's owner (`device_users`), not by screen: a login serves all
   of a user's screens, and each screen's own `*_enabled` column in `device_config` says whether it shows that service

@@ -168,6 +168,12 @@ incoming request). The sign-up page (`/pair`), the page for a Soloist key (`/sol
 Pairing gives the screen its internal name (its slug, which is its device id), puts it on the render pool's list and
 queues its first render. Its owner can give it a friendly name on its settings page.
 
+A screen paired for the first time starts with the settings its owner saved for new screens of its type, if they saved
+any: "Use this screen's settings" in the Screen section of a screen's page keeps that screen's settings, as last
+saved, for new e-paper screens or new touchscreens (one set for each, `screen_defaults`). They are how the screen
+looks and what it shows (`services/screen_defaults.py`), never its size, frame format or whether it can set its
+brightness. Saving them again replaces them, and "Stop using them" goes back to the standard settings.
+
 Each screen's settings are at `/device/<id>` (and `/device` for the most recently paired one): departure stops (TfL and
 Entur), the weather place (an Open-Meteo search), a postcode for the notice board (and, for a Norwegian one, the
 household's address for its bin collection days, saved only when Kartverket's address register has exactly one match in

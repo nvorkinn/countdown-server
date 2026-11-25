@@ -5,6 +5,8 @@ the screen's live code while it has one (services/pairing_key.py, `v1:pairing:<d
 same way. The contract (vendor/countdown-api) is the shape countdown's renderer reads them with.
 """
 
+from typing import TYPE_CHECKING
+
 from countdown_api.models import (
     AppleMusic,
     Arrivals,
@@ -31,6 +33,28 @@ from broker.db import db
 from broker.models import Device, DeviceConfig, GlowmarktCredentials, ParcelKey
 from broker.services import accounts, household_address, pace, pairing, stops, weather_place
 from broker.services.postcodes import postcode_country
+
+if TYPE_CHECKING:
+    from broker.models import DeviceType
+
+# The config a device's settings must make: the contract's ConfigResponse member for its type, as its `type` picks it.
+CONFIG_MODELS: dict[DeviceType, type[EpaperConfig | TouchscreenConfig]] = {
+    "epaper": EpaperConfig,
+    "touchscreen": TouchscreenConfig,
+}
+
+
+def contract_allows(config: DeviceConfig) -> bool:
+    """Whether the settings make a config the contract allows for the device's type.
+
+    The config is built as the device and the render pool read it (build) and validated as its type's model. Every
+    change of a device's settings is checked here, whatever checked it first.
+    """
+    try:
+        CONFIG_MODELS[config.device.type].model_validate(build(config, pairing_code=None).model_dump(mode="json"))
+    except ValueError:  # pydantic's ValidationError is one
+        return False
+    return True
 
 
 def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:

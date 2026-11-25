@@ -1905,7 +1905,8 @@
         }
 
         /* The screen itself: its name, then unlinking it, kept apart as it can't be undone. */
-        .danger-row {
+        .danger-row,
+        .defaults-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -1917,12 +1918,25 @@
             border-radius: 10px;
         }
 
-        .danger-row p {
+        /* Above it, with nothing to warn of: the settings the owner's new screens of this type start with. */
+        .defaults-row {
+            border: 1px solid var(--field-border);
+        }
+
+        .defaults-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .danger-row p,
+        .defaults-row p {
             font-size: 13px;
             color: var(--text-muted);
         }
 
-        .danger-row strong {
+        .danger-row strong,
+        .defaults-row strong {
             display: block;
             color: var(--ink);
             font-size: 14px;
