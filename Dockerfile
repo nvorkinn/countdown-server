@@ -15,7 +15,7 @@ FROM fetch AS places
 ARG PLACES_VERSION
 RUN python /fetch_geodata.py places /geodata
 
-FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.10 AS uv
 
 # The Python .python-version pins, which the tests run on (Dependabot leaves its minor version alone).
 FROM python:3.14-slim
