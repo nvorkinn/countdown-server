@@ -88,6 +88,9 @@
 
 <!-- Lives outside the settings form because forms can't nest; the Unlink button points at it. -->
 <form id="displayUnlinkForm" method="POST" action="{{ url_for('pages.display_unlink', device_id=device_id) }}"></form>
+<!-- And the two for the settings new screens start with (the Screen section's buttons). -->
+<form id="screenDefaultsForm" method="POST" action="{{ url_for('pages.save_screen_defaults', device_id=device_id) }}"></form>
+<form id="screenDefaultsClearForm" method="POST" action="{{ url_for('pages.clear_screen_defaults', device_id=device_id) }}"></form>
 
 {# A touchscreen's page saves each setting as it changes, a section at a time (config_sections.js), as the tablet does:
    no Save bar. An e-paper screen's saves the whole form. #}

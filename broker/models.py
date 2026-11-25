@@ -7,7 +7,7 @@ Timestamps are timezone-aware UTC datetimes (see UTCDateTime).
 """
 
 from datetime import datetime  # noqa: TC003 -- SQLAlchemy resolves the Mapped[...] annotations at runtime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, select, text
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -381,6 +381,46 @@ class DeviceConfig(Model):
     lyrics_align: Mapped[LyricsAlign] = mapped_column(String, default="left", server_default=text("'left'"))
 
     device: Mapped[Device] = relationship(back_populates="config")
+
+
+# The settings that are one device type's own, each in its config's `style`, `display` or `lyrics`, by their
+# DeviceConfig attribute (also the settings page's form field): the other type's config has nowhere for them.
+TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
+    "epaper": frozenset({"orientation", "style", "weather_design", "layout"}),
+    "touchscreen": frozenset(
+        {
+            "theme",
+            "theme_colour",
+            "theme_dynamic",
+            "screen_sleep_minutes",
+            "screen_brightness",
+            "quiet_hours_on",
+            "quiet_hours_start",
+            "quiet_hours_end",
+            "lyrics_size",
+            "lyrics_align",
+        }
+    ),
+}
+
+
+class ScreenDefaults(Model):
+    """The settings a user's new screens of one type start with, saved from one of their screens.
+
+    At most one row a user and type. `settings` is a snapshot of that screen's settings by DeviceConfig attribute
+    (services/screen_defaults.FIELDS says which), applied to a screen of that type the first time the user pairs with
+    it. A snapshot and not columns, so a new setting needs no change here: one the snapshot lacks keeps its default.
+    """
+
+    __tablename__ = "screen_defaults"
+
+    # The Pocket ID user id (auth.current_user).
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    type: Mapped[DeviceType] = mapped_column(String, primary_key=True)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSON)
+    saved_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # What the screen they were saved from was called then (auth.screen_label), for the page to say.
+    source_name: Mapped[str] = mapped_column(String)
 
 
 def is_hd_screen(config: DeviceConfig) -> bool:

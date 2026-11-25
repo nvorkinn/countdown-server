@@ -9,9 +9,23 @@
         <div><dt>Size</dt><dd>{{ config.width }} × {{ config.height }} px</dd></div>
         <div><dt>Device ID</dt><dd><code>{{ device_id }}</code></dd></div>
     </dl>
+    {# The settings the owner's new screens of this type start with (services/screen_defaults): saved from this screen
+       as it was last saved, and applied when they first pair with one. #}
+    <div class="defaults-row">
+        <p>
+            <strong>Settings for {{ new_screens }}</strong>
+            {% if screen_defaults %}Your {{ new_screens }} start with the settings saved from {{ screen_defaults.source_name }} on {{ screen_defaults.saved_at.strftime('%-d %B %Y') }}.{% else %}Your {{ new_screens }} start with the standard settings. They can start with this screen's instead.{% endif %}
+        </p>
+        <div class="defaults-actions">
+            {% if screen_defaults %}
+                <button type="submit" form="screenDefaultsClearForm" class="btn-action">Stop using them</button>
+            {% endif %}
+            <button type="submit" form="screenDefaultsForm" class="btn-action">Use this screen's settings</button>
+        </div>
+    </div>
     <div class="danger-row">
         <p>
-            <strong>Screen: {{ 'attached' if display_attached else 'not attached' }}</strong>
+            <strong>Screen:{{ 'attached' if display_attached else 'not attached' }}</strong>
             {% if display_attached %}Unlink a lost or retired screen. It can only come back as a new screen.{% else %}This screen can only come back by being set up as a new one.{% endif %}
         </p>
         {% if display_attached %}
