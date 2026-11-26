@@ -82,3 +82,9 @@ CVE-2026-118380 exp:2026-12-01
 CVE-2026-119079 exp:2026-12-01
 CVE-2026-71199 exp:2026-12-01
 CVE-2026-71200 exp:2026-12-01
+
+# broker, sqlite-web (python:3.14-slim) and fluent-bit: libzstd1 1.5.7+dfsg-1 (information disclosure through an
+# uninitialized buffer), fixed in Debian as 1.5.7+dfsg-1+deb13u1 but not yet in either upstream image. It is in the
+# python image for dpkg, apt and OpenSSL, none of which runs or negotiates zstd in our containers, and Fluent Bit here
+# only compresses with gzip (fluent-bit.yaml). Goes away with the next rebuild of the upstream images.
+CVE-2026-124851 exp:2026-12-01
