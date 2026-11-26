@@ -319,3 +319,49 @@ def test_a_login_change_draws_all_the_users_screens_again_and_no_change_none(cli
 def test_the_account_page_needs_a_screen(client, anonymous_client):
     assert client.get("/account").headers["Location"] == "/pair/add"
     assert anonymous_client.get("/account").status_code == 401
+
+
+# --- dev's Forget this screen -------------------------------------------------------------------------
+
+
+def test_dev_can_forget_a_screen_from_its_page_as_the_cli_does(app, client, two_screens):
+    first, second = two_screens
+    app.config["ENVIRONMENT_LABEL"] = "DEV"
+
+    page = client.get(f"/device/{first}").get_data(as_text=True)
+    assert f'action="/device/{first}/forget"' in page
+    assert "Forget this screen" in page
+
+    # Gone, with its settings and its name; the user's other screen is theirs still, and the next page to open.
+    assert client.post(f"/device/{first}/forget").headers["Location"] == "/"
+    with app.app_context():
+        assert db.session.get(Device, first) is None
+        assert db.session.get(DeviceConfig, first) is None
+        assert db.session.get_one(Device, second).owner == USER
+    assert client.get(f"/device/{first}").status_code == 404
+    # It must register again: its secret is nobody's now, so the same one makes a new device.
+    again = client.post(
+        "/api/devices/register",
+        json={"secret": FIRST_SECRET, "width": 480, "height": 800, "format": "mono-1bpp-packed"},
+    ).get_json()["device_id"]
+    assert again != first
+
+
+def test_prod_has_neither_the_forget_button_nor_its_route(app, client, two_screens):
+    first, _ = two_screens
+
+    page = client.get(f"/device/{first}").get_data(as_text=True)
+    assert "/forget" not in page
+    assert "Forget this screen" not in page
+
+    assert client.post(f"/device/{first}/forget").status_code == 404
+    with app.app_context():
+        assert db.session.get_one(Device, first).owner == USER
+
+
+def test_dev_does_not_forget_someone_elses_screen(app, client, two_screens, other_screen):
+    app.config["ENVIRONMENT_LABEL"] = "DEV"
+
+    assert client.post(f"/device/{other_screen}/forget").status_code == 404
+    with app.app_context():
+        assert db.session.get_one(Device, other_screen).owner == "user-2"

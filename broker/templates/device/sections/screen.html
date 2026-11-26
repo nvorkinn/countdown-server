@@ -32,4 +32,14 @@
             <button type="submit" form="displayUnlinkForm" class="btn-action btn-delete" data-confirm="Unlink this screen? It can only come back as a new screen.">Unlink screen</button>
         {% endif %}
     </div>
+    {# Only where the page has the environment banner (dev): what `flask devices forget` does, from the page. #}
+    {% if environment_label %}
+    <div class="danger-row">
+        <p>
+            <strong>{{ environment_label }} only</strong>
+            Forget this screen: delete it and everything kept for it here, as <code>flask devices forget</code> does. It must register again, as a new screen.
+        </p>
+        <button type="submit" form="screenForgetForm" class="btn-action btn-delete" data-confirm="Forget this screen? It is deleted here, with its settings and its name.">Forget this screen</button>
+    </div>
+    {% endif %}
 </section>

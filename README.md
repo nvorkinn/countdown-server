@@ -305,7 +305,7 @@ Run on the host with `docker exec countdown-server flask --app wsgi <command>`:
 | `devices code <device_id>` | Issue a pairing code (drawn on the screen if it has been paired before). |
 | `devices owner <device_id> <user id>` | Pair a device with a user. |
 | `devices unpair <device_id> [--config]` | Clear its owner and show a new code; `--config` also resets its settings and linked accounts. |
-| `devices forget <device_id>` | Delete it; the screen registers again as a new device. |
+| `devices forget <device_id>` | Delete it; the screen registers again as a new device. On any deployment but prod, the screen's settings page has a **Forget this screen** button that does the same. |
 | `devices seed-touchscreen <user id> [--width W] [--height H]` | Add a test touchscreen paired with a user (dev only), and print its secret. |
 | `config publish` | Rewrite the configs and subscriptions in Redis. |
 | `weather backfill` | Give any config with a typed weather location but no picked place the place Open-Meteo finds first. |
