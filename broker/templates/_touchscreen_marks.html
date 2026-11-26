@@ -1,0 +1,4 @@
+{# The marks of a step that went through, and of one that didn't, on a touchscreen's setup pages
+   (touchscreen_base.html): a tick or a cross in a round patch, as the touchscreen shows them. #}
+{% macro tick() %}<div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>{% endmacro %}
+{% macro cross() %}<div class="mark is-problem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>{% endmacro %}

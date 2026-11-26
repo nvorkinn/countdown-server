@@ -64,6 +64,17 @@ def pair_by_token(user: str, token: str) -> str:
     return "paired"
 
 
+def is_touchscreen_token(token: str) -> bool:
+    """Whether `token` is the pairing token of a touchscreen that has registered, whoever owns it.
+
+    For how the pairing page looks (routes/pages.py), nothing more: a token says nothing of its screen until the screen
+    has registered, and an e-paper screen's owner often arrives before it has.
+    """
+    if not token:
+        return False
+    return db.session.scalar(select(Device.type).where(Device.pairing_token == token)) == "touchscreen"
+
+
 def _pair(device: Device, user: str) -> str | None:
     """Make `user` the device's owner and drop its codes (not committed); return the owner it had.
 

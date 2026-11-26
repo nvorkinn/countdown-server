@@ -1,0 +1,57 @@
+{# What the pairing page does with a token or a code from its link: pair.html, and touchscreen_pair.html for a
+   touchscreen's token. It needs #waiting, #waiting-note, #code-card and #code-form. #}
+<script>
+    // A device that has just finished WiFi setup sends its owner here with a pairing token, normally
+    // in the fragment, which browsers never send to a server. The device may not have registered yet,
+    // so keep asking until it has; if it doesn't, the code below still works. A link may carry the
+    // code the device shows instead (?code=, filled in above), which is sent as if typed.
+    var token = location.hash.slice(1) || {{ token|tojson }};
+    var GIVE_UP_AFTER_MS = 90000;
+    var code = {{ code|tojson }};
+    if (code && !/^[0-9a-f]{64}$/.test(token)) {
+        document.getElementById("code-form").submit();
+    } else if (/^[0-9a-f]{64}$/.test(token)) {
+        var waiting = document.getElementById("waiting");
+        var codeCard = document.getElementById("code-card");
+        var note = document.getElementById("waiting-note");
+        var started = Date.now();
+        waiting.hidden = false;
+        codeCard.hidden = true;
+
+        var fail = function (message) {
+            waiting.classList.add("stopped");
+            note.textContent = message;
+            codeCard.hidden = false;
+        };
+        var attempt = function () {
+            fetch("{{ url_for('pages.pair_by_token') }}", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({token: token}),
+            }).then(function (response) {
+                if (response.status === 200) {
+                    // A touchscreen goes on through the rest of its setup on this phone (Spotify, then the Soloist
+                    // key); an e-paper screen goes on to its settings.
+                    return response.json().then(function (body) {
+                        location.replace(body.type === "touchscreen"
+                            ? "{{ url_for('pages.phone_setup') }}"
+                            : "{{ url_for('pages.device_config') }}");
+                    });
+                } else if (response.status === 409) {
+                    fail("This device already belongs to another account.");
+                } else if (response.status === 202 && Date.now() - started < GIVE_UP_AFTER_MS) {
+                    setTimeout(attempt, 2000);
+                } else {
+                    fail("Your device hasn't come online yet. You can enter the code on its screen instead.");
+                }
+            }).catch(function () {
+                if (Date.now() - started < GIVE_UP_AFTER_MS) {
+                    setTimeout(attempt, 2000);
+                } else {
+                    fail("Couldn't reach the server. You can enter the code on your device's screen instead.");
+                }
+            });
+        };
+        attempt();
+    }
+</script>

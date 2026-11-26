@@ -1,41 +1,44 @@
-{% extends "base.html" %}
+{% extends "touchscreen_base.html" %}
+{% from "_touchscreen_marks.html" import cross, tick %}
 
 {% block title %}Your Spotify Soloist key{% endblock %}
 {% block heading %}Your Spotify Soloist key{% endblock %}
 
 {% block content %}
-<div class="card">
+<div class="step">
     {% if error %}
-    <div class="card-header">
-        <h2 class="card-title">The key wasn't saved</h2>
-    </div>
-    <div class="error-banner">{{ error }}</div>
+    {{ cross() }}
+    <h2 class="lead">The key wasn't saved</h2>
+    <p class="problem" role="alert">{{ error }}</p>
     {% elif saved %}
-    <div class="card-header">
-        <h2 class="card-title">Your key is saved</h2>
-        <p class="card-subtitle">The touchscreen can play as you now. You can close this page.</p>
-    </div>
+    {{ tick() }}
+    <h2 class="lead">Your key is saved</h2>
+    <p class="note">The touchscreen can play as you now. You can close this page.</p>
     {% else %}
-    <div class="card-header">
-        <h2 class="card-title">Paste your key</h2>
-        <p class="card-subtitle">
-            The touchscreen plays your music with Spotify Soloist, which needs a key of your own. Make one in your
-            <a href="https://developer.spotify.com/dashboard/soloist" target="_blank" rel="noopener">Spotify for Developers dashboard</a>
-            (Spotify Premium is required), and paste it here. Don't use anyone else's.
-        </p>
-    </div>
-    {% if invalid %}<div class="error-banner">Paste the key from your dashboard.</div>{% endif %}
-    <form method="POST" action="{{ url_for('soloist_page.save_key') }}" autocomplete="off">
+    <h2 class="lead">Paste your key</h2>
+    <p class="note">
+        The touchscreen plays your music with Spotify Soloist, which needs a key of your own. Make one in your
+        <a href="https://developer.spotify.com/dashboard/soloist" target="_blank" rel="noopener">Spotify for Developers dashboard</a>
+        (Spotify Premium is required), and paste it here. Don't use anyone else's.
+    </p>
+    {% if invalid %}<p class="problem" role="alert">Paste the key from your dashboard.</p>{% endif %}
+    <form class="panel" method="POST" action="{{ url_for('soloist_page.save_key') }}" autocomplete="off">
         <input type="hidden" name="code" value="{{ code }}">
-        <div class="form-group">
+        <div class="field">
             <label for="api_key">API key</label>
-            <input type="password" id="api_key" name="api_key" autocomplete="off" required>
-            <p class="form-hint">
+            <div class="field-row">
+                <input type="password" id="api_key" name="api_key" class="input" autocomplete="off" required>
+                {#- Shown by soloist_paste.js, where the browser lets a page read the clipboard. #}
+                <button type="button" class="button is-quiet" id="soloistPaste" hidden>Paste</button>
+            </div>
+            <p class="problem" id="soloistPasteProblem" role="status" hidden>Couldn't read the clipboard. Paste into the box instead.</p>
+            <p class="hint">
                 It is kept for this touchscreen only. If you stop using the touchscreen, revoke the key in the dashboard.
             </p>
         </div>
-        <button type="submit" class="btn-save">Save key</button>
+        <button type="submit" class="button">Save key</button>
     </form>
+    <script src="{{ url_for('static', filename='soloist_paste.js') }}"></script>
     {% endif %}
 </div>
 {% endblock %}
