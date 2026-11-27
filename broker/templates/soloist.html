@@ -26,17 +26,18 @@
         <input type="hidden" name="code" value="{{ code }}">
         <div class="field">
             <label for="api_key">API key</label>
-            <div class="field-row">
-                <input type="password" id="api_key" name="api_key" class="input" autocomplete="off" required>
-                {#- Shown by soloist_paste.js, where the browser lets a page read the clipboard. #}
-                <button type="button" class="button is-quiet" id="soloistPaste" hidden>Paste</button>
-            </div>
+            <input type="password" id="api_key" name="api_key" class="input" autocomplete="off" required>
             <p class="problem" id="soloistPasteProblem" role="status" hidden>Couldn't read the clipboard. Paste into the box instead.</p>
             <p class="hint">
                 It is kept for this touchscreen only. If you stop using the touchscreen, revoke the key in the dashboard.
             </p>
         </div>
-        <button type="submit" class="button">Save key</button>
+        <div class="actions">
+            {#- Shown by soloist_paste.js, where the browser lets a page read the clipboard: it pastes the key and saves
+                it in one tap, and Save key steps back to being the way for a key pasted or typed by hand. #}
+            <button type="button" class="button" id="soloistPaste" hidden>Paste</button>
+            <button type="submit" class="button" id="soloistSave">Save key</button>
+        </div>
     </form>
     <script src="{{ url_for('static', filename='soloist_paste.js') }}"></script>
     {% endif %}

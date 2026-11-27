@@ -1,15 +1,18 @@
-// The Soloist key page's Paste button: fills the key's box from the clipboard, so a key copied in Spotify's dashboard
-// needs no long press. Shown only where the browser lets a page read the clipboard; the box takes a paste by hand
-// everywhere, and the page says so when the browser refuses the read.
+// The Soloist key page's Paste button: takes the key from the clipboard and saves it in one tap, so a key copied in
+// Spotify's dashboard needs no long press and no second button. Shown only where the browser lets a page read the
+// clipboard, and then Save key steps back to being the quieter way, for a key pasted or typed by hand. The box takes
+// a paste by hand everywhere, and the page says so when the browser refuses the read.
 (() => {
     "use strict";
 
     const input = document.getElementById("api_key");
     const paste = document.getElementById("soloistPaste");
+    const save = document.getElementById("soloistSave");
     const problem = document.getElementById("soloistPasteProblem");
-    if (!input || !paste || !problem || !navigator.clipboard?.readText) return;
+    if (!input || !paste || !save || !problem || !navigator.clipboard?.readText) return;
 
     paste.hidden = false;
+    save.classList.add("is-quiet");
     paste.addEventListener("click", async () => {
         let text = "";
         try {
@@ -23,6 +26,7 @@
             return;
         }
         input.value = text;
-        input.form.querySelector("[type=submit]").focus();
+        // Straight on: the key is in the box, and there is nothing to check before saving it.
+        input.form.requestSubmit(save);
     });
 })();

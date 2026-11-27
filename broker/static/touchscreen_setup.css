@@ -205,9 +205,14 @@ a {
     font-weight: 700;
 }
 
-.field-row {
-    display: flex;
-    gap: 10px;
+/* A form's buttons, one under the other: the one to tap first, then the quieter one. */
+.actions {
+    display: grid;
+    gap: 12px;
+}
+
+.actions .button.is-quiet {
+    width: 100%;
 }
 
 .input {

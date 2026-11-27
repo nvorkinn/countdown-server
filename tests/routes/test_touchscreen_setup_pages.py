@@ -145,7 +145,9 @@ def test_the_soloist_key_page_has_a_paste_button_that_cannot_send_the_form(app, 
     html = _html(anonymous_client.get(PAGE_URL, query_string={"code": _code(client)}))
 
     # Hidden until its script finds a clipboard to read, so the page is whole without JavaScript.
-    assert '<button type="button" class="button is-quiet" id="soloistPaste" hidden>Paste</button>' in html
+    assert '<button type="button" class="button" id="soloistPaste" hidden>Paste</button>' in html
+    # Under the box, over Save key, which it saves through.
+    assert html.index('id="api_key"') < html.index('id="soloistPaste"') < html.index('id="soloistSave"')
     assert 'id="soloistPasteProblem" role="status" hidden' in html
     assert '<script src="/static/soloist_paste.js"></script>' in html
 
