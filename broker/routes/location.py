@@ -34,6 +34,8 @@ MIN_POSTCODE_RADIUS = 200
 MAX_POSTCODE_RADIUS = 2000
 MAX_LATITUDE = 90
 MAX_LONGITUDE = 180
+# The longest postcode the contract takes as typed: "SW1A  1AA" with a space or two to spare.
+MAX_POSTCODE_LENGTH = 10
 
 
 @bp.post("/api/devices/locate")
@@ -96,7 +98,8 @@ def lookup_postcode() -> ResponseReturnValue:  # noqa: PLR0911 -- an answer per 
     400 for one that's neither, 404 for one that doesn't exist (or has no position), 502 if its source couldn't be
     asked.
     """
-    postcode = normalize_postcode(request.args.get("postcode", ""))
+    typed = request.args.get("postcode", "")
+    postcode = normalize_postcode(typed) if len(typed) <= MAX_POSTCODE_LENGTH else None
     if not postcode:
         return jsonify(error="send a UK or Norwegian postcode"), 400
     if postcode_country(postcode) == "NO":

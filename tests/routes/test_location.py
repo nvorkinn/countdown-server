@@ -9,6 +9,8 @@ from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 import responses
+from countdown_api import fixtures
+from countdown_api.models import DeviceLocation, NearbyStopResult, Postcode
 
 from broker.clients.google_geolocation import GEOLOCATE_URL
 from broker.clients.kartverket import ADDRESS_SEARCH_URL
@@ -282,7 +284,7 @@ def test_lookup_postcode_finds_a_norwegian_postcode_at_its_first_address(device)
     assert _query(0) == {"postnummer": "0150", "treffPerSide": "1"}
 
 
-@pytest.mark.parametrize("postcode", ["", "SW1A", "12345", "not a postcode"])
+@pytest.mark.parametrize("postcode", ["", "SW1A", "12345", "not a postcode", "S E 1 7 2 P U"])
 @responses.activate
 def test_lookup_postcode_refuses_what_isnt_a_postcode(device, postcode):
     response = device.get("/api/postcodes/lookup", query_string={"postcode": postcode})
@@ -429,3 +431,46 @@ def test_stops_near_is_a_502_with_none_when_tfl_fails_logging_no_position_nor_ke
     assert response.get_json() == []
     assert "51.4948" not in caplog.text
     assert "test-tfl-key" not in caplog.text
+
+
+EXAMPLE = fixtures.load("locate.json")
+
+
+@responses.activate
+def test_locate_answers_the_contracts_example(device):
+    located = EXAMPLE["locate"]
+    _google_finds(located["latitude"], located["longitude"], located["accuracy"])
+    _postcodes_io_finds(*({**found, "country": "England"} for found in located["postcodes"]))
+
+    response = device.post(LOCATE, json=EXAMPLE["locate_request"])
+
+    assert response.status_code == 200
+    assert response.get_json() == located
+    DeviceLocation.model_validate(response.get_json())
+    assert len(_body(0)["wifiAccessPoints"]) == len(EXAMPLE["locate_request"]["wifi_access_points"])
+
+
+@responses.activate
+def test_lookup_postcode_answers_the_contracts_example(device):
+    found = EXAMPLE["postcode"]
+    responses.get(f"{POSTCODES_IO}/postcodes/SE17%202PU", json={"status": 200, "result": found | {"quality": 1}})
+
+    response = device.get("/api/postcodes/lookup", query_string={"postcode": EXAMPLE["postcode_query"]})
+
+    assert response.status_code == 200
+    assert response.get_json() == found
+    Postcode.model_validate(response.get_json())
+
+
+@responses.activate
+def test_stops_near_answers_the_contracts_nearby_stop_results(device):
+    stop_points = [_bus("490014501K", "K", 136.2), _tube("940GZZLUKNG", "Kennington", 1062.4)]
+    responses.get(f"{TFL}/StopPoint", json={"stopPoints": stop_points})
+
+    response = device.get("/api/stops/near", query_string=EXAMPLE["near_query"])
+
+    assert response.status_code == 200
+    results = response.get_json()
+    assert [(r["id"], r["distance"]) for r in results] == [("490014501K", 136), ("940GZZLUKNG", 1062)]
+    for result in results:
+        NearbyStopResult.model_validate(result)
