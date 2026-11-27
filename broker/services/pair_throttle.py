@@ -1,7 +1,8 @@
 """Throttles guessing at /pair: each client IP gets a limited number of failed codes a minute.
 
 Each time it hits that limit it's locked out for twice as long as the time before. /register uses a
-second instance with its own limit and a lower cap, recording every call rather than only failures.
+second instance with its own limit and a lower cap, recording every call rather than only failures. A device's location
+lookups (POST /api/devices/locate) use a third, by device rather than IP.
 
 State lives in memory, so it's per process and resets on restart. That fits the single gunicorn
 worker the broker runs with; several workers would each keep their own count.
@@ -22,6 +23,10 @@ WINDOW_SECONDS = 60.0
 REGISTRATIONS_PER_MINUTE = 5
 # The sign-up page's limit: it creates an account in Pocket ID each time it succeeds.
 SIGNUPS_PER_MINUTE = 5
+# The kiosk's location lookups, per device: each one spends the broker's Google Geolocation key, and a setup wizard
+# needs one or two. A device that hits the limit waits out the hour, every time.
+LOCATES_PER_HOUR = 10
+LOCATE_WINDOW_SECONDS = 60 * 60.0
 # Lockouts run 1, 2, 4, ... minutes, capped here; a client that stays quiet this long after
 # its last lockout ends starts again from one minute.
 MAX_LOCKOUT_SECONDS = 60 * 60.0

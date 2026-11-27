@@ -1,6 +1,7 @@
 """A screen's departure stops, London's and Norway's alike.
 
-Which source each saved id is from, what the settings page shows for it, and the stop search across both.
+Which source each saved id is from, what the settings page shows for it, the stop search across both, and London's
+stops near a position.
 """
 
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +21,11 @@ MODE_ICONS = {
     "rail": ("rail", "🚆"),
     "water": ("water", "⛴"),
 }
+# What near() lists around a position: the Tube stations a walk away, the bus stops a short one.
+NEAR_TUBE_METRES = 1500
+NEAR_TUBE_STATIONS = 6
+NEAR_BUS_METRES = 500
+NEAR_RESULTS = 20
 
 
 def source_of(stop_id: str) -> Literal["tfl", "entur"]:
@@ -82,4 +88,27 @@ def search(query: str) -> list[dict[str, Any]]:
         result | {"value": {"source": result["source"], "id": result["id"]}}
         for source in order
         for result in results.get(source, [])
+    ]
+
+
+def near(latitude: float, longitude: float) -> list[dict[str, Any]]:
+    """Return the Tube stations and bus stops near a position, nearest first, as StopSearchResult with a `distance`.
+
+    Up to NEAR_TUBE_STATIONS Tube stations within NEAR_TUBE_METRES, and the bus stops within NEAR_BUS_METRES, at most
+    NEAR_RESULTS in all; each `distance` in whole metres. [] outside London, where TfL has none. Raises if TfL fails.
+    """
+    by_distance = sorted(tfl.stops_near(latitude, longitude), key=lambda result: result["distance"])
+    tube = [r for r in by_distance if r["mode"] == "tube" and r["distance"] <= NEAR_TUBE_METRES][:NEAR_TUBE_STATIONS]
+    bus = [r for r in by_distance if r["mode"] != "tube" and r["distance"] <= NEAR_BUS_METRES]
+    nearest = sorted(tube + bus, key=lambda result: result["distance"])[:NEAR_RESULTS]
+    return [
+        result
+        | {
+            "source": "tfl",
+            "area": "London",
+            "indent": False,
+            "value": {"source": "tfl", "id": result["id"]},
+            "distance": round(result["distance"]),
+        }
+        for result in nearest
     ]

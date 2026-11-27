@@ -20,6 +20,11 @@ _STOP_ID = re.compile(r"[A-Za-z0-9_-]+")
 _LETTERED_QUERY = re.compile(r"(?P<name>.*?\S)\s+(?:stop\s+)?(?P<letter>[A-Za-z]{1,2}[0-9]?)", re.IGNORECASE)
 # How many of a bus stop's routes its subtitle names before "(+n more)".
 SUBTITLE_LINES = 6
+# How far around a position stops_near looks, in metres.
+NEAR_RADIUS = 1500
+# The positions TfL's StopPoint search takes (it answers any other with a 400): the UK's, roughly.
+UK_LATITUDES = (49.9, 58.7)
+UK_LONGITUDES = (-11.05, 1.78)
 
 
 def _params() -> dict[str, str]:
@@ -166,3 +171,44 @@ def _search(query: str, http: requests.Session) -> list[dict[str, Any]]:
         except Exception:
             current_app.logger.exception("Error parsing search result %s", match_id)
     return results
+
+
+def stops_near(latitude: float, longitude: float) -> list[dict[str, Any]]:
+    """Return the Tube stations and bus stops TfL has within NEAR_RADIUS metres of the position, as search results.
+
+    Each is _search_result's, once each, with its `distance` from the position in metres (a float). [] outside TfL's
+    area. Raises if TfL's search fails.
+    """
+    if not (UK_LATITUDES[0] <= latitude <= UK_LATITUDES[1] and UK_LONGITUDES[0] <= longitude <= UK_LONGITUDES[1]):
+        return []
+    params = {
+        "lat": str(latitude),
+        "lon": str(longitude),
+        "stopTypes": "NaptanMetroStation,NaptanPublicBusCoachTram",
+        "radius": str(NEAR_RADIUS),
+        "modes": "tube,bus",
+        "returnLines": "true",
+        **_params(),
+    }
+    response = requests.get(f"{API_BASE}/StopPoint", params=params, timeout=6)
+    response.raise_for_status()
+    stop_points = response.json().get("stopPoints") or []
+    if not isinstance(stop_points, list):
+        msg = "not a list of stop points"
+        raise TypeError(msg)
+
+    nearest: dict[str, dict[str, Any]] = {}
+    for stop_point in stop_points:
+        distance = stop_point.get("distance") if isinstance(stop_point, dict) else None
+        if not isinstance(distance, int | float):
+            continue
+        # A StopPoint's children (a station's platforms, a hub's bus stops) are as far as it is: TfL gives them no
+        # distance, nor a position.
+        for node in _walk(stop_point):
+            result = _search_result(node)
+            if result is None or not result["id"]:
+                continue
+            known = nearest.get(result["id"])
+            if known is None or distance < known["distance"]:
+                nearest[result["id"]] = result | {"distance": float(distance)}
+    return list(nearest.values())

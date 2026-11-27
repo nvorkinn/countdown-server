@@ -12,10 +12,12 @@ Flask answers the preflight (OPTIONS) itself, without calling the route, so it n
 from flask import Flask, Response, current_app, request
 
 # The routes a touchscreen calls (the countdown-api contract's): its registration, config and Spotify token under
-# /api/devices/, and the stop and place pickers' searches and current location. The settings site's pages and the
-# e-paper screens' frames aren't here.
+# /api/devices/ (its location among them), the stop and place pickers' searches and current location, and the setup
+# wizard's postcode lookup and nearby stops. The settings site's pages and the e-paper screens' frames aren't here.
 PATH_PREFIXES = ("/api/devices/",)
-PATHS = frozenset({"/api/stops/search", "/api/places/search", "/api/places/here"})
+PATHS = frozenset(
+    {"/api/stops/search", "/api/stops/near", "/api/places/search", "/api/places/here", "/api/postcodes/lookup"}
+)
 # The one device route no web page is answered, the app's included: it sends a person's Soloist API key, which
 # Spotify says never to put in a client-side app. The touchscreen's own service asks for it and hands it to Soloist.
 # With no CORS headers a browser fails the preflight, so the page's script never sees the answer.

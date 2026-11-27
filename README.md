@@ -163,7 +163,15 @@ incoming request). The sign-up page (`/pair`), the page for a Soloist key (`/sol
   to the tablet's app instead, adding `device_id=<id>` (or `error=taken`). The URL's origin must be listed in the
   setting `TOUCHSCREEN_RETURN_ORIGINS`, or the request is refused before anything is registered.
   The same origins may call the touchscreen's routes on `API_HOST` from the browser (CORS): `/api/devices/*`,
-  `/api/stops/search`, `/api/places/search` and `/api/places/here` (broker/cors.py).
+  `/api/stops/search`, `/api/stops/near`, `/api/places/search`, `/api/places/here` and `/api/postcodes/lookup`
+  (broker/cors.py).
+
+A kiosk's setup wizard finds where it is (`broker/routes/location.py`): `POST /api/devices/locate` takes the Wi-Fi
+access points it sees and answers Google's position for them (with the broker's `GOOGLE_GEOLOCATION_API_KEY`, so no key
+sits on a device) and the 10 UK postcodes nearest it, from postcodes.io; about 10 a device an hour, then `429`.
+`GET /api/postcodes/lookup?postcode=` places a postcode the owner types (postcodes.io for the UK's, Kartverket for
+Norway's), and `GET /api/stops/near?latitude=&longitude=` lists the Tube stations (within 1.5 km) and bus stops (within
+500 m) near it, from TfL. Each needs a paired device's secret; none logs an access point, a position or a postcode.
 
 The pages a new touchscreen's setup sends its owner's phone through look like the setup the touchscreen is showing,
 not like the rest of the site (`templates/touchscreen_base.html`, `static/touchscreen_setup.css`): `/pair/add?t=` when
@@ -415,7 +423,9 @@ two collections is two items, one per environment; an item that several projects
 `caddy.env` (the log ingest token), `redis.env` and, where this repo runs the edge, `tinyauth.env` and `pocket-id.env`);
 `.env.example` lists the broker's for local development. Settings that aren't secret are in `config/<environment>.env`
 and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with
-`POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting).
+`POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting). `GOOGLE_GEOLOCATION_API_KEY`
+(in `broker.env`, both environments) is the Google Geolocation API key that places a kiosk by the Wi-Fi it sees, for its
+setup wizard's `POST /api/devices/locate`; without it that answers 503. Restrict the key to the Geolocation API.
 
 On every deploy, `deploy-compose.yml` runs the shared action `nvorkinn/.github/actions/vaultwarden-secrets`, which logs in to Vaultwarden as the `deploy-bot` user (it
 can read only these two collections) and writes one `<name>.env` per file of `secrets-map.json`'s target, on the runner,

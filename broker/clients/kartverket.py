@@ -49,3 +49,34 @@ def search(text: str, postcode: str) -> list[dict[str, Any]]:
         logger.warning("Couldn't search Kartverket for an address: %s", _reason(e))  # not which, nor the URL
         raise AddressLookupUnavailableError from e
     return found
+
+
+def postcode_position(postcode: str) -> dict[str, Any] | None:
+    """Return where a Norwegian postcode is, from its first address: {latitude, longitude, municipality}.
+
+    None if Kartverket has no address in it (or none with a position). Raises AddressLookupUnavailableError if
+    Kartverket couldn't be asked.
+    """
+    try:
+        response = requests.get(ADDRESS_SEARCH_URL, params={"postnummer": postcode, "treffPerSide": 1}, timeout=TIMEOUT)
+        response.raise_for_status()
+        found = response.json()["adresser"]
+        if not isinstance(found, list):
+            raise TypeError  # noqa: TRY301 -- the same answer as any other that isn't a search's
+        if not found:
+            return None
+        address = found[0]
+        point = address.get("representasjonspunkt") or {}
+        latitude, longitude = point.get("lat"), point.get("lon")
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as e:
+        logger.warning("Couldn't search Kartverket for a postcode: %s", _reason(e))  # not which, nor the URL
+        raise AddressLookupUnavailableError from e
+    if not isinstance(latitude, int | float) or not isinstance(longitude, int | float):
+        return None
+    # Kartverket writes names in capitals ("NORDRE FOLLO").
+    municipality = address.get("kommunenavn")
+    return {
+        "latitude": float(latitude),
+        "longitude": float(longitude),
+        "municipality": municipality.title() if isinstance(municipality, str) and municipality else None,
+    }
