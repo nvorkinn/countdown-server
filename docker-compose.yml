@@ -142,9 +142,10 @@ services:
       # connection closes: Caddy's idle timeout, 5 minutes. The screen opens a new connection for every poll anyway,
       # so close each one after its answer.
       caddy_2.header: /api/frame Connection close
-      # The pickers' searches too, which a touchscreen's own settings call with its secret, and the weather
+      # The pickers' searches too (and the setup wizard's postcode and nearby stops), which a touchscreen's own settings
+      # call with its secret, and the weather
       # backgrounds, which take none (an <img> can't send one; routes/backgrounds.py).
-      caddy_2.@screen_api.path: /api/frame /api/frame/* /api/config /api/devices/* /api/backgrounds/* /api/stops/search /api/places/search /api/places/here /api/status/*
+      caddy_2.@screen_api.path: /api/frame /api/frame/* /api/config /api/devices/* /api/backgrounds/* /api/stops/search /api/stops/near /api/places/search /api/places/here /api/postcodes/lookup /api/status/*
       caddy_2.handle: "@screen_api"
       caddy_2.handle.reverse_proxy: "{{upstreams 5000}}"
       caddy_3: ${API_HOST:?}

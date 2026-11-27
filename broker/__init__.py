@@ -15,6 +15,7 @@ from .routes import (
     backgrounds,
     devices,
     frames,
+    location,
     pages,
     place_search,
     register,
@@ -25,6 +26,8 @@ from .routes import (
     stop_search,
 )
 from .services.pair_throttle import (
+    LOCATE_WINDOW_SECONDS,
+    LOCATES_PER_HOUR,
     MAX_REGISTRATION_LOCKOUT_SECONDS,
     REGISTRATIONS_PER_MINUTE,
     SIGNUPS_PER_MINUTE,
@@ -61,6 +64,10 @@ def create_app() -> Flask:
     app.extensions["register_throttle"] = PairThrottle(
         max_events=REGISTRATIONS_PER_MINUTE, max_lockout=MAX_REGISTRATION_LOCKOUT_SECONDS
     )
+    # Each location lookup spends the Google Geolocation key; counted by device, as only paired ones may ask.
+    app.extensions["locate_throttle"] = PairThrottle(
+        max_events=LOCATES_PER_HOUR, window=LOCATE_WINDOW_SECONDS, max_lockout=LOCATE_WINDOW_SECONDS
+    )
 
     app.extensions["redis"] = redis.Redis.from_url(
         os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0"),
@@ -89,6 +96,7 @@ def create_app() -> Flask:
     app.register_blueprint(spotify_sign_in_page.bp)
     app.register_blueprint(stop_search.bp)
     app.register_blueprint(place_search.bp)
+    app.register_blueprint(location.bp)
     app.register_blueprint(frames.bp)
     app.register_blueprint(status.bp)
 

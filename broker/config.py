@@ -51,6 +51,9 @@ def load(app: Flask) -> None:
     # The name Apple's sign-in shows the listener.
     app.config["APPLE_MUSIC_APP_NAME"] = os.environ.get("APPLE_MUSIC_APP_NAME", "Countdown")
     app.config["TFL_APP_KEY"] = os.environ.get("TFL_APP_KEY", "")
+    # Google's Geolocation API, which places a kiosk by the Wi-Fi it can see (routes/location.py). Unset (the default)
+    # answers POST /api/devices/locate with a 503.
+    app.config["GOOGLE_GEOLOCATION_API_KEY"] = os.environ.get("GOOGLE_GEOLOCATION_API_KEY", "")
     # The IP location data for suggesting a weather location (services/geoip.py); the image has it in /app/geodata.
     app.config["GEODATA_DIR"] = os.environ.get("GEODATA_DIR", str(Path(__file__).resolve().parent.parent / "geodata"))
     app.config["CREDENTIAL_ENCRYPTION_KEY"] = os.environ["CREDENTIAL_ENCRYPTION_KEY"]

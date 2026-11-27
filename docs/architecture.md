@@ -95,7 +95,7 @@ broker to trust them. The broker has no user table: the Pocket ID user id is sto
 | **Soloist key code** | `POST /api/devices/soloist/codes`, by a paired touchscreen | `soloist_codes` | 32 hex digits, 10 minutes, one use. In the link a person opens to paste their key (`/soloist`, public): it names the touchscreen and the person. |
 | **GitHub token** | the owner, on the account page | `github_tokens`, encrypted | A read-only fine-grained PAT, used only by the developer provider. |
 | **`CREDENTIAL_ENCRYPTION_KEY`** | operator | Vaultwarden (`broker.env`) | The Fernet key for the encrypted columns. Changing it makes them unreadable. |
-| **App keys** | operator | Vaultwarden (`broker.env`) | Spotify client id and secret, the MusicKit key (signs Apple developer tokens), `TFL_APP_KEY` (only for the settings page's stop search). |
+| **App keys** | operator | Vaultwarden (`broker.env`) | Spotify client id and secret, the MusicKit key (signs Apple developer tokens), `TFL_APP_KEY` (only for the settings page's stop search), `GOOGLE_GEOLOCATION_API_KEY` (places a kiosk by its Wi-Fi in its setup wizard). |
 | **`FLASK_SECRET_KEY`** | operator | Vaultwarden (`broker.env`) | Signs the session cookie, which holds only the Spotify OAuth state. |
 | **`STATUS_TOKEN`** | operator | Vaultwarden (`broker.env`) | Bearer for `GET /api/status/devices`. |
 | **`POCKET_ID_API_KEY`** | operator | Vaultwarden (`broker.env`) | A Pocket ID admin API key, which the sign-up flow uses to create users and add them to the `countdown` group (`POCKET_ID_COUNTDOWN_GROUP_ID`). |

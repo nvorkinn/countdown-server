@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from broker.clients.kartverket import AddressLookupUnavailableError, search
+from broker.clients.kartverket import AddressLookupUnavailableError, postcode_position, search
 
 EUFEMIAS = {"adressenavn": "Dronning Eufemias gate", "nummer": 1, "bokstav": "", "poststed": "OSLO"}
 
@@ -52,3 +52,40 @@ def test_an_unanswered_search_is_unavailable_and_logs_no_address(outcome, caplog
     assert "Couldn't search Kartverket" in caplog.text
     assert "Thorvald" not in caplog.text
     assert "0555" not in caplog.text
+
+
+def test_postcode_position_is_the_postcodes_first_address_point():
+    found = {
+        "adresser": [
+            {"kommunenavn": "NORDRE FOLLO", "representasjonspunkt": {"epsg": "EPSG:4258", "lat": 59.72, "lon": 10.83}}
+        ]
+    }
+    with patch("broker.clients.kartverket.requests.get", return_value=_response(found)) as get:
+        assert postcode_position("1410") == {"latitude": 59.72, "longitude": 10.83, "municipality": "Nordre Follo"}
+
+    assert get.call_args.kwargs["params"] == {"postnummer": "1410", "treffPerSide": 1}
+
+
+@pytest.mark.parametrize("found", [[], [{"kommunenavn": "OSLO"}], [{"representasjonspunkt": {"lat": None}}]])
+def test_postcode_position_is_none_without_an_address_with_a_point(found):
+    with patch("broker.clients.kartverket.requests.get", return_value=_response({"adresser": found})):
+        assert postcode_position("0150") is None
+
+
+@pytest.mark.parametrize(
+    "effect",
+    [
+        {"side_effect": requests.ConnectionError("https://ws.geonorge.no/adresser/v1/sok?postnummer=0150")},
+        {"return_value": _response({"adresser": "none"})},
+        {"return_value": _response({})},
+    ],
+)
+def test_an_unanswered_postcode_position_is_unavailable_and_logs_no_postcode(effect, caplog):
+    with (
+        caplog.at_level(logging.WARNING),
+        patch("broker.clients.kartverket.requests.get", **effect),
+        pytest.raises(AddressLookupUnavailableError),
+    ):
+        postcode_position("0150")
+
+    assert "0150" not in caplog.text
