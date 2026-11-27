@@ -170,13 +170,7 @@ def unpair(device_id: str, *, wipe_config: bool) -> None:
 @click.argument("device_id")
 def forget(device_id: str) -> None:
     """Delete a device entirely (it must register again)."""
-    device = _get_device(device_id)
-    # The relationships cascade, so the device's codes, config, tokens and name go with it.
-    db.session.delete(device)
-    db.session.commit()
-    frame_record.forget(device_id)
-    device_keys.forget(device_id)
-    config_store.publish(device_id)
+    registration.forget(_get_device(device_id))
     click.echo(f"{device_id} forgotten; delete its credentials file so it registers again.")
 
 

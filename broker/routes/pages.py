@@ -63,6 +63,7 @@ from broker.services import (
     pace,
     pairing,
     parcel_key,
+    registration,
     render_jobs,
     renderer_config,
     screen_defaults,
@@ -961,6 +962,21 @@ def clear_screen_defaults() -> ResponseReturnValue:
     screen_defaults.clear(signed_in_user(), db.session.get_one(Device, g.device_id).type)
     db.session.commit()
     return redirect(url_for("pages.device_config", device_id=g.device_id))
+
+
+@bp.post("/device/<device_id>/forget")
+@require_paired_user
+def forget_screen() -> ResponseReturnValue:
+    """Delete the screen entirely, as `flask devices forget` does, so it must register again. Not in prod.
+
+    For trying a screen's first-time setup over and over on dev, without a shell on the server. The Screen section
+    only shows its button where the page has the environment banner, and prod answers 404 as if the route were not
+    there.
+    """
+    if not current_app.config["ENVIRONMENT_LABEL"]:
+        return jsonify(error="not found"), 404
+    registration.forget(db.session.get_one(Device, g.device_id))
+    return redirect(url_for("pages.index"))
 
 
 @bp.post("/device/display/unlink", defaults={"device_id": None})

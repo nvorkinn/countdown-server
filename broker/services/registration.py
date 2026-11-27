@@ -132,6 +132,18 @@ def _drop_stale_screens(now: datetime) -> list[str]:
     return [device.device_id for device in stale]
 
 
+def forget(device: Device) -> None:
+    """Delete a device entirely, and what the store holds for it: it must register again, as a new device.
+
+    What `flask devices forget` does, and dev's "Forget this screen" on the settings page. The relationships cascade,
+    so its codes, config, tokens and name go with it. Commits.
+    """
+    device_id = device.device_id
+    db.session.delete(device)
+    db.session.commit()
+    _forget_in_store([device_id])
+
+
 def _forget_in_store(device_ids: list[str]) -> None:
     """After the commit: remove what the store holds for devices that are gone, as `flask devices forget` does.
 
