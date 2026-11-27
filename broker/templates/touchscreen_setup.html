@@ -1,18 +1,12 @@
-{% extends "base.html" %}
+{% extends "touchscreen_base.html" %}
 
 {% block title %}Setting up{% endblock %}
 {% block heading %}Setting up{% endblock %}
 
 {% block content %}
-{% include "_loader_pill.html" %}
-<div class="card waiting-card">
-    <div class="loader-pill" role="img" aria-label="Countdown">
-        {%- for letter in "COUNTDOWN" %}<span aria-hidden="true" style="--i: {{ loop.index0 }}">{{ letter }}</span>{% endfor -%}
-        <span class="sheen" aria-hidden="true"></span>
-    </div>
-    <div class="card-header">
-        <h2 class="card-title">One moment…</h2>
-    </div>
+<div class="step">
+    <div class="spinner" aria-hidden="true"></div>
+    <h2 class="lead" role="status">One moment…</h2>
 </div>
 
 <script>

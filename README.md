@@ -165,6 +165,11 @@ incoming request). The sign-up page (`/pair`), the page for a Soloist key (`/sol
   The same origins may call the touchscreen's routes on `API_HOST` from the browser (CORS): `/api/devices/*`,
   `/api/stops/search`, `/api/places/search` and `/api/places/here` (broker/cors.py).
 
+The pages a new touchscreen's setup sends its owner's phone through look like the setup the touchscreen is showing,
+not like the rest of the site (`templates/touchscreen_base.html`, `static/touchscreen_setup.css`): `/pair/add?t=` when
+the token is a registered touchscreen's, `/device/setup`, `/spotify/sign-in`, `/soloist` and `/pair/done`. The pairing
+page is the site's own for anything else (an e-paper screen's token, one no screen has registered with yet, a code).
+
 Pairing gives the screen its internal name (its slug, which is its device id), puts it on the render pool's list and
 queues its first render. Its owner can give it a friendly name on its settings page.
 

@@ -1,15 +1,15 @@
-{% extends "base.html" %}
+{% extends "touchscreen_base.html" %}
+{% from "_touchscreen_marks.html" import tick %}
 
 {% block title %}Screen added{% endblock %}
 {% block heading %}All set{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <h2 class="card-title">Your screen is ready.</h2>
-        <p class="card-subtitle">You can close this page.</p>
-    </div>
-    <button type="button" class="btn-save" id="closePage">Close</button>
+<div class="step">
+    {{ tick() }}
+    <h2 class="lead">Your screen is ready.</h2>
+    <p class="note">You can close this page.</p>
+    <button type="button" class="button" id="closePage">Close</button>
 </div>
 
 <script>

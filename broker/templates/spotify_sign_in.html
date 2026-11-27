@@ -1,23 +1,25 @@
-{% extends "base.html" %}
+{% extends "touchscreen_base.html" %}
+{% from "_touchscreen_marks.html" import cross, tick %}
 
 {% block title %}Spotify sign-in{% endblock %}
 {% block heading %}{% if spent or declined %}Not signed in{% else %}All set{% endif %}{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        {% if spent %}
-        <h2 class="card-title">This code has expired.</h2>
-        <p class="card-subtitle">Scan the new one on the touchscreen.</p>
-        {% elif declined %}
-        <h2 class="card-title">Spotify didn't sign you in.</h2>
-        <p class="card-subtitle">You can close this page.</p>
-        {% else %}
-        <h2 class="card-title">You're signed in on the touchscreen.</h2>
-        <p class="card-subtitle">You can close this page.</p>
-        {% endif %}
-    </div>
-    {% if not spent %}<button type="button" class="btn-save" id="closePage">Close</button>{% endif %}
+<div class="step">
+    {% if spent %}
+    {{ cross() }}
+    <h2 class="lead">This code has expired.</h2>
+    <p class="note">Scan the new one on the touchscreen.</p>
+    {% elif declined %}
+    {{ cross() }}
+    <h2 class="lead">Spotify didn't sign you in.</h2>
+    <p class="note">You can close this page.</p>
+    {% else %}
+    {{ tick() }}
+    <h2 class="lead">You're signed in on the touchscreen.</h2>
+    <p class="note">You can close this page.</p>
+    {% endif %}
+    {% if not spent %}<button type="button" class="button" id="closePage">Close</button>{% endif %}
 </div>
 
 {% if not spent %}

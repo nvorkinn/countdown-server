@@ -1,0 +1,32 @@
+{# The pairing page (pair.html) for a touchscreen's token, in the look of its setup: the first of its pages on its
+   owner's phone (services/touchscreen_setup.py). Same words, form and script as pair.html. #}
+{% extends "touchscreen_base.html" %}
+
+{% block title %}Connect your device{% endblock %}
+{% block heading %}Connect your device{% endblock %}
+
+{% block content %}
+<div class="step" id="waiting" hidden>
+    <div class="spinner" aria-hidden="true"></div>
+    <h2 class="lead">Connecting to your device…</h2>
+    <p class="note" id="waiting-note" role="status">This takes a few seconds while it comes online.</p>
+</div>
+
+<div class="step" id="code-card">
+    <h2 class="lead" id="code-title">Enter your pairing code</h2>
+    <p class="note">Your device is showing a 6-character code on its screen. Enter it below to link it to your account.</p>
+
+    {% if error %}
+        <p class="problem" role="alert">{{ error }}</p>
+    {% endif %}
+
+    <form class="panel" method="POST" action="{{ url_for('pages.add_screen') }}" id="code-form">
+        <input type="text" name="code" class="input is-code" maxlength="6" autocomplete="off"
+               autocapitalize="characters" placeholder="ABC123" value="{{ code }}" aria-labelledby="code-title"
+               required autofocus>
+        <button type="submit" class="button">Connect</button>
+    </form>
+</div>
+
+{% include "_pair_script.html" %}
+{% endblock %}

@@ -345,7 +345,11 @@ def _too_many_attempts(retry_after: int, render: Callable[..., str] | None = Non
 
 
 def _render_pair(error: str | None, token: str = "", code: str = "") -> str:
-    return render_template("pair.html", error=error, token=token, code=code)
+    # A registered touchscreen's token is the start of its setup on its owner's phone, so the page looks like the pages
+    # that follow it (touchscreen_base.html). Anything else is the settings site's own page: an e-paper screen's token,
+    # one no screen has registered with yet, one in the fragment (which never gets here), a code.
+    template = "touchscreen_pair.html" if pairing.is_touchscreen_token(_pairing_token(token)) else "pair.html"
+    return render_template(template, error=error, token=token, code=code)
 
 
 @bp.post("/pair/token")
@@ -381,7 +385,7 @@ def pair_done(user_id: str) -> ResponseReturnValue:  # noqa: ARG001 -- only sign
     visit rather than send them on to the settings: it tries to close its tab (a browser lets it only for a tab a script
     opened) and has no sidebar or link onward.
     """
-    return render_template("pair_done.html", screens=[])
+    return render_template("pair_done.html")
 
 
 @bp.get("/device/setup", defaults={"device_id": None})
