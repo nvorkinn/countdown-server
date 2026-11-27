@@ -96,3 +96,10 @@ def test_both_raise_when_postcodes_io_cant_be_asked_logging_neither_postcode_nor
     assert "SE17" not in caplog.text
     assert "51.48" not in caplog.text
     assert "postcodes.io/" not in caplog.text
+
+
+@pytest.mark.parametrize("postcode", ["se17 2pu", "SE172PU", "../health", "SE17 2PU?x=1", "SE17 2PU/../x", ""])
+@responses.activate
+def test_lookup_asks_nothing_for_what_isnt_a_canonical_postcode(postcode):
+    assert lookup(postcode) is None
+    assert len(responses.calls) == 0

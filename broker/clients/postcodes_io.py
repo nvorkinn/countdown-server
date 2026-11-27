@@ -4,6 +4,7 @@ A postcode, like a position, says where someone lives: neither is ever logged, n
 """
 
 import logging
+import re
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote
@@ -13,6 +14,8 @@ import requests
 API_BASE = "https://api.postcodes.io"
 # Asked while someone waits at a setup wizard, so a slow answer is worth less than a "try again".
 TIMEOUT = 5
+# A UK postcode in canonical form ("SE17 2PU"), the only thing lookup puts in a URL's path.
+_POSTCODE = re.compile(r"[A-Z]{1,2}[0-9][A-Z0-9]? [0-9][A-Z]{2}")
 # postcodes.io's own bounds for a reverse lookup's radius, in metres.
 MAX_RADIUS = 2000
 
@@ -64,11 +67,14 @@ def nearest(latitude: float, longitude: float, radius: int, limit: int) -> list[
 
 
 def lookup(postcode: str) -> dict[str, Any] | None:
-    """Return postcodes.io's result for a UK postcode (postcode, latitude, longitude, country, region, ...).
+    """Return postcodes.io's result for a UK postcode in canonical form (postcode, latitude, longitude, country, ...).
 
-    None if there's no such postcode, or it has no position. Raises PostcodesUnavailableError if postcodes.io couldn't
-    be asked.
+    None if there's no such postcode, it has no position, or it isn't a canonical one ("se172pu", "../x"). Raises
+    PostcodesUnavailableError if postcodes.io couldn't be asked.
     """
+    if not _POSTCODE.fullmatch(postcode):
+        logger.warning("Not looking up what isn't a canonical UK postcode")  # not what it was
+        return None
     try:
         response = requests.get(f"{API_BASE}/postcodes/{quote(postcode, safe='')}", timeout=TIMEOUT)
         # Unknown, or terminated: a 404 with {"error": "Postcode not found"}.
