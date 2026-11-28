@@ -28,6 +28,7 @@ from broker.services import (
     render_screens,
     screen_defaults,
     soloist,
+    touchscreen_setup,
 )
 
 # Excludes visually ambiguous characters (0/O, 1/I/L) since this gets typed in by hand.
@@ -87,8 +88,10 @@ def _pair(device: Device, user: str) -> str | None:
     previous = device.owner
     device.owner = user
     if previous != user:
-        # Its people's Soloist keys were saved for its last owner's household, not for the new owner's.
+        # Its people's Soloist keys were saved for its last owner's household, not for the new owner's, and its
+        # setup starts over for them.
         soloist.forget(device)
+        touchscreen_setup.forget(device)
     if device.paired_at is None:
         # New to its owner: it starts with the settings they saved for new screens of its type, if any.
         screen_defaults.apply(device, user)

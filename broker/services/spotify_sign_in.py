@@ -8,6 +8,9 @@
 3. Spotify sends the phone back to the callback, which keeps Spotify's code or error (finish).
 4. The touchscreen asks for it (take), once, and exchanges the code at Spotify with its own verifier.
 
+A touchscreen being set up reports its first sign-in's challenge ahead of time, and the broker makes that sign-in
+itself when its owner's phone gets there (services/touchscreen_setup.py); the rest is the same.
+
 The server never sees the verifier or a token: what it keeps for a sign-in is no use without the touchscreen. An id is
 32 random hex digits that last ten minutes, so it can't be guessed, and all it lets anyone do is sign in to Spotify
 for that touchscreen, as the person holding the phone.
@@ -19,6 +22,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from urllib.parse import urlencode
 
+from flask import current_app, url_for
 from sqlalchemy import delete
 
 from broker.db import db
@@ -39,6 +43,16 @@ type Status = Literal["waiting", "done", "failed"]
 def is_id(value: object) -> bool:
     """Whether `value` is shaped like a sign-in's id (the contract's SpotifySignInId)."""
     return isinstance(value, str) and ID_RE.match(value) is not None
+
+
+def callback_uri() -> str:
+    """Return the settings site's callback, the redirect address a sign-in is made and exchanged with.
+
+    On SITE_URL where that is set, so it is the same whichever of the broker's names the request came by.
+    """
+    if site := current_app.config["SITE_URL"]:
+        return site + url_for("spotify_sign_in_page.callback")
+    return url_for("spotify_sign_in_page.callback", _external=True)
 
 
 def start(device: Device, client_id: str, code_challenge: str, scope: str, redirect_uri: str) -> SpotifySignIn:

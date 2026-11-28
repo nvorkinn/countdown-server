@@ -18,6 +18,7 @@ erDiagram
     devices }o..o| parcel_keys : "owner's parcel notices"
     devices ||--o{ soloist_keys : "its people's Soloist keys"
     devices ||--o{ soloist_codes : "codes to save them with"
+    devices ||--o| touchscreen_setups : "a touchscreen's setup"
     devices }o..o| screen_defaults : "owner's settings for new screens"
 
     devices {
@@ -114,6 +115,16 @@ erDiagram
         string person
         datetime expires_at
     }
+    touchscreen_setups {
+        string device_id PK "the touchscreen"
+        string spotify_code_challenge "with its client id and scope"
+        datetime spotify_answered_at
+        string soloist_device
+        boolean soloist_signed_in
+        datetime location_done_at
+        boolean phone_paired
+        datetime finished_at
+    }
     screen_defaults {
         string user_id PK "the owner"
         string type PK "epaper or touchscreen"
@@ -138,6 +149,7 @@ erDiagram
 | `parcel_keys` | parcel notices Parcel API key | Encrypted. |
 | `soloist_keys` | touchscreen and person | A person's own Spotify Soloist API key, encrypted, sent only to the touchscreen it was saved for. `person` is the touchscreen's name for them. |
 | `soloist_codes` | live code | A touchscreen's code for one of its people to save their key with: 10 minutes, one use. Lapsed codes are swept whenever a new one is issued. |
+| `touchscreen_setups` | touchscreen that reports on its setup | What a touchscreen's setup needs kept, so that it and its owner's phone show the same step (`services/touchscreen_setup.py`): the PKCE challenge of its first Spotify sign-in (never the verifier), what the touchscreen reports (its Soloist's name and sign-in, its phone paired, finished) and what the phone's pages did (back from Spotify, location saved or skipped). Made by its first report, before it is paired; reset when it changes hands. |
 | `screen_defaults` | user and device type | The settings the user's new screens of that type start with: a snapshot of one screen's `device_config` columns (`services/screen_defaults.py` says which), applied the first time the user pairs with a screen. Not linked to the screen it was saved from. |
 
 - **Accounts.** The five login tables are keyed by the user id of a device's owner (`device_users`), not by screen: a login serves all

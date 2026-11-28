@@ -52,6 +52,9 @@ class Device(Model):
     soloist_codes: Mapped[list[SoloistCode]] = relationship(back_populates="device", cascade="all, delete-orphan")
     # Its people's Spotify sign-ins on their phones, until each is answered (services/spotify_sign_in.py).
     spotify_sign_ins: Mapped[list[SpotifySignIn]] = relationship(back_populates="device", cascade="all, delete-orphan")
+    # A touchscreen's setup, once it has reported on it: the step it and its owner's phone both show
+    # (services/touchscreen_setup.py).
+    setup: Mapped[TouchscreenSetup | None] = relationship(back_populates="device", cascade="all, delete-orphan")
     # The services a screen shows (Spotify, Apple Music, GitHub, Parcel, Glowmarkt) are linked to its owner's account,
     # not to the screen: see SpotifyToken and the rest, keyed by user_id.
     assignment: Mapped[RendererAssignment | None] = relationship(back_populates="device", cascade="all, delete-orphan")
@@ -594,6 +597,37 @@ class SpotifySignIn(Model):
     error: Mapped[str | None] = mapped_column(String)
 
     device: Mapped[Device] = relationship(back_populates="spotify_sign_ins")
+
+
+class TouchscreenSetup(Model):
+    """A touchscreen's setup, run on its own screen and its owner's phone in step (services/touchscreen_setup.py).
+
+    The row is there from the touchscreen's first report (PUT /api/devices/setup), which says it takes part; one
+    without is set up the older way. It keeps what only the touchscreen knows and reports, and what the phone's pages
+    do that leaves no other trace. The step itself is worked out from these and the rest of what the broker knows.
+    """
+
+    __tablename__ = "touchscreen_setups"
+
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id", ondelete="CASCADE"), primary_key=True)
+    # What its first person's Spotify sign-in asks for (the contract's SpotifySignInRequest), which the touchscreen
+    # reports before it is paired: the phone's sign-in is made from it. The verifier stays on the touchscreen.
+    spotify_client_id: Mapped[str | None] = mapped_column(String)
+    spotify_code_challenge: Mapped[str | None] = mapped_column(String)
+    spotify_scope: Mapped[str | None] = mapped_column(String)
+    # When the phone last came back from Spotify with a code, which the touchscreen then takes and exchanges: until
+    # it has, the phone waits rather than sign in again.
+    spotify_answered_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # The name its Soloist goes by in Spotify, and whether it has signed in, as the touchscreen reports them.
+    soloist_device: Mapped[str | None] = mapped_column(String)
+    soloist_signed_in: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    # When its owner said on the phone where it is, or skipped that.
+    location_done_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Whether its owner's phone is paired with it over Bluetooth, and when it finished, as the touchscreen reports.
+    phone_paired: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+    device: Mapped[Device] = relationship(back_populates="setup")
 
 
 class AppleMusicToken(Model):

@@ -57,7 +57,10 @@ def touchscreen(app, client):
         ("/api/places/here", "GET"),
         ("/api/devices/locate", "POST"),
         ("/api/postcodes/lookup", "GET"),
+        ("/api/postcodes/near", "POST"),
         ("/api/stops/near", "GET"),
+        ("/api/devices/setup", "GET"),
+        ("/api/devices/setup", "PUT"),
     ],
 )
 def test_the_app_is_answered_a_preflight_without_a_secret(anonymous_client, path, method):

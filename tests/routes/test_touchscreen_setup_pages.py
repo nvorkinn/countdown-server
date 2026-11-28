@@ -42,7 +42,7 @@ def test_the_pairing_page_for_a_registered_touchscreens_token_looks_like_its_set
     # The same page underneath: its words, its script and its fallback form.
     assert "Connecting to your device…" in html
     assert "location.hash" in html
-    assert "/device/setup" in html
+    assert '+ "/setup"' in html
     assert 'action="/pair/add"' in html
     assert 'name="code"' in html
 
