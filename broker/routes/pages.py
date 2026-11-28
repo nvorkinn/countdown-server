@@ -415,8 +415,9 @@ def phone_setup() -> ResponseReturnValue:
 def _phone_step(device: Device) -> ResponseReturnValue:
     """Show the owner's phone the step the touchscreen's setup is at, or send it on to that step's own page.
 
-    The steps that have a page of their own are Spotify's sign-in and the Soloist key; the rest are shown here
-    (touchscreen_step.html), each watching for the step to change (static/touchscreen_setup.js).
+    The steps that have pages of their own are Spotify's sign-in, the Soloist key and where the touchscreen is
+    (routes/setup_location.py); the rest are shown here (touchscreen_step.html), each watching for the step to change
+    (static/touchscreen_setup.js).
     """
     step = touchscreen_setup.step_of(device)
     if step == "done":
@@ -427,6 +428,8 @@ def _phone_step(device: Device) -> ResponseReturnValue:
             return redirect(url_for("spotify_sign_in_page.start", id=sign_in))
     if step == "soloist_key" and (code := touchscreen_setup.open_code(device.device_id)) is not None:
         return redirect(url_for("soloist_page.save_key", code=code))
+    if step == "location":
+        return redirect(url_for("setup_location.start", device_id=device.device_id))
     setup = device.setup
     return _no_store(
         render_template(
@@ -440,14 +443,6 @@ def _phone_step(device: Device) -> ResponseReturnValue:
             reload_after_s=int(touchscreen_setup.ANSWER_WAIT.total_seconds()) + 2,
         )
     )
-
-
-@bp.post("/device/<device_id>/setup/location/skip")
-@require_paired_user
-def skip_setup_location() -> ResponseReturnValue:
-    """Leave where the touchscreen is for later, in its settings, and go on with its setup."""
-    touchscreen_setup.location_done(g.device_id)
-    return redirect(url_for("pages.phone_setup", device_id=g.device_id), HTTPStatus.SEE_OTHER)
 
 
 def _no_store(page: str) -> Response:

@@ -1,0 +1,137 @@
+{# The location step of a touchscreen's setup on its owner's phone (routes/setup_location.py), a page for each of
+   its views: `start`, `postcodes`, `type`, `stops` and `done`. They follow the pages the touchscreen had for this
+   step, in the same words. Plain forms: only "Use my location" needs a script (static/touchscreen_location.js). #}
+{% extends "touchscreen_base.html" %}
+{% from "_touchscreen_marks.html" import tick %}
+
+{% block title %}Location{% endblock %}
+{% block heading %}Location{% endblock %}
+
+{% macro skip() %}
+<form method="POST" action="{{ url_for('setup_location.skip', device_id=device_id) }}">
+    <button type="submit" class="button is-quiet">Skip for now</button>
+</form>
+{% endmacro %}
+
+{% block content %}
+{% if view == "start" %}
+<div class="step" id="setupStep" data-step="location"
+     data-status-url="{{ url_for('devices.get_setup', device_id=device_id) }}"
+     data-setup-url="{{ url_for('pages.phone_setup', device_id=device_id) }}">
+    <h2 class="lead">Where is your touchscreen?</h2>
+    <p class="note">It shows the weather, local notices and live bus and Tube times for where it is.</p>
+    <form method="POST" action="{{ url_for('setup_location.near', device_id=device_id) }}" id="locateForm"
+          data-type-url="{{ url_for('setup_location.type_postcode', device_id=device_id, located='no') }}">
+        <input type="hidden" name="latitude">
+        <input type="hidden" name="longitude">
+        <input type="hidden" name="accuracy">
+        {#- Shown by touchscreen_location.js, where the browser can say where the phone is. #}
+        <button type="button" class="button" id="locate" hidden>Use my location</button>
+    </form>
+    <p class="note" id="locating" role="status" hidden>Finding where you are…</p>
+    <div class="actions">
+        <a class="button is-quiet" id="typeIt" href="{{ url_for('setup_location.type_postcode', device_id=device_id) }}">Type my postcode</a>
+        {{ skip() }}
+    </div>
+    <p class="note" id="setupOffline" role="status" hidden>Waiting for the touchscreen. Check that it is switched on and online.</p>
+</div>
+<script src="{{ url_for('static', filename='touchscreen_location.js') }}"></script>
+<script src="{{ url_for('static', filename='touchscreen_setup.js') }}"></script>
+
+{% elif view == "postcodes" %}
+<div class="step">
+    <h2 class="lead">Is this your postcode?</h2>
+    <form class="postcodes" method="POST" action="{{ url_for('setup_location.postcode', device_id=device_id) }}">
+        <button type="submit" class="postcode is-best" name="postcode" value="{{ best }}">
+            <span class="postcode-tag">Our best guess</span>
+            {{ best }}
+        </button>
+        {% if others %}
+        <p class="note">Or one of these nearby?</p>
+        <div class="postcode-grid">
+            {% for other in others %}
+            <button type="submit" class="postcode" name="postcode" value="{{ other }}">{{ other }}</button>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </form>
+    <div class="actions">
+        <a class="button is-quiet" href="{{ url_for('setup_location.type_postcode', device_id=device_id) }}">Not here? Type it in</a>
+        {{ skip() }}
+    </div>
+</div>
+
+{% elif view == "type" %}
+<div class="step">
+    <h2 class="lead">What's your postcode?</h2>
+    {% if note %}<p class="note">{{ note }}</p>{% endif %}
+    {% if error %}<p class="problem" role="alert">{{ error }}</p>{% endif %}
+    <form class="panel" method="POST" action="{{ url_for('setup_location.postcode', device_id=device_id) }}">
+        <input type="text" name="postcode" class="input is-postcode" maxlength="10" autocomplete="postal-code"
+               autocapitalize="characters" spellcheck="false" value="{{ typed or '' }}" aria-label="Postcode"
+               required autofocus>
+        <button type="submit" class="button">Use</button>
+    </form>
+    <div class="actions">
+        <a class="button is-quiet" href="{{ url_for('setup_location.start', device_id=device_id) }}">Back</a>
+        {{ skip() }}
+    </div>
+</div>
+
+{% elif view == "stops" %}
+<div class="step">
+    <h2 class="lead">The touchscreen can show live bus and Tube times</h2>
+    <p class="note">Tap the stops you use most.</p>
+    <form class="stops" method="POST" action="{{ url_for('setup_location.save', device_id=device_id) }}">
+        <input type="hidden" name="postcode" value="{{ place.postcode }}">
+        <input type="hidden" name="latitude" value="{{ place.latitude }}">
+        <input type="hidden" name="longitude" value="{{ place.longitude }}">
+        {% if stations %}
+        <h3 class="stops-title">Stations</h3>
+        {% for stop in stations %}
+        <label class="stop">
+            <input type="checkbox" name="stop" value="{{ stop.id }}">
+            <span class="stop-name">{{ stop.name }}</span>
+            <span class="stop-lines">
+                {% for line in stop.lines %}
+                <span class="chip" style="background: {{ line.colours[0] }}; color: {{ line.colours[1] }}">{{ line.name }}</span>
+                {% endfor %}
+            </span>
+            <span class="stop-distance">{{ stop.distance }}</span>
+        </label>
+        {% endfor %}
+        {% endif %}
+        {% if bus_stops %}
+        <h3 class="stops-title">Bus stops</h3>
+        {% for stop in bus_stops %}
+        <label class="stop">
+            <input type="checkbox" name="stop" value="{{ stop.id }}">
+            <span class="stop-name">{% if stop.letter %}<span class="stop-letter">{{ stop.letter }}</span>{% endif %}{{ stop.name }}</span>
+            <span class="stop-lines">
+                {% for route in stop.routes %}
+                <span class="chip is-bus">{{ route }}</span>
+                {% endfor %}
+                {% if stop.more_routes %}<span class="chip is-more">+{{ stop.more_routes }}</span>{% endif %}
+            </span>
+            <span class="stop-distance">{{ stop.distance }}</span>
+        </label>
+        {% endfor %}
+        {% endif %}
+        <button type="submit" class="button">Continue</button>
+    </form>
+</div>
+
+{% else %}
+<div class="step">
+    {{ tick() }}
+    <h2 class="lead">You're all set!</h2>
+    <ul class="summary">
+        <li>{{ postcode }}</li>
+        {% if place %}<li>{{ place }}</li>{% endif %}
+        <li>{% if stop_count == 0 %}No stops yet{% elif stop_count == 1 %}1 stop{% else %}{{ stop_count }} stops{% endif %}</li>
+    </ul>
+    <p class="note">You can change these, or add more stops, in the touchscreen's settings whenever you like.</p>
+    <a class="button" href="{{ url_for('pages.phone_setup', device_id=device_id) }}">Continue</a>
+</div>
+{% endif %}
+{% endblock %}

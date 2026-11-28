@@ -272,3 +272,181 @@ a {
     background: none;
     font-size: 15px;
 }
+
+/* A link that is a button keeps a button's look. */
+a.button,
+a.button:visited {
+    color: var(--accent-ink);
+    text-decoration: none;
+}
+
+a.button.is-quiet,
+a.button.is-quiet:visited {
+    color: var(--ink);
+}
+
+/* The location step (touchscreen_location.html): the postcodes near the phone, the largest the best guess, and the
+   stops near the postcode, each a card to tick. As the touchscreen drew them, in one column for a phone. */
+.postcodes,
+.stops {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+}
+
+.postcode {
+    min-height: 60px;
+    padding: 12px 8px;
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface-raised);
+    color: var(--ink);
+    font: inherit;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.postcode.is-best {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 18px 12px;
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    font-size: 34px;
+    letter-spacing: 1px;
+}
+
+.postcode-tag {
+    color: var(--focus);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.postcode-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.postcode-grid .postcode {
+    font-size: 17px;
+}
+
+.input.is-postcode {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.stops-title {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.stop {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px 12px;
+    align-items: center;
+    padding: 14px 16px;
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    text-align: left;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+/* The tick is the card's own: the checkbox is there for the form and the keyboard, not to be seen. */
+.stop input {
+    position: absolute;
+    opacity: 0;
+}
+
+.stop:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.stop:has(input:focus-visible) {
+    outline: 2px solid var(--focus);
+    outline-offset: 4px;
+}
+
+.stop-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.stop-letter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 6px;
+    border-radius: 15px;
+    background: #dc241f;
+    color: #fff;
+    font-size: 15px;
+}
+
+.stop-distance {
+    grid-row: 1;
+    grid-column: 2;
+    color: var(--muted);
+    font-size: 15px;
+    white-space: nowrap;
+}
+
+.stop-lines {
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    gap: 6px;
+}
+
+.chip {
+    padding: 2px 9px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.chip.is-bus {
+    background: #dc241f;
+    color: #fff;
+}
+
+.chip.is-more {
+    background: var(--surface-raised);
+    color: var(--muted);
+}
+
+.summary {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    font-size: 20px;
+    font-weight: 700;
+    list-style: none;
+}
