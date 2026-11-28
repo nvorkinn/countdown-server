@@ -55,7 +55,6 @@ def touchscreen(app, client):
         ("/api/stops/search", "GET"),
         ("/api/places/search", "GET"),
         ("/api/places/here", "GET"),
-        ("/api/devices/locate", "POST"),
         ("/api/postcodes/lookup", "GET"),
         ("/api/postcodes/near", "POST"),
         ("/api/stops/near", "GET"),
