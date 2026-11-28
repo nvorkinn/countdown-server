@@ -129,6 +129,19 @@ def test_a_touchscreen_saves_how_it_shows_lyrics(app, client, touchscreen):
     assert refused.status_code == 400
 
 
+def test_a_touchscreen_saves_how_soon_it_mentions_a_holiday(app, client, touchscreen):
+    assert client.get(CONFIG_URL, headers=_auth()).get_json()["holidays"] == {"days_ahead": 7}
+    etag = _version(client, headers=_auth())
+
+    response = _save(client, "holidays", {"days_ahead": 4}, etag, headers=_auth())
+
+    assert (response.status_code, response.get_json()["holidays"]) == (200, {"days_ahead": 4})
+    with app.app_context():
+        assert db.session.get_one(DeviceConfig, touchscreen).holidays_days_ahead == 4
+    refused = _save(client, "holidays", {"days_ahead": 31}, response.headers["ETag"], headers=_auth())
+    assert refused.status_code == 400
+
+
 def test_a_touchscreen_groups_its_arrivals_by_route_and_a_save_without_the_switch_keeps_it(app, client, touchscreen):
     arrivals = client.get(CONFIG_URL, headers=_auth()).get_json()["arrivals"]
     assert arrivals["group_by_route"] is False

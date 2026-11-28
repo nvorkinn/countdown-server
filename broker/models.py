@@ -202,6 +202,8 @@ THEME_DYNAMIC = {"off": "Off", "on": "On"}
 # The synced lyrics' size and which side they line up on (DeviceConfig.lyrics_size, lyrics_align).
 LYRICS_SIZES = {"small": "Small", "medium": "Medium", "large": "Large", "x-large": "Extra large"}
 LYRICS_ALIGNS = {"left": "Left", "center": "Centre", "right": "Right"}
+# How many days ahead a touchscreen's notice board mentions the next holiday (DeviceConfig.holidays_days_ahead).
+HOLIDAYS_DAYS_AHEAD = {"2": "2 days", "4": "4 days", "7": "1 week", "14": "2 weeks"}
 SCREEN_SLEEP_MINUTES = {"0": "Never", "2": "2 minutes", "5": "5 minutes", "15": "15 minutes", "30": "30 minutes"}
 # How bright a touchscreen's screen may be set, as a percentage: the least and the most (the contract's brightness).
 SCREEN_BRIGHTNESS = (10, 100)
@@ -367,7 +369,7 @@ class DeviceConfig(Model):
     # Every device has them, at their defaults, but only a touchscreen's config carries them, or its page shows them.
     theme: Mapped[Theme] = mapped_column(String, default="day", server_default=text("'day'"))
     theme_colour: Mapped[ThemeColour] = mapped_column(String, default="forest", server_default=text("'forest'"))
-    theme_dynamic: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    theme_dynamic: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
     # How long the touchscreen waits untouched before it sleeps; 0 for never.
     screen_sleep_minutes: Mapped[ScreenSleepMinutes] = mapped_column(Integer, default=5, server_default=text("5"))
     # How bright the touchscreen's screen is while someone uses it, a percentage (SCREEN_BRIGHTNESS). Only one that
@@ -382,11 +384,14 @@ class DeviceConfig(Model):
     # How the touchscreen shows synced lyrics: their size and which side they line up on (the config's `lyrics`).
     lyrics_size: Mapped[LyricsSize] = mapped_column(String, default="medium", server_default=text("'medium'"))
     lyrics_align: Mapped[LyricsAlign] = mapped_column(String, default="left", server_default=text("'left'"))
+    # How many days before a bank or public holiday the touchscreen's notice board mentions it (the config's
+    # `holidays`), one of HOLIDAYS_DAYS_AHEAD.
+    holidays_days_ahead: Mapped[int] = mapped_column(Integer, default=7, server_default=text("7"))
 
     device: Mapped[Device] = relationship(back_populates="config")
 
 
-# The settings that are one device type's own, each in its config's `style`, `display` or `lyrics`, by their
+# The settings that are one device type's own, each in its config's `style`, `display`, `lyrics` or `holidays`, by their
 # DeviceConfig attribute (also the settings page's form field): the other type's config has nowhere for them.
 TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
     "epaper": frozenset({"orientation", "style", "weather_design", "layout"}),
@@ -402,6 +407,7 @@ TYPE_FIELDS: dict[DeviceType, frozenset[str]] = {
             "quiet_hours_end",
             "lyrics_size",
             "lyrics_align",
+            "holidays_days_ahead",
         }
     ),
 }

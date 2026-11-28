@@ -89,8 +89,8 @@ MIN_SECRET_LENGTH = 16
 # ConfigResponse's members, by their tag, `type`.
 CONFIGS = {"epaper": EpaperConfig, "touchscreen": TouchscreenConfig}
 # What a touchscreen's own settings panel changes, and so what a PUT may: its look, when it sleeps, its clock, its
-# language, and how it shows lyrics.
-SAVED_HERE = frozenset({"clock_format", "language", "style", "display", "lyrics"})
+# language, how it shows lyrics, and how soon it mentions a holiday.
+SAVED_HERE = frozenset({"clock_format", "language", "style", "display", "lyrics", "holidays"})
 
 
 @bp.post("/register")
@@ -256,6 +256,8 @@ def put_config(device_id: str) -> ResponseReturnValue:
     # A device that doesn't know lyrics yet sends none: it keeps what's saved.
     if sent.lyrics is not None:
         config.lyrics_size, config.lyrics_align = sent.lyrics.size, sent.lyrics.align
+    if sent.holidays is not None:
+        config.holidays_days_ahead = sent.holidays.days_ahead
     db.session.commit()
     # Every screen's copy, as a save on the settings site does (the render pool never draws a touchscreen, so there's
     # nothing to queue).

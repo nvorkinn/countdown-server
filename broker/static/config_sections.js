@@ -19,6 +19,7 @@
         language: () => ["language", checked("language")],
         theme: () => ["style", style()],
         theme_colour: () => ["style", style()],
+        theme_dynamic: () => ["style", style()],
         screen_sleep_minutes: display,
         screen_brightness: display,
         quiet_hours_on: display,
@@ -26,6 +27,7 @@
         quiet_hours_end: display,
         lyrics_size: lyrics,
         lyrics_align: lyrics,
+        holidays_days_ahead: () => ["holidays", { days_ahead: Number(checked("holidays_days_ahead")) }],
         postcode: noticeBoard,
         address: noticeBoard,
         parcels_enabled: parcels,
@@ -43,7 +45,12 @@
     function style() {
         // The contract names the skin `skin` or, from countdown-api's theme change, `theme`: keep whichever it has.
         const key = "theme" in config.style ? "theme" : "skin";
-        return { ...config.style, [key]: checked("theme"), colour: checked("theme_colour") };
+        return {
+            ...config.style,
+            [key]: checked("theme"),
+            colour: checked("theme_colour"),
+            dynamic: checked("theme_dynamic") === "on",
+        };
     }
 
     function display() {

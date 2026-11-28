@@ -21,6 +21,7 @@ from countdown_api.models import (
     Spotify,
     TouchscreenConfig,
     TouchscreenDisplay,
+    TouchscreenHolidays,
     TouchscreenLyrics,
     TouchscreenQuietHours,
     TouchscreenStyle,
@@ -119,6 +120,7 @@ def build(config: DeviceConfig, *, pairing_code: str | None) -> ConfigResponse:
                 ),
             ),
             lyrics=TouchscreenLyrics(size=config.lyrics_size, align=config.lyrics_align),
+            holidays=TouchscreenHolidays(days_ahead=config.holidays_days_ahead),
             parcels=parcels,
         )
     return EpaperConfig(

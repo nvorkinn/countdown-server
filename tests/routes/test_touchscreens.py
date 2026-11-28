@@ -164,7 +164,7 @@ def test_a_touchscreen_gets_no_pairing_code(app, client):
     with app.app_context():
         assert pairing.live_code(device_id) is None
     # Its own settings, at their defaults.
-    assert response.get_json()["style"] == {"skin": "day", "colour": "forest", "dynamic": False}
+    assert response.get_json()["style"] == {"skin": "day", "colour": "forest", "dynamic": True}
     # Always with its brightness and quiet hours: full, and off.
     assert response.get_json()["display"] == {
         "sleep_minutes": 5,
@@ -172,6 +172,7 @@ def test_a_touchscreen_gets_no_pairing_code(app, client):
         "quiet_hours": {"on": False, "start": 1320, "end": 420},
     }
     assert response.get_json()["lyrics"] == {"size": "medium", "align": "left"}
+    assert response.get_json()["holidays"] == {"days_ahead": 7}
 
 
 def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
@@ -182,6 +183,7 @@ def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
         config.theme_dynamic = True
         config.screen_brightness, config.quiet_hours_on = 80, True
         config.lyrics_size, config.lyrics_align = "large", "center"
+        config.holidays_days_ahead = 4
         db.session.commit()
 
     response = client.get(CONFIG_URL, headers=_auth())
@@ -194,6 +196,7 @@ def test_a_paired_touchscreen_gets_its_config_with_its_settings(app, client):
     assert body["style"] == TOUCHSCREEN["config"]["style"]
     assert body["display"] == TOUCHSCREEN["config"]["display"]
     assert body["lyrics"] == TOUCHSCREEN["config"]["lyrics"]
+    assert body["holidays"] == TOUCHSCREEN["config"]["holidays"]
     CONFIGS.validate_python(body)
 
 
@@ -221,6 +224,7 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
         style=TOUCHSCREEN["save"]["style"],
         display=TOUCHSCREEN["save"]["display"],
         lyrics=TOUCHSCREEN["save"]["lyrics"],
+        holidays=TOUCHSCREEN["save"]["holidays"],
     )
 
     response = client.put(CONFIG_URL, json=sent, headers=_auth())
@@ -233,6 +237,7 @@ def test_a_paired_touchscreen_saves_its_own_settings(app, client):
         assert config.theme_dynamic
         assert config.clock_format == "12h"
         assert (config.lyrics_size, config.lyrics_align) == ("large", "center")
+        assert config.holidays_days_ahead == 4
         assert config.screen_brightness == 80
         assert (config.quiet_hours_on, config.quiet_hours_start, config.quiet_hours_end) == (True, 1320, 420)
     assert client.get(CONFIG_URL, headers=_auth()).get_json() == sent
