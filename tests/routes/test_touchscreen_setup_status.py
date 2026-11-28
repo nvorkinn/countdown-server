@@ -209,7 +209,7 @@ def test_the_whole_setup_runs_in_step_from_pairing_to_done(app, client, anonymou
     pick = _phone(client, device_id).get_data(as_text=True)
     assert 'data-step="soloist_sign_in"' in pick
     assert f"<strong>{DEVICE_NAME}</strong>" in pick
-    assert "https://open.spotify.com/" in pick
+    assert '<a class="button" href="https://open.spotify.com/">Open Spotify</a>' in pick
     assert "data-reload-after-s" not in pick
 
     # Then where it is, which the owner may leave for later.
