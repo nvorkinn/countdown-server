@@ -501,7 +501,7 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
     html = client.get("/device").get_data(as_text=True)
 
     # What the tablet shows (the time format, departures, weather, notice board and parcels), then its own style,
-    # display and lyrics.
+    # display, lyrics and how soon it mentions a holiday.
     titles = re.findall(r'<h2 class="card-title">([^<]+)</h2>', html)
     assert titles == [
         "General",
@@ -512,6 +512,7 @@ def test_a_touchscreens_page_has_its_settings_and_not_the_pools(app, client):
         "Style",
         "Display",
         "Synced Lyrics",
+        "Bank holidays",
         "Screen",
     ]
     assert re.findall(r'id="lyrics_size_([\w-]+)"[^>]*checked', html) == ["medium"]

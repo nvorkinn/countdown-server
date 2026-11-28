@@ -1,11 +1,11 @@
 """Saving a device's config a section at a time (PUT /api/devices/config/{section}), and the config's version.
 
 A section is a top-level field of the contract's ConfigResponse that isn't read-only or the server's own (the
-contract's ConfigSection): `arrivals`, `style`, `lyrics`, `holidays`, and the flat `clock_format` and `language` too. A save
-replaces one whole: the route puts the value into the config as it stands and validates the result with the device
-type's model, and set() then writes that section to the device's settings (DeviceConfig), as the settings page's form
-does. What the server works out itself (the notice board's country, the weather's location) is worked out again from
-what was saved, whatever was sent.
+contract's ConfigSection): `arrivals`, `style`, `lyrics`, `holidays`, and the flat `clock_format` and `language` too.
+A save replaces one whole: the route puts the value into the config as it stands and validates the result with the
+device type's model, and set() then writes that section to the device's settings (DeviceConfig), as the settings
+page's form does. What the server works out itself (the notice board's country, the weather's location) is worked out
+again from what was saved, whatever was sent.
 
 The version is a hash of the config as built (renderer_config.build), so it changes when anything in it does,
 whoever saved it: the settings page, a device's whole save, or a section's.

@@ -158,6 +158,7 @@ type ThemeColour = Literal["forest", "navy", "teal", "plum", "terracotta", "pink
 type ScreenSleepMinutes = Literal[0, 2, 5, 15, 30]
 type LyricsSize = Literal["small", "medium", "large", "x-large"]
 type LyricsAlign = Literal["left", "center", "right"]
+type HolidaysDaysAhead = Literal[2, 4, 7, 14]
 type Layout = Literal[
     "classic",
     "masthead",
@@ -386,7 +387,7 @@ class DeviceConfig(Model):
     lyrics_align: Mapped[LyricsAlign] = mapped_column(String, default="left", server_default=text("'left'"))
     # How many days before a bank or public holiday the touchscreen's notice board mentions it (the config's
     # `holidays`), one of HOLIDAYS_DAYS_AHEAD.
-    holidays_days_ahead: Mapped[int] = mapped_column(Integer, default=7, server_default=text("7"))
+    holidays_days_ahead: Mapped[HolidaysDaysAhead] = mapped_column(Integer, default=7, server_default=text("7"))
 
     device: Mapped[Device] = relationship(back_populates="config")
 
