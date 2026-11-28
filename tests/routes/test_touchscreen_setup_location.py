@@ -183,7 +183,7 @@ def test_the_phones_position_gets_the_best_guess_and_the_rest_in_order(client, a
     assert shown == sorted(shown)
     assert f'action="{_url(at_location, "/postcode")}"' in page
     assert "Not here? Type it in" in page
-    # Asked of postcodes.io as far out as the phone is unsure, and never of Google.
+    # Asked of postcodes.io, as far out as the phone is unsure.
     assert len(responses.calls) == 1
     asked = dict(parse_qsl(urlsplit(str(responses.calls[0].request.url)).query))
     assert asked == {

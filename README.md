@@ -166,12 +166,12 @@ incoming request). The sign-up page (`/pair`), the page for a Soloist key (`/sol
   `/api/stops/search`, `/api/stops/near`, `/api/places/search`, `/api/places/here`, `/api/postcodes/lookup` and
   `/api/postcodes/near` (broker/cors.py).
 
-A kiosk's setup wizard finds where it is (`broker/routes/location.py`): `POST /api/devices/locate` takes the Wi-Fi
-access points it sees and answers Google's position for them (with the broker's `GOOGLE_GEOLOCATION_API_KEY`, so no key
-sits on a device) and the 10 UK postcodes nearest it, from postcodes.io; about 10 a device an hour, then `429`.
+A kiosk's setup finds where it is (`broker/routes/location.py`): `POST /api/postcodes/near` takes a position the
+owner's phone found for itself and answers the 10 UK postcodes nearest it, from postcodes.io.
 `GET /api/postcodes/lookup?postcode=` places a postcode the owner types (postcodes.io for the UK's, Kartverket for
 Norway's), and `GET /api/stops/near?latitude=&longitude=` lists the Tube stations (within 1.5 km) and bus stops (within
-500 m) near it, from TfL. Each needs a paired device's secret; none logs an access point, a position or a postcode.
+500 m) near it, from TfL. Each needs a paired device's secret (or, for the postcodes near a position, its owner's
+login); none logs a position or a postcode.
 
 The pages a new touchscreen's setup sends its owner's phone through look like the setup the touchscreen is showing,
 not like the rest of the site (`templates/touchscreen_base.html`, `static/touchscreen_setup.css`): `/pair/add?t=` when
@@ -190,8 +190,7 @@ with a verifier that never leaves it. A touchscreen that never reports is set up
 
 Where the touchscreen is, its owner says on the phone at that setup's location step (`broker/routes/setup_location.py`,
 `/device/<id>/setup/location`): "Use my location" asks the phone's browser where it is and posts that, and the page
-lists the UK postcodes nearest (`POST /api/postcodes/near` answers the same to a device), with nothing asked of Google;
-or they type a UK or Norwegian postcode. They then tick the Tube stations and bus stops near it. The save sets the
+lists the UK postcodes nearest (`POST /api/postcodes/near` answers the same to a device); or they type a UK or Norwegian postcode. They then tick the Tube stations and bus stops near it. The save sets the
 touchscreen's notice board (the postcode), its weather (the town at the postcode's position) and its arrivals (the stops
 ticked), and ends the step; "Skip for now" ends it with nothing saved. A position is posted, never part of an address,
 and neither it nor a postcode is logged.
@@ -441,9 +440,7 @@ two collections is two items, one per environment; an item that several projects
 `caddy.env` (the log ingest token), `redis.env` and, where this repo runs the edge, `tinyauth.env` and `pocket-id.env`);
 `.env.example` lists the broker's for local development. Settings that aren't secret are in `config/<environment>.env`
 and `docker-compose.yml`. Pocket ID's API key for the sign-up flow reaches the broker as `POCKET_ID_API_KEY`, with
-`POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting). `GOOGLE_GEOLOCATION_API_KEY`
-(in `broker.env`, both environments) is the Google Geolocation API key that places a kiosk by the Wi-Fi it sees, for its
-setup wizard's `POST /api/devices/locate`; without it that answers 503. Restrict the key to the Geolocation API.
+`POCKET_ID_COUNTDOWN_GROUP_ID` (both in `broker.env`) and `POCKET_ID_URL` (a setting).
 
 On every deploy, `deploy-compose.yml` runs the shared action `nvorkinn/.github/actions/vaultwarden-secrets`, which logs in to Vaultwarden as the `deploy-bot` user (it
 can read only these two collections) and writes one `<name>.env` per file of `secrets-map.json`'s target, on the runner,

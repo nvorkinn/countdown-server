@@ -1,8 +1,8 @@
 """The location step of a touchscreen's setup, on its owner's phone (/device/<id>/setup/location).
 
 For a touchscreen that reports on its setup (services/touchscreen_setup.py), at the step where its owner says where it
-is. The phone finds its own position (static/touchscreen_location.js) and posts it here, so nothing is asked of Google;
-the pages are plain forms from there:
+is. The phone finds its own position (static/touchscreen_location.js) and posts it here; the pages are plain forms
+from there:
 
 1. the start: use this phone's location, type a postcode, or skip;
 2. the postcodes nearest the phone, to pick one from (`near`), or a box to type one in (`type_postcode`);
