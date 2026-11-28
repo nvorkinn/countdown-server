@@ -1,0 +1,35 @@
+{# A step of a touchscreen's setup on its owner's phone, for a touchscreen that reports on its setup
+   (services/touchscreen_setup.py): the same step the touchscreen is showing, in the same words. The page watches for
+   the step to change (static/touchscreen_setup.js) and then asks where to go next. #}
+{% extends "touchscreen_base.html" %}
+
+{% block title %}Setting up{% endblock %}
+{% block heading %}{% if step == "soloist_sign_in" %}Spotify{% elif step == "location" %}Location{% elif step == "presence" %}Bluetooth{% else %}Setting up{% endif %}{% endblock %}
+
+{% block content %}
+<div class="step" id="setupStep" data-step="{{ step }}"
+     data-status-url="{{ url_for('devices.get_setup', device_id=device_id) }}"
+     data-setup-url="{{ url_for('pages.phone_setup', device_id=device_id) }}"
+     {% if waiting %}data-reload-after-s="{{ reload_after_s }}"{% endif %}>
+    {% if step == "soloist_sign_in" %}
+    <h2 class="lead">The touchscreen now needs to sign in to Spotify for the first time.</h2>
+    <p class="note">Open Spotify on this phone and pick {% if soloist_device %}<strong>{{ soloist_device }}</strong>{% else %}the touchscreen{% endif %} in the device list. Then come back to this page.</p>
+    <a class="button" href="https://open.spotify.com/">Open Spotify</a>
+    {% elif step == "location" %}
+    <h2 class="lead">Where is your touchscreen?</h2>
+    <p class="note">You can set its postcode, weather and stops in its settings whenever you like.</p>
+    <form method="POST" action="{{ url_for('pages.skip_setup_location', device_id=device_id) }}">
+        <button type="submit" class="button">Skip for now</button>
+    </form>
+    {% elif step == "presence" %}
+    <h2 class="lead">Next, the touchscreen pairs with this phone over Bluetooth.</h2>
+    <p class="note">Open Settings, then Bluetooth, on this phone, and tap OK on the touchscreen. Select your phone there when it appears.</p>
+    {% else %}
+    <div class="spinner" aria-hidden="true"></div>
+    <h2 class="lead" role="status">One moment…</h2>
+    {% endif %}
+    <p class="note" id="setupOffline" role="status" hidden>Waiting for the touchscreen. Check that it is switched on and online.</p>
+</div>
+
+<script src="{{ url_for('static', filename='touchscreen_setup.js') }}"></script>
+{% endblock %}

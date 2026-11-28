@@ -13,16 +13,21 @@
     {% elif declined %}
     {{ cross() }}
     <h2 class="lead">Spotify didn't sign you in.</h2>
+    {% if again %}
+    <p class="note">The touchscreen needs your Spotify account to play music.</p>
+    <a class="button" href="{{ again }}">Try again</a>
+    {% else %}
     <p class="note">You can close this page.</p>
+    {% endif %}
     {% else %}
     {{ tick() }}
     <h2 class="lead">You're signed in on the touchscreen.</h2>
     <p class="note">You can close this page.</p>
     {% endif %}
-    {% if not spent %}<button type="button" class="button" id="closePage">Close</button>{% endif %}
+    {% if not spent and not again %}<button type="button" class="button" id="closePage">Close</button>{% endif %}
 </div>
 
-{% if not spent %}
+{% if not spent and not again %}
 <script>
     // As on /pair/done: browsers close only a tab a script opened, so for one a QR scan opened this may do nothing.
     const closePage = () => window.close("", "_parent", "");

@@ -163,8 +163,8 @@ incoming request). The sign-up page (`/pair`), the page for a Soloist key (`/sol
   to the tablet's app instead, adding `device_id=<id>` (or `error=taken`). The URL's origin must be listed in the
   setting `TOUCHSCREEN_RETURN_ORIGINS`, or the request is refused before anything is registered.
   The same origins may call the touchscreen's routes on `API_HOST` from the browser (CORS): `/api/devices/*`,
-  `/api/stops/search`, `/api/stops/near`, `/api/places/search`, `/api/places/here` and `/api/postcodes/lookup`
-  (broker/cors.py).
+  `/api/stops/search`, `/api/stops/near`, `/api/places/search`, `/api/places/here`, `/api/postcodes/lookup` and
+  `/api/postcodes/near` (broker/cors.py).
 
 A kiosk's setup wizard finds where it is (`broker/routes/location.py`): `POST /api/devices/locate` takes the Wi-Fi
 access points it sees and answers Google's position for them (with the broker's `GOOGLE_GEOLOCATION_API_KEY`, so no key
@@ -177,6 +177,18 @@ The pages a new touchscreen's setup sends its owner's phone through look like th
 not like the rest of the site (`templates/touchscreen_base.html`, `static/touchscreen_setup.css`): `/pair/add?t=` when
 the token is a registered touchscreen's, `/device/setup`, `/spotify/sign-in`, `/soloist` and `/pair/done`. The pairing
 page is the site's own for anything else (an e-paper screen's token, one no screen has registered with yet, a code).
+
+A touchscreen that reports on its own setup has its phone's pages and its own screen show the same step
+(`services/touchscreen_setup.py`). It reports with `PUT /api/devices/setup`, first as soon as it has registered, with
+the PKCE challenge of its first person's Spotify sign-in, and later that its Soloist has signed in, that its phone is
+paired over Bluetooth, and that it has finished. The broker works the step out from those and from what it knows itself,
+and answers it to both at `GET /api/devices/setup` (the phone with its owner's login and `?device_id=`). The phone's
+`/device/<id>/setup` goes wherever the step says: straight to Spotify on a sign-in made from the reported challenge, on
+to the Soloist key, then pages that say what the touchscreen says (pick it in Spotify, where it is, Bluetooth), each
+watching for the step to change (`static/touchscreen_setup.js`). The touchscreen still exchanges Spotify's code itself,
+with a verifier that never leaves it. `POST /api/postcodes/near` answers the UK postcodes nearest a position the phone
+found for itself, for that setup's location step, with nothing asked of Google. A touchscreen that never reports is set
+up as before.
 
 Pairing gives the screen its internal name (its slug, which is its device id), puts it on the render pool's list and
 queues its first render. Its owner can give it a friendly name on its settings page.

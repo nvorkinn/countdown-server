@@ -42,7 +42,7 @@ def test_the_token_pairs_the_user_with_a_registered_device(app, client, register
     response = _pair(client)
 
     assert response.status_code == 200
-    assert response.get_json() == {"status": "paired", "type": "epaper"}
+    assert response.get_json() == {"status": "paired", "type": "epaper", "device_id": device_id}
     assert _owner(app, device_id) == "user-1"
     assert client.get("/device").status_code == 200
 
@@ -131,7 +131,11 @@ def test_a_touchscreen_paired_by_its_qr_code_is_said_to_be_one(client):
     response = _pair(client)
 
     assert response.status_code == 200
-    assert response.get_json() == {"status": "paired", "type": "touchscreen"}
+    assert response.get_json() == {
+        "status": "paired",
+        "type": "touchscreen",
+        "device_id": registered.get_json()["device_id"],
+    }
 
 
 def test_the_done_page_ends_the_visit_with_no_way_on_to_the_settings(client, register_device):
@@ -154,4 +158,5 @@ def test_the_done_page_ends_the_visit_with_no_way_on_to_the_settings(client, reg
 def test_the_pairing_page_sends_a_touchscreen_on_through_its_setup(client):
     html = client.get(f"/pair/add?t={token_for_secret()}").get_data(as_text=True)
 
-    assert "/device/setup" in html
+    # To the setup of the screen it has just paired, by its id, and not of whichever the person paired last.
+    assert '"/device/" + encodeURIComponent(body.device_id) + "/setup"' in html

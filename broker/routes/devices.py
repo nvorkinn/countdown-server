@@ -24,6 +24,9 @@ the account's link (GET /spotify/token); the refresh token and the app's secret 
 
 A touchscreen's people sign in to Spotify on their phones (POST /spotify/sign-ins, GET /spotify/sign-ins/<id>,
 services/spotify_sign_in.py): the touchscreen shows a code to scan and is handed Spotify's code once the phone is back.
+
+A new touchscreen's setup runs on its own screen and its owner's phone in step (GET and PUT /setup,
+services/touchscreen_setup.py): both ask which step it is at, and the touchscreen reports what only it knows.
 """
 
 from typing import TYPE_CHECKING, Any, TypeGuard
@@ -31,6 +34,7 @@ from typing import TYPE_CHECKING, Any, TypeGuard
 import requests
 from countdown_api.models import (
     EpaperConfig,
+    SetupReport,
     SoloistApiKey,
     SoloistKeyCode,
     SoloistKeys,
@@ -40,7 +44,7 @@ from countdown_api.models import (
     TouchscreenConfig,
 )
 from cryptography.fernet import InvalidToken
-from flask import Blueprint, Response, current_app, jsonify, request, url_for
+from flask import Blueprint, Response, current_app, jsonify, request
 from pydantic import ValidationError
 from redis import RedisError
 from sqlalchemy import select
@@ -69,6 +73,7 @@ from broker.services import (
     renderer_config,
     soloist,
     spotify_sign_in,
+    touchscreen_setup,
 )
 
 if TYPE_CHECKING:
@@ -476,9 +481,7 @@ def create_spotify_sign_in(device_id: str) -> ResponseReturnValue:
         asked = SpotifySignInRequest.model_validate(request.get_json(silent=True))
     except ValidationError:
         return jsonify(error="client_id, code_challenge and scope are needed"), 400
-    redirect_uri = url_for("spotify_sign_in_page.callback", _external=True)
-    if site := current_app.config["SITE_URL"]:
-        redirect_uri = site + url_for("spotify_sign_in_page.callback")
+    redirect_uri = spotify_sign_in.callback_uri()
     started = spotify_sign_in.start(device, asked.client_id, asked.code_challenge, asked.scope, redirect_uri)
     answer = SpotifySignIn(
         id=started.id, redirect_uri=redirect_uri, expires_in=int(spotify_sign_in.TTL.total_seconds())
@@ -503,6 +506,47 @@ def get_spotify_sign_in(device_id: str, id: str) -> ResponseReturnValue:  # noqa
         error=answer if status == "failed" else None,
     )
     return result.model_dump(mode="json", exclude_none=True), 200, {"Cache-Control": "no-store"}
+
+
+@bp.get("/setup")
+@require_device_or_owner
+def get_setup(device_id: str, *, by_device: bool) -> ResponseReturnValue:  # noqa: ARG001 -- the same for both
+    """Answer where a touchscreen's setup stands (SetupStatus), to it and to its owner's phone alike.
+
+    Takes the device's secret, or, from the settings site, its owner's login and ?device_id=
+    (auth.require_device_or_owner). 404 for a touchscreen that has reported nothing, which doesn't take part, and 409
+    for an e-paper screen.
+    """
+    device = db.session.get_one(Device, device_id)
+    if device.type != "touchscreen":
+        return jsonify(error="only a touchscreen has a setup"), 409
+    status = touchscreen_setup.status(device, spotify_sign_in.callback_uri())
+    if status is None:
+        return jsonify(error="the touchscreen has reported nothing of its setup"), 404
+    return status.model_dump(mode="json", exclude_none=True), 200, {"Cache-Control": "no-store"}
+
+
+@bp.put("/setup")
+@require_device_auth
+def report_setup(device_id: str) -> ResponseReturnValue:
+    """Keep what a touchscreen reports of its own setup (SetupReport), and answer where the setup then stands.
+
+    Paired or not: its first report comes as soon as it has registered, with its first Spotify sign-in's challenge,
+    and makes it a touchscreen that takes part. 400 for a body that isn't a report, and 409 for an e-paper screen.
+    """
+    device = db.session.get_one(Device, device_id)
+    if device.type != "touchscreen":
+        return jsonify(error="only a touchscreen has a setup"), 409
+    try:
+        # Strictly: "yes" is not true, as the contract's booleans go.
+        reported = SetupReport.model_validate(request.get_json(silent=True), strict=True)
+    except ValidationError:
+        return jsonify(error="send what the touchscreen knows of its setup, as a SetupReport"), 400
+    touchscreen_setup.report(device, reported)
+    status = touchscreen_setup.status(device, spotify_sign_in.callback_uri())
+    if status is None:  # pragma: no cover -- it has just reported
+        return jsonify(error="the touchscreen has reported nothing of its setup"), 404
+    return status.model_dump(mode="json", exclude_none=True), 200, {"Cache-Control": "no-store"}
 
 
 @bp.get("/account")
