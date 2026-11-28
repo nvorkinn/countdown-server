@@ -1,7 +1,7 @@
 """Test POST /api/postcodes/near: the UK postcodes nearest a position a phone found for itself.
 
-A setup's location step on its owner's phone sends the phone's own position, so nothing is asked of Google. A position
-says where someone lives: it comes in the body, and is never logged.
+A setup's location step on its owner's phone sends the phone's own position. A position says where someone
+lives: it comes in the body, and is never logged.
 """
 
 import logging
