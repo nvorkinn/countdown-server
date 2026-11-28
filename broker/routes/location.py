@@ -6,7 +6,7 @@ Tube stations and bus stops near it. Positions and postcodes say where someone l
 """
 
 import math
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -40,15 +40,11 @@ def near_postcodes() -> ResponseReturnValue:
     outside the UK. 400 for a body that isn't one, 502 if postcodes.io couldn't be asked.
     """
     body = request.get_json(silent=True)
-    position = _position(body.get("latitude"), body.get("longitude")) if isinstance(body, dict) else None
-    accuracy = body.get("accuracy", 0) if isinstance(body, dict) else None
-    if (
-        position is None
-        or not isinstance(body, dict)
-        or set(body) - {"latitude", "longitude", "accuracy"}
-        or not _is_number(accuracy)
-        or accuracy < 0
-    ):
+    if not isinstance(body, dict) or set(body) - {"latitude", "longitude", "accuracy"}:
+        body = {}
+    position = _position(body.get("latitude"), body.get("longitude"))
+    accuracy = body.get("accuracy", 0)
+    if position is None or not _is_number(accuracy) or accuracy < 0:
         return jsonify(error="send latitude and longitude in degrees, and accuracy in metres if known"), 400
     try:
         return jsonify(_postcodes_near(*position, accuracy))
@@ -147,7 +143,7 @@ def _reason(error: Exception) -> str:
     return f"{type(error).__name__} {status}" if status is not None else type(error).__name__
 
 
-def _is_number(value: Any) -> bool:  # noqa: ANN401 -- whatever the JSON had
+def _is_number(value: Any) -> TypeGuard[float]:  # noqa: ANN401 -- whatever the JSON had
     """Whether a JSON value is a finite number (not a boolean)."""
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 

@@ -32,7 +32,7 @@ def _postcodes_io_finds(*postcodes):
 
 
 def _asked() -> dict[str, str]:
-    return dict(parse_qsl(urlsplit(responses.calls[0].request.url).query))
+    return dict(parse_qsl(urlsplit(str(responses.calls[0].request.url)).query))
 
 
 @responses.activate
