@@ -31,7 +31,7 @@ def callback() -> ResponseReturnValue:
     """Keep what Spotify answered for the sign-in its state names, and tell the person they can close the page.
 
     A touchscreen still being set up sends its owner's phone on to its next step instead
-    (services/touchscreen_setup.py).
+    (services/touchscreen_setup.py), and one refused there is offered another go.
     """
     state = request.args.get("state", "").strip()
     code = request.args.get("code", "").strip()
@@ -39,6 +39,15 @@ def callback() -> ResponseReturnValue:
     device_id = spotify_sign_in.finish(state, code, error)
     if device_id is None:
         return render_template("spotify_sign_in.html", spent=True)
-    if not error and touchscreen_setup.in_setup(device_id):
+    setting_up = touchscreen_setup.in_setup(device_id)
+    touchscreen_setup.spotify_answered(device_id, signed_in=not error)
+    if not error and setting_up:
         return redirect(url_for("pages.phone_setup", device_id=device_id))
-    return render_template("spotify_sign_in.html", declined=bool(error))
+    # Refused during a setup both screens follow, the phone can sign in again from here: the touchscreen shows no
+    # code for it to scan a second time.
+    again = (
+        url_for("pages.phone_setup", device_id=device_id)
+        if error and setting_up and touchscreen_setup.follows(device_id)
+        else None
+    )
+    return render_template("spotify_sign_in.html", declined=bool(error), again=again)

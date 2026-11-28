@@ -1,14 +1,15 @@
-"""Where a kiosk is, for its setup wizard's Location chapter: its position and postcodes, a postcode's, its stops.
+"""Where a kiosk is, for its setup's location step: its position and postcodes, a postcode's, its stops.
 
-The wizard sends the Wi-Fi access points the kiosk sees, and the broker asks Google where they are with its own key, so
-the key never sits on a device; postcodes.io lists the UK postcodes nearest. The owner picks or types one (looked up
-here too), and then picks from the Tube stations and bus stops near it. Access points, positions and postcodes say
-where someone lives: none of them is logged.
+A kiosk's own wizard sends the Wi-Fi access points the kiosk sees, and the broker asks Google where they are with its
+own key, so the key never sits on a device; postcodes.io lists the UK postcodes nearest. On its owner's phone the step
+needs no Google: the phone says where it is itself, and is answered the postcodes nearest that (/api/postcodes/near).
+The owner picks or types one (looked up here too), and then picks from the Tube stations and bus stops near it. Access
+points, positions and postcodes say where someone lives: none of them is logged.
 """
 
 import math
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from flask import Blueprint, current_app, g, jsonify, request
 
@@ -68,26 +69,57 @@ def locate_device() -> ResponseReturnValue:  # noqa: PLR0911 -- an answer per wa
     if position is None:
         return jsonify(error="Google can't place these access points"), 404
 
-    radius = round(min(max(position.accuracy, MIN_POSTCODE_RADIUS), MAX_POSTCODE_RADIUS))
     try:
-        nearby = postcodes_io.nearest(position.latitude, position.longitude, radius, NEARBY_POSTCODES)
+        postcodes = _postcodes_near(position.latitude, position.longitude, position.accuracy)
     except postcodes_io.PostcodesUnavailableError:
         return jsonify(error="couldn't ask postcodes.io for the postcodes nearby"), 502
     return jsonify(
         latitude=position.latitude,
         longitude=position.longitude,
         accuracy=position.accuracy,
-        postcodes=[
-            {
-                "postcode": found["postcode"],
-                "latitude": found["latitude"],
-                "longitude": found["longitude"],
-                "distance": round(found["distance"]),
-                "country": "GB",
-            }
-            for found in sorted(nearby, key=lambda found: found["distance"])[:NEARBY_POSTCODES]
-        ],
+        postcodes=postcodes,
     )
+
+
+@bp.post("/api/postcodes/near")
+@require_paired_device_or_user
+def near_postcodes() -> ResponseReturnValue:
+    """Return the UK postcodes nearest the position sent, nearest first (the contract's NearbyPostcode each).
+
+    The body is a NearPostcodesRequest: a position, as a phone's browser finds its own, and how sure it is. None
+    outside the UK. 400 for a body that isn't one, 502 if postcodes.io couldn't be asked.
+    """
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or set(body) - {"latitude", "longitude", "accuracy"}:
+        body = {}
+    position = _position(body.get("latitude"), body.get("longitude"))
+    accuracy = body.get("accuracy", 0)
+    if position is None or not _is_number(accuracy) or accuracy < 0:
+        return jsonify(error="send latitude and longitude in degrees, and accuracy in metres if known"), 400
+    try:
+        return jsonify(_postcodes_near(*position, accuracy))
+    except postcodes_io.PostcodesUnavailableError:
+        return jsonify(error="couldn't ask postcodes.io for the postcodes nearby"), 502
+
+
+def _postcodes_near(latitude: float, longitude: float, accuracy: float) -> list[dict[str, Any]]:
+    """Return the UK postcodes nearest a position as the contract's NearbyPostcode, nearest first.
+
+    postcodes.io looks as far around the position as it is uncertain, within MIN_ and MAX_POSTCODE_RADIUS. Raises
+    postcodes_io.PostcodesUnavailableError if it couldn't be asked.
+    """
+    radius = round(min(max(accuracy, MIN_POSTCODE_RADIUS), MAX_POSTCODE_RADIUS))
+    nearby = postcodes_io.nearest(latitude, longitude, radius, NEARBY_POSTCODES)
+    return [
+        {
+            "postcode": found["postcode"],
+            "latitude": found["latitude"],
+            "longitude": found["longitude"],
+            "distance": round(found["distance"]),
+            "country": "GB",
+        }
+        for found in sorted(nearby, key=lambda found: found["distance"])[:NEARBY_POSTCODES]
+    ]
 
 
 @bp.get("/api/postcodes/lookup")
@@ -141,19 +173,13 @@ def stops_near() -> ResponseReturnValue:
     [] outside TfL's area; 400 for a position that isn't one, 502 with none if TfL couldn't be asked.
     """
     try:
-        latitude = float(request.args.get("latitude", ""))
-        longitude = float(request.args.get("longitude", ""))
+        position = _position(float(request.args.get("latitude", "")), float(request.args.get("longitude", "")))
     except ValueError:
-        latitude = longitude = math.nan
-    if not (
-        math.isfinite(latitude)
-        and math.isfinite(longitude)
-        and abs(latitude) <= MAX_LATITUDE
-        and abs(longitude) <= MAX_LONGITUDE
-    ):
+        position = None
+    if position is None:
         return jsonify(error="send latitude and longitude in degrees"), 400
     try:
-        return jsonify(stops.near(latitude, longitude))
+        return jsonify(stops.near(*position))
     except Exception as e:  # noqa: BLE001 -- any failure is TfL's, and answered the same
         # Not the error's text, which quotes the URL: the position, and the TfL key.
         current_app.logger.warning("Couldn't list the stops near a position: %s", _reason(e))
@@ -165,6 +191,23 @@ def _reason(error: Exception) -> str:
     response = getattr(error, "response", None)
     status = getattr(response, "status_code", None)
     return f"{type(error).__name__} {status}" if status is not None else type(error).__name__
+
+
+def _is_number(value: Any) -> TypeGuard[float]:  # noqa: ANN401 -- whatever the JSON had
+    """Whether a JSON value is a finite number (not a boolean)."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _position(latitude: Any, longitude: Any) -> tuple[float, float] | None:  # noqa: ANN401 -- whatever was sent
+    """Return a latitude and longitude in degrees as a position, or None if they aren't one."""
+    if not (
+        _is_number(latitude)
+        and _is_number(longitude)
+        and abs(latitude) <= MAX_LATITUDE
+        and abs(longitude) <= MAX_LONGITUDE
+    ):
+        return None
+    return float(latitude), float(longitude)
 
 
 def _is_int(value: Any, low: int, high: int | None = None) -> bool:  # noqa: ANN401 -- whatever the JSON had

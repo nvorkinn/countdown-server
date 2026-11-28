@@ -68,6 +68,7 @@ from broker.services import (
     renderer_config,
     screen_defaults,
     signup,
+    spotify_sign_in,
     stops,
     touchscreen_setup,
     weather_place,
@@ -370,10 +371,10 @@ def pair_by_token(user_id: str) -> ResponseReturnValue:
     # what it shows is subscribed to.
     config_store.publish_all()
     _write_subscriptions_to_redis()
-    # Its type, for where the page goes next: an e-paper screen to its settings page, a touchscreen nowhere (it sets
-    # itself up).
-    device_type = db.session.scalar(db.select(Device.type).where(Device.pairing_token == token))
-    return jsonify(status=status, type=device_type), 200
+    # Its type and id, for where the page goes next: an e-paper screen to its settings page, a touchscreen through
+    # the rest of its own setup (phone_setup).
+    device = db.session.scalars(db.select(Device).where(Device.pairing_token == token)).one()
+    return jsonify(status=status, type=device.type, device_id=device.device_id), 200
 
 
 @bp.get("/pair/done")
@@ -392,12 +393,15 @@ def pair_done(user_id: str) -> ResponseReturnValue:  # noqa: ARG001 -- only sign
 @bp.get("/device/<device_id>/setup")
 @require_paired_user
 def phone_setup() -> ResponseReturnValue:
-    """Send the owner's phone on to the touchscreen's next setup step, wait for it, or say the screen is ready.
+    """Send the owner's phone on to the touchscreen's next setup step, show that step, or say the screen is ready.
 
     The one QR code a new touchscreen shows pairs it, then lands here; so do the Spotify callback and the Soloist page
-    while it is still being set up (services/touchscreen_setup.py). While the touchscreen catches up, the page asks
-    again every couple of seconds.
+    while it is still being set up (services/touchscreen_setup.py). A touchscreen that reports on its setup has the
+    phone show the same step it does (_phone_step). For any other, the phone goes to whatever the touchscreen has
+    asked for next, and while the touchscreen catches up the page asks again every couple of seconds.
     """
+    if touchscreen_setup.follows(g.device_id):
+        return _phone_step(db.session.get_one(Device, g.device_id))
     step, value = touchscreen_setup.next_step(g.device_id)
     if step == "spotify":
         return redirect(url_for("spotify_sign_in_page.start", id=value))
@@ -405,7 +409,50 @@ def phone_setup() -> ResponseReturnValue:
         return redirect(url_for("soloist_page.save_key", code=value))
     if step == "done":
         return redirect(url_for("pages.pair_done"))
-    response = current_app.make_response(render_template("touchscreen_setup.html"))
+    return _no_store(render_template("touchscreen_setup.html"))
+
+
+def _phone_step(device: Device) -> ResponseReturnValue:
+    """Show the owner's phone the step the touchscreen's setup is at, or send it on to that step's own page.
+
+    The steps that have a page of their own are Spotify's sign-in and the Soloist key; the rest are shown here
+    (touchscreen_step.html), each watching for the step to change (static/touchscreen_setup.js).
+    """
+    step = touchscreen_setup.step_of(device)
+    if step == "done":
+        return redirect(url_for("pages.pair_done"))
+    if step == "spotify":
+        sign_in = touchscreen_setup.sign_in_for_phone(device, spotify_sign_in.callback_uri())
+        if sign_in is not None:
+            return redirect(url_for("spotify_sign_in_page.start", id=sign_in))
+    if step == "soloist_key" and (code := touchscreen_setup.open_code(device.device_id)) is not None:
+        return redirect(url_for("soloist_page.save_key", code=code))
+    setup = device.setup
+    return _no_store(
+        render_template(
+            "touchscreen_step.html",
+            step=step,
+            device_id=device.device_id,
+            soloist_device=setup.soloist_device if setup is not None else None,
+            # A wait for the touchscreen, which asking again ends if the touchscreen never catches up: just past the
+            # wait the server allows it, so that the phone is then sent to sign in afresh.
+            waiting=step in {"spotify", "soloist_key"},
+            reload_after_s=int(touchscreen_setup.ANSWER_WAIT.total_seconds()) + 2,
+        )
+    )
+
+
+@bp.post("/device/<device_id>/setup/location/skip")
+@require_paired_user
+def skip_setup_location() -> ResponseReturnValue:
+    """Leave where the touchscreen is for later, in its settings, and go on with its setup."""
+    touchscreen_setup.location_done(g.device_id)
+    return redirect(url_for("pages.phone_setup", device_id=g.device_id), HTTPStatus.SEE_OTHER)
+
+
+def _no_store(page: str) -> Response:
+    """Answer a page that says where something stands right now, which nothing should keep."""
+    response = current_app.make_response(page)
     response.headers["Cache-Control"] = "no-store"
     return response
 

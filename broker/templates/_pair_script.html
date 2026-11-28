@@ -30,11 +30,11 @@
                 body: JSON.stringify({token: token}),
             }).then(function (response) {
                 if (response.status === 200) {
-                    // A touchscreen goes on through the rest of its setup on this phone (Spotify, then the Soloist
-                    // key); an e-paper screen goes on to its settings.
+                    // A touchscreen goes on through the rest of its own setup on this phone (Spotify, the Soloist
+                    // key and what follows); an e-paper screen goes on to its settings.
                     return response.json().then(function (body) {
                         location.replace(body.type === "touchscreen"
-                            ? "{{ url_for('pages.phone_setup') }}"
+                            ? "{{ url_for('pages.device_config') }}/" + encodeURIComponent(body.device_id) + "/setup"
                             : "{{ url_for('pages.device_config') }}");
                     });
                 } else if (response.status === 409) {
