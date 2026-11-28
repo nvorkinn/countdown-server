@@ -186,9 +186,14 @@ and answers it to both at `GET /api/devices/setup` (the phone with its owner's l
 `/device/<id>/setup` goes wherever the step says: straight to Spotify on a sign-in made from the reported challenge, on
 to the Soloist key, then pages that say what the touchscreen says (pick it in Spotify, where it is, Bluetooth), each
 watching for the step to change (`static/touchscreen_setup.js`). The touchscreen still exchanges Spotify's code itself,
-with a verifier that never leaves it. `POST /api/postcodes/near` answers the UK postcodes nearest a position the phone
-found for itself, for that setup's location step. A touchscreen that never reports is set
-up as before.
+with a verifier that never leaves it. A touchscreen that never reports is set up as before.
+
+Where the touchscreen is, its owner says on the phone at that setup's location step (`broker/routes/setup_location.py`,
+`/device/<id>/setup/location`): "Use my location" asks the phone's browser where it is and posts that, and the page
+lists the UK postcodes nearest (`POST /api/postcodes/near` answers the same to a device); or they type a UK or Norwegian postcode. They then tick the Tube stations and bus stops near it. The save sets the
+touchscreen's notice board (the postcode), its weather (the town at the postcode's position) and its arrivals (the stops
+ticked), and ends the step; "Skip for now" ends it with nothing saved. A position is posted, never part of an address,
+and neither it nor a postcode is logged.
 
 Pairing gives the screen its internal name (its slug, which is its device id), puts it on the render pool's list and
 queues its first render. Its owner can give it a friendly name on its settings page.

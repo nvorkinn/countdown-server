@@ -4,7 +4,7 @@
 {% extends "touchscreen_base.html" %}
 
 {% block title %}Setting up{% endblock %}
-{% block heading %}{% if step == "soloist_sign_in" %}Spotify{% elif step == "location" %}Location{% elif step == "presence" %}Bluetooth{% else %}Setting up{% endif %}{% endblock %}
+{% block heading %}{% if step == "soloist_sign_in" %}Spotify{% elif step == "presence" %}Bluetooth{% else %}Setting up{% endif %}{% endblock %}
 
 {% block content %}
 <div class="step" id="setupStep" data-step="{{ step }}"
@@ -15,12 +15,6 @@
     <h2 class="lead">The touchscreen now needs to sign in to Spotify for the first time.</h2>
     <p class="note">Open Spotify on this phone and pick {% if soloist_device %}<strong>{{ soloist_device }}</strong>{% else %}the touchscreen{% endif %} in the device list. Then come back to this page.</p>
     <a class="button" href="https://open.spotify.com/">Open Spotify</a>
-    {% elif step == "location" %}
-    <h2 class="lead">Where is your touchscreen?</h2>
-    <p class="note">You can set its postcode, weather and stops in its settings whenever you like.</p>
-    <form method="POST" action="{{ url_for('pages.skip_setup_location', device_id=device_id) }}">
-        <button type="submit" class="button">Skip for now</button>
-    </form>
     {% elif step == "presence" %}
     <h2 class="lead">Next, the touchscreen pairs with this phone over Bluetooth.</h2>
     <p class="note">Open Settings, then Bluetooth, on this phone, and tap OK on the touchscreen. Select your phone there when it appears.</p>

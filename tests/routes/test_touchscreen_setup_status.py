@@ -163,7 +163,7 @@ def test_both_need_the_device_or_its_owner(app, client, anonymous_client):
 # --- the steps, in order --------------------------------------------------------------------------
 
 
-def test_the_whole_setup_runs_in_step_from_pairing_to_done(app, client, anonymous_client):  # noqa: PLR0915 -- one visit, start to end
+def test_the_whole_setup_runs_in_step_from_pairing_to_done(app, client, anonymous_client):
     device_id = _following(app, client)
     # Paired: the phone hasn't got to Spotify yet, so there is no sign-in to tell the touchscreen of.
     assert _status(client) == SetupStatus(step="spotify")
@@ -215,9 +215,8 @@ def test_the_whole_setup_runs_in_step_from_pairing_to_done(app, client, anonymou
     # Then where it is, which the owner may leave for later.
     located = _report(client, TOUCHSCREEN["setup_soloist_report"])
     assert located == SetupStatus.model_validate(TOUCHSCREEN["setup_location"])
-    where = _phone(client, device_id).get_data(as_text=True)
-    assert 'data-step="location"' in where
-    assert f'action="/device/{device_id}/setup/location/skip"' in where
+    # That step has pages of its own (test_touchscreen_setup_location.py).
+    assert _phone(client, device_id).headers["Location"] == f"/device/{device_id}/setup/location"
     skipped = client.post(f"/device/{device_id}/setup/location/skip")
     assert skipped.status_code == 303
     assert skipped.headers["Location"] == f"/device/{device_id}/setup"
