@@ -358,6 +358,7 @@ a.button.is-quiet:visited {
 }
 
 .stop {
+    position: relative;
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 8px 12px;
@@ -380,6 +381,24 @@ a.button.is-quiet:visited {
 .stop:has(input:checked) {
     border-color: var(--accent);
     background: var(--accent-soft);
+}
+
+/* A ticked card says so with a tick in its corner too, not by its colour alone. */
+.stop:has(input:checked)::after {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 15px;
+    font-weight: 700;
+    content: "\2713";
 }
 
 .stop:has(input:focus-visible) {
