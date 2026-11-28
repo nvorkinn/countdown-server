@@ -1,11 +1,11 @@
 """Saving a device's config a section at a time (PUT /api/devices/config/{section}), and the config's version.
 
 A section is a top-level field of the contract's ConfigResponse that isn't read-only or the server's own (the
-contract's ConfigSection): `arrivals`, `style`, `lyrics`, and the flat `clock_format` and `language` too. A save
-replaces one whole: the route puts the value into the config as it stands and validates the result with the device
-type's model, and set() then writes that section to the device's settings (DeviceConfig), as the settings page's form
-does. What the server works out itself (the notice board's country, the weather's location) is worked out again from
-what was saved, whatever was sent.
+contract's ConfigSection): `arrivals`, `style`, `lyrics`, `holidays`, and the flat `clock_format` and `language` too.
+A save replaces one whole: the route puts the value into the config as it stands and validates the result with the
+device type's model, and set() then writes that section to the device's settings (DeviceConfig), as the settings
+page's form does. What the server works out itself (the notice board's country, the weather's location) is worked out
+again from what was saved, whatever was sent.
 
 The version is a hash of the config as built (renderer_config.build), so it changes when anything in it does,
 whoever saved it: the settings page, a device's whole save, or a section's.
@@ -23,6 +23,7 @@ from countdown_api.models import (
     Parcels,
     TouchscreenConfig,
     TouchscreenDisplay,
+    TouchscreenHolidays,
     TouchscreenLyrics,
     TouchscreenStyle,
     Weather,
@@ -160,6 +161,10 @@ def _lyrics(config: DeviceConfig, value: TouchscreenLyrics) -> None:
     config.lyrics_size, config.lyrics_align = value.size, value.align
 
 
+def _holidays(config: DeviceConfig, value: TouchscreenHolidays) -> None:
+    config.holidays_days_ahead = value.days_ahead
+
+
 def _parcels(config: DeviceConfig, value: Parcels) -> None:
     config.parcels_enabled = value.enabled
     # Left out (a device older than them), each stays as saved; a sent null days_ahead is any day.
@@ -202,6 +207,7 @@ SETTERS: dict[str, Callable[[DeviceConfig, Any], str | None]] = {
     "style": _style,
     "display": _display,
     "lyrics": _lyrics,
+    "holidays": _holidays,
 }
 
 

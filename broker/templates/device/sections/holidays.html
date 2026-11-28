@@ -1,0 +1,11 @@
+{# How soon a touchscreen's notice board mentions the next bank or public holiday (the config's TouchscreenHolidays). #}
+{% from "device/_controls.html" import segmented %}
+<section class="section" data-section="holidays">
+    <header class="card-header">
+        <h2 class="card-title">Bank holidays</h2>
+    </header>
+    <fieldset class="form-group">
+        <legend class="form-legend">Shown ahead</legend>
+        {{ segmented("holidays_days_ahead", holidays_days_ahead, config.holidays_days_ahead | string) }}
+    </fieldset>
+</section>

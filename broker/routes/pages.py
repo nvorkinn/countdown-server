@@ -23,6 +23,7 @@ from broker.clients.pocket_id import PocketIdClient, PocketIdNotConfiguredError,
 from broker.db import db
 from broker.models import (
     CLOCK_FORMATS,
+    HOLIDAYS_DAYS_AHEAD,
     LANGUAGES,
     LAST_MINUTE_OF_DAY,
     LAYOUTS,
@@ -489,6 +490,8 @@ CHOICES = {
     "quiet_hours_on": (QUIET_HOURS_ON, "Quiet hours"),
     "lyrics_size": (LYRICS_SIZES, "The lyrics size"),
     "lyrics_align": (LYRICS_ALIGNS, "The lyrics alignment"),
+    # A number of days, stored as one like the screen sleep.
+    "holidays_days_ahead": (HOLIDAYS_DAYS_AHEAD, "How soon holidays show"),
 }
 
 
@@ -646,7 +649,7 @@ def _set_choices(config: DeviceConfig, choices: Mapping[str, str]) -> bool:
     """Set the config's CHOICES to those picked, and return whether that turns the screen (a new orientation)."""
     turned = choices["orientation"] != config.orientation
     for field, value in choices.items():
-        if field == "screen_sleep_minutes":
+        if field in {"screen_sleep_minutes", "holidays_days_ahead"}:
             setattr(config, field, int(value))
         elif field in {"theme_dynamic", "quiet_hours_on"}:
             setattr(config, field, value == "on")
@@ -882,6 +885,7 @@ PAGE_SECTIONS: dict[DeviceType, tuple[str | tuple[str, str], ...]] = {
         "style_touchscreen",
         "display",
         "lyrics",
+        "holidays",
         "screen",
     ),
 }
@@ -949,6 +953,7 @@ def _render_device_config(device_id: str, errors: list[str] | None = None) -> st
         quiet_hours_times=_quiet_hours_times(config),
         lyrics_sizes=LYRICS_SIZES,
         lyrics_aligns=LYRICS_ALIGNS,
+        holidays_days_ahead=HOLIDAYS_DAYS_AHEAD,
         display_seen=_seen_ago(device.display_last_seen_at, now),
         screen_label=screen_label(device),
         has_frame=drawn is not None,
